@@ -1,0 +1,50 @@
+import type { Context, Next } from "hono";
+import { createMiddleware } from "hono/factory";
+import { HTTPException } from "hono/http-exception";
+import type { SessionTokenPayload } from "./jwt";
+import { verifySessionToken } from "./jwt";
+
+function extractBearerToken(header: string | undefined): string {
+  if (!header?.startsWith("Bearer ")) {
+    throw new HTTPException(401, { message: "Missing bearer token" });
+  }
+
+  return header.slice("Bearer ".length);
+}
+
+export const authMiddleware = createMiddleware<{
+  Variables: {
+    session: SessionTokenPayload;
+  };
+}>(async (c: Context, next: Next) => {
+  const token = extractBearerToken(c.req.header("Authorization"));
+  c.set("session", verifySessionToken(token));
+  await next();
+});
+
+export const requireAdmin = createMiddleware(async (c: Context, next: Next) => {
+  const session = c.get("session") as SessionTokenPayload;
+  if (session.actorType !== "admin") {
+    throw new HTTPException(403, { message: "Admin access required" });
+  }
+
+  await next();
+});
+
+export const requireCompanyUser = createMiddleware(async (c: Context, next: Next) => {
+  const session = c.get("session") as SessionTokenPayload;
+  if (session.actorType !== "company_user") {
+    throw new HTTPException(403, { message: "Company login required" });
+  }
+
+  await next();
+});
+
+export const requireCompanyAdmin = createMiddleware(async (c: Context, next: Next) => {
+  const session = c.get("session") as SessionTokenPayload;
+  if (session.actorType !== "company_user" || session.role !== "company_admin") {
+    throw new HTTPException(403, { message: "Company admin access required" });
+  }
+
+  await next();
+});
