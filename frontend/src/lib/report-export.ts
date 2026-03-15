@@ -3,18 +3,67 @@ import type { ReportResponse } from "@shared/types/api";
 import { formatMinutes } from "@shared/utils/time";
 import { formatCompanyDate, formatCompanyDateTime } from "@/lib/locale-format";
 
+type TranslateFn = (key: string) => string;
+type CustomFieldLabels = Map<string, string>;
+
 function isLocalDayValue(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function getReportColumnLabel(column: ReportResponse["report"]["columns"][number], t: TranslateFn) {
+  const nativeKey = `reports.columns.${column.key}`;
+  const translated = t(nativeKey);
+  return translated === nativeKey ? column.label : translated;
+}
+
+function humanizeFieldKey(value: string) {
+  return value
+    .replace(/^custom:/, "")
+    .replace(/^field-/, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getResolvedReportColumnLabel(
+  column: ReportResponse["report"]["columns"][number],
+  t: TranslateFn,
+  customFieldLabels?: CustomFieldLabels,
+) {
+  const nativeLabel = getReportColumnLabel(column, t);
+  if (nativeLabel !== column.label) return nativeLabel;
+  const customLabel = customFieldLabels?.get(column.key) ?? customFieldLabels?.get(column.label);
+  if (customLabel) return customLabel;
+  if (column.label.startsWith("field-") || column.label.startsWith("custom:")) return humanizeFieldKey(column.label);
+  return column.label;
+}
+
+function translateEntryType(value: string, t: TranslateFn) {
+  switch (value) {
+    case "work":
+    case "Working":
+      return t("recordEditor.working");
+    case "vacation":
+    case "Vacation":
+      return t("recordEditor.vacation");
+    case "sick_leave":
+    case "Sick leave":
+      return t("recordEditor.sickLeave");
+    default:
+      return value;
+  }
+}
+
 function formatCellValue(
   value: string | number | null,
+  columnKey: string,
   kind: ReportResponse["report"]["columns"][number]["kind"],
   locale: string,
   currency: string,
   dateTimeFormat: string,
+  t: TranslateFn,
 ) {
   if (value === null || value === "") return "--";
+  if (columnKey === "type" && typeof value === "string") return translateEntryType(value, t);
   if (kind === "duration" && typeof value === "number") return formatMinutes(value);
   if (kind === "currency" && typeof value === "number") {
     try {
@@ -44,8 +93,12 @@ function buildFileName(report: ReportResponse["report"], extension: string) {
   return `jtzt-report-${report.startDate}-${report.endDate}.${extension}`;
 }
 
-function toExportColumnName(column: ReportResponse["report"]["columns"][number]) {
-  const normalized = column.label
+function toExportColumnName(
+  column: ReportResponse["report"]["columns"][number],
+  t: TranslateFn,
+  customFieldLabels?: CustomFieldLabels,
+) {
+  const normalized = getResolvedReportColumnLabel(column, t, customFieldLabels)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
@@ -56,10 +109,12 @@ function toExportColumnName(column: ReportResponse["report"]["columns"][number])
 
 function getExcelCell(
   value: string | number | null,
+  columnKey: string,
   kind: ReportResponse["report"]["columns"][number]["kind"],
   locale: string,
   currency: string,
   dateTimeFormat: string,
+  t: TranslateFn,
 ) {
   if (value === null || value === "") {
     return { type: "String", value: "" };
@@ -74,18 +129,18 @@ function getExcelCell(
   }
 
   if (kind === "currency" && typeof value === "number") {
-    return { type: "String", value: formatCellValue(value, kind, locale, currency, dateTimeFormat) };
+    return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, dateTimeFormat, t) };
   }
 
   if (kind === "datetime" && typeof value === "string") {
-    return { type: "String", value: formatCompanyDateTime(value, locale, dateTimeFormat) };
+    return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, dateTimeFormat, t) };
   }
 
   if (kind === "number" && typeof value === "number") {
     return { type: "Number", value: String(value) };
   }
 
-  return { type: "String", value: String(value) };
+  return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, dateTimeFormat, t) };
 }
 
 function buildSpreadsheetRow(cells: Array<{ type: string; value: string }>, styleId?: string) {
@@ -98,15 +153,15 @@ function buildSpreadsheetRow(cells: Array<{ type: string; value: string }>, styl
     .join("")}</Row>`;
 }
 
-function buildExcelWorkbook(report: ReportResponse["report"]) {
+function buildExcelWorkbook(report: ReportResponse["report"], t: TranslateFn, customFieldLabels?: CustomFieldLabels) {
   const dataHeader = report.columns.map((column) => ({
     type: "String",
-    value: toExportColumnName(column),
+    value: toExportColumnName(column, t, customFieldLabels),
   }));
 
   const dataRows = report.rows.map((row) =>
     report.columns.map((column) =>
-      getExcelCell(row[column.key] ?? null, column.kind, report.locale, report.currency, report.dateTimeFormat),
+      getExcelCell(row[column.key] ?? null, column.key, column.kind, report.locale, report.currency, report.dateTimeFormat, t),
     ),
   );
 
@@ -178,20 +233,22 @@ function truncatePdfText(value: string, maxChars: number) {
 
 function formatPdfCellValue(
   value: string | number | null,
+  columnKey: string,
   kind: ReportResponse["report"]["columns"][number]["kind"],
   locale: string,
   currency: string,
   dateTimeFormat: string,
+  t: TranslateFn,
 ) {
   if (value === null || value === "") return "";
   if (kind === "currency" && typeof value === "number") {
     return `${value.toFixed(2)} ${currency}`;
   }
 
-  return normalizePdfText(formatCellValue(value, kind, locale, currency, dateTimeFormat));
+  return normalizePdfText(formatCellValue(value, columnKey, kind, locale, currency, dateTimeFormat, t));
 }
 
-function buildPdf(report: ReportResponse["report"]) {
+function buildPdf(report: ReportResponse["report"], t: TranslateFn, customFieldLabels?: CustomFieldLabels) {
   const pageWidth = 841.89;
   const pageHeight = 595.28;
   const margin = 28;
@@ -210,10 +267,12 @@ function buildPdf(report: ReportResponse["report"]) {
       truncatePdfText(
         formatPdfCellValue(
           row[column.key] ?? null,
+          column.key,
           column.kind,
           report.locale,
           report.currency,
           report.dateTimeFormat,
+          t,
         ),
         maxCharsPerCell,
       ),
@@ -263,7 +322,13 @@ function buildPdf(report: ReportResponse["report"]) {
       if (columnIndex > 0) {
         commands.push(`${x.toFixed(2)} ${margin} m ${x.toFixed(2)} ${headerY} l S`);
       }
-      pushText(truncatePdfText(normalizePdfText(report.columns[columnIndex].label), maxCharsPerCell), x + 3, headerY - 12, 7.5, "F2");
+      pushText(
+        truncatePdfText(normalizePdfText(getResolvedReportColumnLabel(report.columns[columnIndex], t, customFieldLabels)), maxCharsPerCell),
+        x + 3,
+        headerY - 12,
+        7.5,
+        "F2",
+      );
     }
 
     rows.forEach((row, rowIndex) => {
@@ -311,12 +376,12 @@ function buildPdf(report: ReportResponse["report"]) {
   return pdf;
 }
 
-export function exportReportExcel(report: ReportResponse["report"]) {
-  const workbook = buildExcelWorkbook(report);
+export function exportReportExcel(report: ReportResponse["report"], t: TranslateFn, customFieldLabels?: CustomFieldLabels) {
+  const workbook = buildExcelWorkbook(report, t, customFieldLabels);
   createDownload(workbook, buildFileName(report, "xls"), "application/vnd.ms-excel;charset=utf-8;");
 }
 
-export function exportReportPdf(report: ReportResponse["report"]) {
-  const pdf = buildPdf(report);
+export function exportReportPdf(report: ReportResponse["report"], t: TranslateFn, customFieldLabels?: CustomFieldLabels) {
+  const pdf = buildPdf(report, t, customFieldLabels);
   createDownload(pdf, buildFileName(report, "pdf"), "application/pdf");
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { ReportResponse } from "@shared/types/api";
+import type { CompanySettings } from "@shared/types/models";
 import { diffCalendarDays, formatMinutes } from "@shared/utils/time";
 import { FormPage, FormPanel } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
@@ -22,14 +23,77 @@ function isLocalDayValue(value: string) {
 
 const TIMELINE_DAY_WIDTH = 56;
 
+function getReportColumnLabel(
+  column: ReportResponse["report"]["columns"][number],
+  t: ReturnType<typeof useTranslation>["t"],
+) {
+  const nativeKey = `reports.columns.${column.key}`;
+  const translated = t(nativeKey);
+  return translated === nativeKey ? column.label : translated;
+}
+
+function humanizeFieldKey(value: string) {
+  return value
+    .replace(/^custom:/, "")
+    .replace(/^field[-_:]*/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function buildCustomFieldLabelKeys(fieldId: string) {
+  const normalizedId = fieldId.trim();
+  const withoutFieldPrefix = normalizedId.replace(/^field[-_:]*/i, "");
+
+  return Array.from(new Set([
+    normalizedId,
+    `custom:${normalizedId}`,
+    `field-${normalizedId}`,
+    withoutFieldPrefix,
+    `custom:${withoutFieldPrefix}`,
+    `field-${withoutFieldPrefix}`,
+  ]));
+}
+
+function getResolvedReportColumnLabel(
+  column: ReportResponse["report"]["columns"][number],
+  t: ReturnType<typeof useTranslation>["t"],
+  customFieldLabels: Map<string, string>,
+) {
+  const nativeLabel = getReportColumnLabel(column, t);
+  if (nativeLabel !== column.label) return nativeLabel;
+  const customLabel = customFieldLabels.get(column.key) ?? customFieldLabels.get(column.label);
+  if (customLabel) return customLabel;
+  if (column.label.startsWith("field-") || column.label.startsWith("custom:")) return humanizeFieldKey(column.label);
+  return column.label;
+}
+
+function translateEntryType(value: string, t: ReturnType<typeof useTranslation>["t"]) {
+  switch (value) {
+    case "work":
+    case "Working":
+      return t("recordEditor.working");
+    case "vacation":
+    case "Vacation":
+      return t("recordEditor.vacation");
+    case "sick_leave":
+    case "Sick leave":
+      return t("recordEditor.sickLeave");
+    default:
+      return value;
+  }
+}
+
 function formatCellValue(
   value: string | number | null,
+  columnKey: string,
   kind: ReportResponse["report"]["columns"][number]["kind"],
   locale: string,
   currency: string,
   dateTimeFormat: string,
+  t: ReturnType<typeof useTranslation>["t"],
 ) {
   if (value === null || value === "") return "--";
+  if (columnKey === "type" && typeof value === "string") return translateEntryType(value, t);
   if (kind === "duration" && typeof value === "number") return formatMinutes(value);
   if (kind === "currency" && typeof value === "number") {
     try {
@@ -248,6 +312,7 @@ export function ReportsPreviewPage() {
   const draftId = searchParams.get("draft");
   const draft = useMemo(() => loadReportDraft(draftId), [draftId]);
   const [report, setReport] = useState<ReportResponse["report"] | null>(null);
+  const [settings, setSettings] = useState<CompanySettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"table" | "gantt">("table");
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
@@ -259,8 +324,14 @@ export function ReportsPreviewPage() {
     }
 
     setLoading(true);
-    void api.previewReport(companySession.token, draft)
-      .then((response) => setReport(response.report))
+    void Promise.all([
+      api.previewReport(companySession.token, draft),
+      api.getSettings(companySession.token),
+    ])
+      .then(([reportResponse, settingsResponse]) => {
+        setReport(reportResponse.report);
+        setSettings(settingsResponse.settings);
+      })
       .catch((error) =>
         toast({
           title: t("reports.createFailed"),
@@ -274,6 +345,24 @@ export function ReportsPreviewPage() {
   const timelineDays = useMemo(() => (report ? listDays(report.startDate, report.endDate) : []), [report]);
   const timelineMonths = useMemo(() => buildTimelineMonthSegments(timelineDays, report?.locale ?? "en-GB"), [report?.locale, timelineDays]);
   const timelineWidth = timelineDays.length * TIMELINE_DAY_WIDTH;
+  const customFieldLabels = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const field of settings?.customFields ?? []) {
+      const label = field.label.trim() || humanizeFieldKey(field.id);
+      for (const key of buildCustomFieldLabelKeys(field.id)) {
+        labels.set(key, label);
+      }
+    }
+    return labels;
+  }, [settings?.customFields]);
+  const resolvedColumns = useMemo(
+    () =>
+      report?.columns.map((column) => ({
+        ...column,
+        label: getResolvedReportColumnLabel(column, t, customFieldLabels),
+      })) ?? [],
+    [customFieldLabels, report?.columns, t],
+  );
   const timelineUsers = useMemo(() => {
     if (!report) return [];
     const groupedByUser = new Map<
@@ -362,10 +451,10 @@ export function ReportsPreviewPage() {
                     <TabsTrigger value="gantt">{t("reports.gantt")}</TabsTrigger>
                   </TabsList>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" onClick={() => exportReportExcel(report)} type="button">
+                    <Button variant="outline" onClick={() => exportReportExcel({ ...report, columns: resolvedColumns }, t, customFieldLabels)} type="button">
                       {t("reports.exportExcel")}
                     </Button>
-                    <Button variant="outline" onClick={() => exportReportPdf(report)} type="button">
+                    <Button variant="outline" onClick={() => exportReportPdf({ ...report, columns: resolvedColumns }, t, customFieldLabels)} type="button">
                       {t("reports.exportPdf")}
                     </Button>
                   </div>
@@ -376,7 +465,7 @@ export function ReportsPreviewPage() {
                     <table className="min-w-full border-collapse text-sm">
                       <thead>
                         <tr className="border-b border-border bg-muted/40">
-                          {report.columns.map((column) => (
+                          {resolvedColumns.map((column) => (
                             <th key={column.key} className="whitespace-nowrap px-4 py-3 text-left font-medium text-foreground">
                               {column.label}
                             </th>
@@ -386,9 +475,17 @@ export function ReportsPreviewPage() {
                       <tbody>
                         {report.rows.map((row, index) => (
                           <tr key={index} className="border-b border-border/70 last:border-b-0">
-                            {report.columns.map((column) => (
+                            {resolvedColumns.map((column) => (
                               <td key={column.key} className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                                {formatCellValue(row[column.key] ?? null, column.kind, report.locale, report.currency, report.dateTimeFormat)}
+                                {formatCellValue(
+                                  row[column.key] ?? null,
+                                  column.key,
+                                  column.kind,
+                                  report.locale,
+                                  report.currency,
+                                  report.dateTimeFormat,
+                                  t,
+                                )}
                               </td>
                             ))}
                           </tr>

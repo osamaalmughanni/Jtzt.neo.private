@@ -34,6 +34,26 @@ const defaultSettings: CompanySettings = {
 
 type ReportOption = { value: string; label: string };
 
+function getCustomFieldOptionLabel(field: CompanySettings["customFields"][number]) {
+  const cleaned = field.label.trim();
+  if (
+    cleaned.length > 0 &&
+    cleaned !== field.id &&
+    !/^field[-_:]/i.test(cleaned) &&
+    !/^custom:/i.test(cleaned)
+  ) {
+    return cleaned;
+  }
+
+  return field.id
+    .replace(/^field[-_:]*/i, "")
+    .replace(/^custom:/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 type ReportDraft = ReportRequestInput & {
   periodPreset: string;
 };
@@ -188,7 +208,7 @@ export function ReportsPage() {
     ]).then(([settingsResponse, usersResponse]) => {
       const nextCustomFieldOptions = settingsResponse.settings.customFields.map((field) => ({
         value: `custom:${field.id}`,
-        label: field.label,
+        label: getCustomFieldOptionLabel(field),
       }));
       const allFieldValues = getAllFieldValues(baseFieldOptions, nextCustomFieldOptions);
       setSettings(settingsResponse.settings);
@@ -228,7 +248,7 @@ export function ReportsPage() {
 
   const customFieldOptions = settings.customFields.map((field) => ({
     value: `custom:${field.id}`,
-    label: field.label,
+    label: getCustomFieldOptionLabel(field),
   }));
 
   const allFieldOptions = [...baseFieldOptions, ...customFieldOptions];

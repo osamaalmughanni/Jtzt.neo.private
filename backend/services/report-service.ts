@@ -35,6 +35,29 @@ const baseColumns: Record<string, ReportColumnDefinition> = {
   month: { key: "month", label: "Month", kind: "text" }
 };
 
+function getCustomFieldKeyMatches(field: CompanyCustomField, key: string) {
+  return key === `custom:${field.id}` || key === field.id || key === `field-${field.id}`;
+}
+
+function getCustomFieldLabel(field: CompanyCustomField) {
+  const cleaned = field.label.trim();
+  if (
+    cleaned.length > 0 &&
+    cleaned !== field.id &&
+    !/^field[-_:]/i.test(cleaned) &&
+    !/^custom:/i.test(cleaned)
+  ) {
+    return cleaned;
+  }
+
+  return field.id
+    .replace(/^field[-_:]*/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function parseJsonRecord(value: string) {
   try {
     const parsed = JSON.parse(value) as Record<string, string | number | boolean>;
@@ -65,12 +88,16 @@ function getMonthKey(day: string) {
 }
 
 function getColumnDefinition(key: string, customFields: CompanyCustomField[]): ReportColumnDefinition | null {
-  if (key.startsWith("custom:")) {
-    const field = customFields.find((item) => `custom:${item.id}` === key);
+  if (
+    key.startsWith("custom:") ||
+    key.startsWith("field-") ||
+    customFields.some((item) => getCustomFieldKeyMatches(item, key))
+  ) {
+    const field = customFields.find((item) => getCustomFieldKeyMatches(item, key));
     if (!field) return null;
     return {
       key,
-      label: field.label,
+      label: getCustomFieldLabel(field),
       kind: field.type === "date" ? "date" : field.type === "number" ? "number" : "text"
     };
   }
@@ -135,10 +162,15 @@ function getCustomFieldDisplayValue(field: CompanyCustomField | undefined, rawVa
 
 function getEntryValue(entry: ReportRow, key: string, customFields: CompanyCustomField[], contractsByUser: Map<number, ContractRow[]>) {
   const customValues = parseJsonRecord(entry.custom_field_values_json);
-  if (key.startsWith("custom:")) {
-    const fieldId = key.slice("custom:".length);
-    const field = customFields.find((item) => item.id === fieldId);
-    return getCustomFieldDisplayValue(field, customValues[fieldId] ?? null);
+  if (
+    key.startsWith("custom:") ||
+    key.startsWith("field-") ||
+    customFields.some((item) => getCustomFieldKeyMatches(item, key))
+  ) {
+    const normalizedKey = key.startsWith("custom:") ? key : key.startsWith("field-") ? key : key;
+    const field = customFields.find((item) => getCustomFieldKeyMatches(item, normalizedKey));
+    const valueKey = field?.id ?? (key.startsWith("custom:") ? key.slice("custom:".length) : key);
+    return getCustomFieldDisplayValue(field, customValues[valueKey] ?? null);
   }
 
   if (key === "user") return entry.full_name;

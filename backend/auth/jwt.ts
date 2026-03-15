@@ -19,12 +19,15 @@ export interface CompanyTokenPayload {
 
 export type SessionTokenPayload = AdminTokenPayload | CompanyTokenPayload;
 
+const LONG_LIVED_SESSION_HOURS = 24 * 365 * 100;
+
 export function signSessionToken(
   payload: SessionTokenPayload
 ): ({ token: string; expiresAt: string } & Pick<AdminTokenPayload, "actorType">) | ({ token: string; expiresAt: string } & Pick<CompanyTokenPayload, "actorType" | "accessMode">) {
-  const expiresInSeconds = appConfig.sessionTtlHours * 60 * 60;
+  const expiresInHours = Math.max(appConfig.sessionTtlHours, LONG_LIVED_SESSION_HOURS);
+  const expiresInSeconds = expiresInHours * 60 * 60;
   const token = jwt.sign(payload, appConfig.jwtSecret, { expiresIn: expiresInSeconds });
-  const expiresAt = new Date(Date.now() + appConfig.sessionTtlHours * 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000).toISOString();
   if (payload.actorType === "admin") {
     return { token, expiresAt, actorType: "admin" };
   }

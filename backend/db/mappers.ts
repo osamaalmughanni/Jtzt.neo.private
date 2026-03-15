@@ -32,10 +32,28 @@ function parseJsonValue<T>(value: unknown, fallback: T): T {
   }
 }
 
+function humanizeCustomFieldId(value: string) {
+  return value
+    .replace(/^field[-_:]*/i, "")
+    .replace(/^custom:/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function normalizeCustomFields(value: unknown): CompanyCustomField[] {
   const parsed = parseJsonValue<CompanyCustomField[]>(value, []);
   return parsed.map((field) => ({
     ...field,
+    label:
+      typeof field.label === "string" &&
+      field.label.trim().length > 0 &&
+      field.label.trim() !== field.id &&
+      !/^field[-_:]/i.test(field.label.trim()) &&
+      !/^custom:/i.test(field.label.trim())
+        ? field.label.trim()
+        : humanizeCustomFieldId(field.id),
     options: Array.isArray(field.options) ? field.options : [],
   }));
 }

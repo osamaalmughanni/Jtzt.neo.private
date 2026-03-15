@@ -374,7 +374,20 @@ export const resources = {
         totalsOnly: "Totals only",
         totalsOnlyLabel: "Show grouped totals only",
         createReport: "Create report",
-        remove: "Remove"
+        remove: "Remove",
+        columns: {
+          user: "User",
+          role: "Role",
+          type: "Type",
+          date: "Date",
+          start: "Start",
+          finish: "Finish",
+          duration: "Duration",
+          note: "Note",
+          cost: "Cost",
+          entries: "Entries",
+          month: "Month"
+        }
       },
       settings: {
         title: "Settings",
@@ -838,7 +851,20 @@ export const resources = {
         totalsOnly: "Nur Summen",
         totalsOnlyLabel: "Nur gruppierte Summen anzeigen",
         createReport: "Bericht erstellen",
-        remove: "Entfernen"
+        remove: "Entfernen",
+        columns: {
+          user: "Benutzer",
+          role: "Rolle",
+          type: "Typ",
+          date: "Datum",
+          start: "Start",
+          finish: "Ende",
+          duration: "Dauer",
+          note: "Notiz",
+          cost: "Kosten",
+          entries: "Einträge",
+          month: "Monat"
+        }
       },
       settings: {
         title: "Einstellungen",
