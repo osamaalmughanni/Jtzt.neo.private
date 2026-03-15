@@ -31,33 +31,28 @@ export const seoEntries = new Map<string, SeoEntry>([
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         name: "Jtzt",
+        url: "https://jtzt.com",
         applicationCategory: "BusinessApplication",
         operatingSystem: "Web",
         description:
           "A local-first working hours platform for companies that want fast performance, clean tenant boundaries, and straightforward administration.",
+        creator: {
+          "@type": "Organization",
+          name: "DI Osama Almughanni, BSc",
+          url: "https://jtzt.com",
+          address: {
+            "@type": "PostalAddress",
+            streetAddress: "Doblergasse 3/3/8",
+            postalCode: "1070",
+            addressLocality: "Wien",
+            addressCountry: "AT"
+          }
+        },
         offers: {
           "@type": "Offer",
           price: "0",
           priceCurrency: "USD"
         }
-      }
-    }
-  ],
-  [
-    "/company",
-    {
-      title: "About Jtzt | Company Information",
-      description:
-        "Learn about the company behind Jtzt, a focused working hours platform built for businesses that want clarity, local control, and maintainable operations.",
-      robots: "index, follow",
-      canonicalPath: "/company",
-      ogType: "website",
-      keywords: "about Jtzt, Jtzt company, working hours software company",
-      structuredData: {
-        "@context": "https://schema.org",
-        "@type": "Organization",
-        name: "Jtzt",
-        url: "/company"
       }
     }
   ],

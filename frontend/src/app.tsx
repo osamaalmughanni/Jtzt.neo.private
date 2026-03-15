@@ -6,7 +6,6 @@ import { AdminCompanyCreatePage } from "@/pages/admin-company-create-page";
 import { AdminLoginPage } from "@/pages/admin-login-page";
 import { AdminMenuPage } from "@/pages/admin-menu-page";
 import { CalendarPage } from "@/pages/calendar-page";
-import { CompanyPage } from "@/pages/company-page";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { LearnPage } from "@/pages/learn-page";
 import { LoginPage } from "@/pages/login-page";
@@ -22,7 +21,6 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<LoginPage />} />
-      <Route path="/company" element={<CompanyPage />} />
       <Route path="/learn" element={<LearnPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterCompanyPage />} />

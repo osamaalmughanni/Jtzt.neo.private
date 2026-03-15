@@ -1,4 +1,5 @@
 import { Outlet } from "react-router-dom";
+import { AppFooter } from "@/components/app-footer";
 import { AppHeader } from "@/components/app-header";
 import { AppFrame } from "@/components/app-frame";
 import { useAuth } from "@/lib/auth";
@@ -22,6 +23,7 @@ export function AppShell({ mode }: AppShellProps) {
       <main className="flex-1">
         <Outlet />
       </main>
+      <AppFooter />
     </AppFrame>
   );
 }

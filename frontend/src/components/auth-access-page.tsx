@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
+import { ArrowUpRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -270,31 +271,30 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
           className="w-full"
           onValueChange={(value) => navigate(modeConfig[value as AuthMode].route)}
         >
-          <CardHeader className="space-y-0">
+          <CardHeader className="flex flex-col gap-3 pb-4">
             <AuthMark label={modeConfig[mode].title} />
-            <div className="mt-4 max-w-full overflow-x-auto pb-1">
-              <TabsList className="w-max min-w-0">
-                <TabsTrigger value="sign-in">
-                  Sign in
-                </TabsTrigger>
-                <TabsTrigger value="register">
-                  Register
-                </TabsTrigger>
-                <TabsTrigger value="admin">
-                  Admin
-                </TabsTrigger>
-              </TabsList>
-            </div>
+            {mode !== "admin" ? (
+              <div className="max-w-full overflow-x-auto">
+                <TabsList className="w-max min-w-0">
+                  <TabsTrigger value="sign-in">
+                    Sign in
+                  </TabsTrigger>
+                  <TabsTrigger value="register">
+                    Register
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+            ) : null}
           </CardHeader>
-          <CardContent>
-            <div className="mb-6 rounded-2xl border border-border/70 bg-muted/15 px-4 py-3">
+          <CardContent className="pt-0">
+            <div className="mb-4 rounded-2xl border border-border/70 bg-muted/15 px-4 py-3">
               <p className="text-sm font-semibold text-foreground">{modeConfig[mode].title}</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{modeConfig[mode].description}</p>
             </div>
 
             <TabsContent value="sign-in" className="mt-0">
               <Form {...companyForm}>
-                <form className="space-y-4" onSubmit={companyForm.handleSubmit(onCompanySubmit)}>
+                <form className="space-y-3.5" onSubmit={companyForm.handleSubmit(onCompanySubmit)}>
                   <FormField
                     control={companyForm.control}
                     name="companyName"
@@ -328,7 +328,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                       <FormItem>
                         <FormLabel>Password</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder="••••••••" {...field} />
+                          <Input type="password" placeholder="********" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -358,7 +358,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
 
             <TabsContent value="register" className="mt-0">
               <Form {...registerForm}>
-                <form className="space-y-4" onSubmit={registerForm.handleSubmit(onRegisterSubmit)}>
+                <form className="space-y-3.5" onSubmit={registerForm.handleSubmit(onRegisterSubmit)}>
                   <FormField
                     control={registerForm.control}
                     name="name"
@@ -392,7 +392,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                       <FormItem>
                         <FormLabel>Admin password</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder="••••••••" {...field} />
+                          <Input type="password" placeholder="********" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -407,7 +407,9 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                           <div className="space-y-1">
                             <p className="text-sm font-semibold text-foreground">Secure mode</p>
                             <p className="text-xs leading-5 text-muted-foreground">
-                              Require a client-derived encryption proof at login and prepare this company for stronger data protection workflows.
+                              {field.value
+                                ? "Secure mode is enabled. Company sign-in will require the encryption key, and after registration this browser will download the recovery JSON files with the credentials and encrypted backup data."
+                                : "Require a client-derived encryption proof at login and prepare this company for stronger data protection workflows."}
                             </p>
                           </div>
                           <Switch checked={field.value} onCheckedChange={field.onChange} />
@@ -418,12 +420,6 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                   />
                   {encryptionEnabled ? (
                     <>
-                      <div className="rounded-2xl border border-border/70 bg-background px-4 py-3">
-                        <p className="text-sm font-semibold text-foreground">Local recovery package</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                          After company creation, this browser downloads a recovery card with the encryption key and a separate encrypted backup of the current workspace state. Nothing extra is stored on the server.
-                        </p>
-                      </div>
                       <FormField
                         control={registerForm.control}
                         name="encryptionKey"
@@ -461,7 +457,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
 
             <TabsContent value="admin" className="mt-0">
               <Form {...adminForm}>
-                <form className="space-y-4" onSubmit={adminForm.handleSubmit(onAdminSubmit)}>
+                <form className="space-y-3.5" onSubmit={adminForm.handleSubmit(onAdminSubmit)}>
                   <FormField
                     control={adminForm.control}
                     name="username"
@@ -495,16 +491,18 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
               </Form>
             </TabsContent>
 
-            <div className="mt-10 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
+            <div className="mt-7 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
               <Link className="transition-opacity hover:opacity-60" to="/learn">
                 Learn more
               </Link>
-              <span aria-hidden="true">&middot;</span>
-              <Link className="transition-opacity hover:opacity-60" to="/company">
-                Company
-              </Link>
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-1">
                 <ThemeToggle />
+                <Button asChild variant="ghost" size="sm" className="h-8 gap-1 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground">
+                  <Link to="/admin/login">
+                    Admin
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
               </div>
             </div>
           </CardContent>
