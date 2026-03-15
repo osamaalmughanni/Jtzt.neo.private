@@ -5,8 +5,6 @@ import type {
   CompanySecurityResponse,
   CompanyMeResponse,
   CreateManualTimeEntryInput,
-  CreateProjectInput,
-  CreateTaskInput,
   CreateUserInput,
   DeleteTimeEntryInput,
   DeleteUserInput,
@@ -16,7 +14,6 @@ import type {
   DeleteCompanyInput,
   HolidayResponse,
   LoginResponse,
-  ProjectListResponse,
   RegisterCompanyInput,
   SettingsResponse,
   StartTimerInput,
@@ -148,28 +145,6 @@ export const api = {
   deleteTimeEntry(token: string, input: DeleteTimeEntryInput) {
     return request<{ success: boolean }>("/api/time/entry", {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-      body: JSON.stringify(input)
-    });
-  },
-
-  listProjects(token: string) {
-    return request<ProjectListResponse>("/api/projects", {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-  },
-
-  createProject(token: string, input: CreateProjectInput) {
-    return request<{ success: boolean }>("/api/projects", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: JSON.stringify(input)
-    });
-  },
-
-  createTask(token: string, input: CreateTaskInput) {
-    return request<{ success: boolean }>("/api/projects/tasks", {
-      method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify(input)
     });

@@ -1,4 +1,5 @@
 import type {
+  CompanyCustomField,
   CompanySettings,
   CompanyRecord,
   CompanyUserDetail,
@@ -6,13 +7,10 @@ import type {
   CompanyUserProfile,
   DashboardSummary,
   PublicHolidayRecord,
-  ProjectRecord,
-  RecordType,
   SystemStats,
-  TaskRecord,
   TimeEntryView
 } from "./models";
-import type { TimeEntryType, TrackingMode, UserRole, UserContract } from "./models";
+import type { TimeEntryType, UserRole, UserContract } from "./models";
 
 export interface CompanyLoginInput {
   companyName: string;
@@ -45,7 +43,6 @@ export interface AdminMeResponse {
 
 export interface StartTimerInput {
   notes?: string;
-  projectId?: number | null;
 }
 
 export interface StopTimerInput {
@@ -62,13 +59,12 @@ export interface UpdateTimeEntryInput {
   startTime: string | null;
   endTime: string | null;
   notes: string;
-  projectId: number | null;
-  taskId: number | null;
   sickLeaveAttachment: {
     fileName: string;
     mimeType: string;
     dataUrl: string;
   } | null;
+  customFieldValues: Record<string, string | number | boolean>;
 }
 
 export interface DeleteTimeEntryInput {
@@ -84,13 +80,12 @@ export interface CreateManualTimeEntryInput {
   startTime: string | null;
   endTime: string | null;
   notes: string;
-  projectId: number | null;
-  taskId: number | null;
   sickLeaveAttachment: {
     fileName: string;
     mimeType: string;
     dataUrl: string;
   } | null;
+  customFieldValues: Record<string, string | number | boolean>;
 }
 
 export interface TimeListQuery {
@@ -105,11 +100,6 @@ export interface TimeListResponse {
 
 export interface DashboardResponse {
   summary: DashboardSummary;
-}
-
-export interface ProjectListResponse {
-  projects: ProjectRecord[];
-  tasks: TaskRecord[];
 }
 
 export interface UserListResponse {
@@ -136,7 +126,6 @@ export interface CreateUserInput {
   isActive: boolean;
   pinCode: string;
   email: string | null;
-  pictureUrl: string | null;
   contracts: UserContractInput[];
 }
 
@@ -149,7 +138,6 @@ export interface UpdateUserInput {
   isActive: boolean;
   pinCode: string;
   email: string | null;
-  pictureUrl: string | null;
   contracts: UserContractInput[];
 }
 
@@ -215,14 +203,13 @@ export interface SettingsResponse {
 }
 
 export interface UpdateSettingsInput {
-  trackingMode: TrackingMode;
-  recordType: RecordType;
   currency: string;
   locale: string;
   firstDayOfWeek: number;
   editDaysLimit: number;
   insertDaysLimit: number;
   country: string;
+  customFields: CompanyCustomField[];
 }
 
 export interface HolidayResponse {

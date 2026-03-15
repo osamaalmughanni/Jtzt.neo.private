@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type {
+  CompanyCustomField,
   CompanySettings,
   CompanyUserListItem,
-  ProjectRecord,
   PublicHolidayRecord,
   SickLeaveAttachment,
-  TaskRecord,
   TimeEntryType,
 } from "@shared/types/models";
-import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
+import { diffCalendarDays, formatLocalDay } from "@shared/utils/time";
+import { Field, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
@@ -22,14 +22,13 @@ import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 
 const defaultSettings: CompanySettings = {
-  trackingMode: "time",
-  recordType: "start_finish",
   currency: "EUR",
   locale: "en-GB",
   firstDayOfWeek: 1,
   editDaysLimit: 30,
   insertDaysLimit: 30,
   country: "AT",
+  customFields: [],
 };
 
 const entryTypeTabs: Array<{ value: TimeEntryType; label: string }> = [
@@ -38,11 +37,20 @@ const entryTypeTabs: Array<{ value: TimeEntryType; label: string }> = [
   { value: "sick_leave", label: "Sick leave" },
 ];
 
+function getEntryTypeTabClassName(entryType: TimeEntryType) {
+  if (entryType === "work") {
+    return "rounded-xl border border-transparent px-3 py-2 transition-colors data-[state=active]:border-emerald-500/30 data-[state=active]:bg-emerald-500/15 data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:border-emerald-400/30 dark:data-[state=active]:bg-emerald-400/15";
+  }
+
+  if (entryType === "vacation") {
+    return "rounded-xl border border-transparent px-3 py-2 transition-colors data-[state=active]:border-sky-500/30 data-[state=active]:bg-sky-500/15 data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:border-sky-400/30 dark:data-[state=active]:bg-sky-400/15";
+  }
+
+  return "rounded-xl border border-transparent px-3 py-2 transition-colors data-[state=active]:border-rose-500/30 data-[state=active]:bg-rose-500/15 data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:border-rose-400/30 dark:data-[state=active]:bg-rose-400/15";
+}
+
 function combineDateAndTime(day: string, timeValue: string) {
-  const [hours, minutes] = timeValue.split(":").map(Number);
-  const next = new Date(`${day}T00:00:00`);
-  next.setHours(hours, minutes, 0, 0);
-  return next.toISOString();
+  return `${day}T${timeValue}:00`;
 }
 
 function toTimeInputValue(isoValue: string | null) {
@@ -57,8 +65,16 @@ function canManageOtherUsers(role: string | undefined) {
   return role === "admin" || role === "manager";
 }
 
+function canBypassDayLimits(role: string | undefined) {
+  return role === "admin" || role === "manager";
+}
+
+function isDayWithinLimit(day: string, limit: number) {
+  return diffCalendarDays(formatLocalDay(new Date()), day) <= limit;
+}
+
 function parseDayParam(value: string | null) {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date().toISOString().slice(0, 10);
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return formatLocalDay(new Date());
   return value;
 }
 
@@ -145,52 +161,45 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const [searchParams] = useSearchParams();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
-  const [projects, setProjects] = useState<ProjectRecord[]>([]);
-  const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [entryType, setEntryType] = useState<TimeEntryType>("work");
   const [startDate, setStartDate] = useState(parseDayParam(searchParams.get("day")));
   const [endDate, setEndDate] = useState(parseDayParam(searchParams.get("day")));
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [taskId, setTaskId] = useState("");
   const [notes, setNotes] = useState("");
   const [sickLeaveAttachment, setSickLeaveAttachment] = useState<SickLeaveAttachment | null>(null);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string | number | boolean>>({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(mode === "edit");
   const [holidays, setHolidays] = useState<PublicHolidayRecord[]>([]);
 
   const canSwitchUser = canManageOtherUsers(companyIdentity?.user.role);
+  const bypassDayLimits = canBypassDayLimits(companyIdentity?.user.role);
   const selectedDay = parseDayParam(searchParams.get("day"));
   const effectiveUserId = Number(searchParams.get("user") ?? companyIdentity?.user.id ?? 0) || companyIdentity?.user.id || 0;
   const backTo = `/dashboard?user=${effectiveUserId}&day=${selectedDay}`;
-  const showProjectField = entryType === "work" && (settings.trackingMode === "project" || settings.trackingMode === "project_and_tasks");
-  const showTaskField = entryType === "work" && settings.trackingMode === "project_and_tasks";
   const usesDateRange = entryType === "vacation" || entryType === "sick_leave";
-
-  const filteredTasks = useMemo(
-    () => tasks.filter((task) => (projectId ? task.projectId === Number(projectId) : true)),
-    [projectId, tasks],
+  const activeCustomFields = useMemo(
+    () => settings.customFields.filter((field) => field.targets.includes(entryType)),
+    [entryType, settings.customFields],
   );
 
   const selectedUserName =
     users.find((user) => user.id === effectiveUserId)?.fullName ?? companyIdentity?.user.fullName ?? "User";
-  const projectOptions = projects.map((project) => ({ value: String(project.id), label: project.name }));
-  const taskOptions = filteredTasks.map((task) => ({ value: String(task.id), label: task.title }));
   const resolvedEndDate = usesDateRange ? endDate : startDate;
   const rangeHoliday = findHolidayInRange(holidays, startDate, resolvedEndDate);
+  const insertLocked = !bypassDayLimits && mode === "create" && !isDayWithinLimit(startDate, settings.insertDaysLimit);
+  const editLocked = !bypassDayLimits && mode === "edit" && !isDayWithinLimit(startDate, settings.editDaysLimit);
+  const dayLimitError = insertLocked
+    ? "Employees can only add entries within the insert day limit."
+    : editLocked
+      ? "Employees can only edit entries within the edit day limit."
+      : null;
 
   useEffect(() => {
     if (!companySession) return;
 
     void api.getSettings(companySession.token).then((response) => setSettings(response.settings)).catch(() => undefined);
-    void api
-      .listProjects(companySession.token)
-      .then((response) => {
-        setProjects(response.projects);
-        setTasks(response.tasks);
-      })
-      .catch(() => undefined);
 
     if (!canSwitchUser) return;
     void api.listUsers(companySession.token).then((response) => setUsers(response.users)).catch(() => undefined);
@@ -216,10 +225,9 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
         setEndDate(response.entry.endDate ?? response.entry.entryDate);
         setStartTime(toTimeInputValue(response.entry.startTime));
         setEndTime(toTimeInputValue(response.entry.endTime));
-        setProjectId(response.entry.projectId ? String(response.entry.projectId) : "");
-        setTaskId(response.entry.taskId ? String(response.entry.taskId) : "");
         setNotes(response.entry.notes);
         setSickLeaveAttachment(response.entry.sickLeaveAttachment);
+        setCustomFieldValues(response.entry.customFieldValues);
       })
       .catch((error) =>
         toast({
@@ -232,8 +240,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
 
   useEffect(() => {
     if (entryType !== "work") {
-      setProjectId("");
-      setTaskId("");
       setStartTime("");
       setEndTime("");
     }
@@ -252,10 +258,17 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
 
     try {
       if (resolvedEndDate < startDate) throw new Error("End date must be on or after start date");
+      if (dayLimitError) throw new Error(dayLimitError);
       if (rangeHoliday) throw new Error(`Records are not allowed on ${rangeHoliday.localName} (${rangeHoliday.date})`);
       if (entryType === "work") {
         if (!startTime) throw new Error("Start time is required");
         if (!endTime) throw new Error("End time is required");
+      }
+      for (const field of activeCustomFields) {
+        const value = customFieldValues[field.id];
+        if (field.required && (value === undefined || value === "")) {
+          throw new Error(`${field.label} is required`);
+        }
       }
 
       const payload =
@@ -267,9 +280,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
               startTime: combineDateAndTime(startDate, startTime),
               endTime: combineDateAndTime(startDate, endTime),
               notes,
-              projectId: showProjectField && projectId ? Number(projectId) : null,
-              taskId: showTaskField && taskId ? Number(taskId) : null,
               sickLeaveAttachment: null,
+              customFieldValues,
             }
           : {
               entryType,
@@ -278,9 +290,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
               startTime: null,
               endTime: null,
               notes,
-              projectId: null,
-              taskId: null,
               sickLeaveAttachment: entryType === "sick_leave" ? sickLeaveAttachment : null,
+              customFieldValues,
             };
 
       setSaving(true);
@@ -324,6 +335,20 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     }
   }
 
+  function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
+    setCustomFieldValues((current) => ({
+      ...current,
+      [field.id]:
+        field.type === "number"
+          ? nextValue === ""
+            ? ""
+            : Number(nextValue)
+          : field.type === "boolean"
+            ? nextValue === "true"
+            : nextValue,
+    }));
+  }
+
   return (
     <FormPage>
       <PageBackAction to={backTo} label="Back to overview" />
@@ -335,12 +360,21 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
             {rangeHoliday.localName} on {rangeHoliday.date}. Entries are blocked on public holidays.
           </div>
         ) : null}
+        {dayLimitError ? (
+          <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
+            {dayLimitError}
+          </div>
+        ) : null}
 
         <FormSection>
           <Tabs value={entryType} onValueChange={(value) => setEntryType(value as TimeEntryType)}>
             <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-2xl bg-muted p-1">
               {entryTypeTabs.map((tab) => (
-                <TabsTrigger key={tab.value} value={tab.value} className="rounded-xl px-3 py-2">
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  className={getEntryTypeTabClassName(tab.value)}
+                >
                   {tab.label}
                 </TabsTrigger>
               ))}
@@ -376,26 +410,37 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
                     onNowClick={setEndTime}
                   />
                 </Field>
-                {showProjectField ? (
-                  <Field label="Project">
-                    <FieldCombobox
-                      label="project"
-                      value={projectId}
-                      onValueChange={(value) => {
-                        setProjectId(value);
-                        setTaskId("");
-                      }}
-                      items={projectOptions}
-                    />
-                  </Field>
-                ) : null}
-                {showTaskField ? (
-                  <Field label="Task">
-                    <FieldCombobox label="task" value={taskId} onValueChange={setTaskId} items={taskOptions} />
-                  </Field>
-                ) : null}
               </>
             ) : null}
+            {activeCustomFields.map((field) => (
+              <Field key={field.id} label={field.label}>
+                {field.type === "boolean" ? (
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-[hsl(var(--input))] px-3 py-2 text-sm"
+                    value={String(customFieldValues[field.id] ?? "")}
+                    onChange={(event) => setCustomFieldValue(field, event.target.value)}
+                  >
+                    <option value="">{field.required ? "Select yes or no" : "Optional"}</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                ) : field.type === "date" ? (
+                  <DateInput
+                    value={typeof customFieldValues[field.id] === "string" ? String(customFieldValues[field.id]) : ""}
+                    locale={settings.locale}
+                    onChange={(value) => setCustomFieldValue(field, value)}
+                  />
+                ) : (
+                  <input
+                    className="flex h-10 w-full rounded-md border border-input bg-[hsl(var(--input))] px-3 py-2 text-sm"
+                    type={field.type === "number" ? "number" : "text"}
+                    placeholder={field.placeholder ?? field.label}
+                    value={String(customFieldValues[field.id] ?? "")}
+                    onChange={(event) => setCustomFieldValue(field, event.target.value)}
+                  />
+                )}
+              </Field>
+            ))}
             {entryType === "sick_leave" ? (
               <Field label="Document">
                 <div className="flex flex-col gap-3 rounded-2xl border border-border bg-background p-4">
@@ -455,7 +500,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
           <Button variant="ghost" onClick={() => navigate(backTo)} type="button">
             Cancel
           </Button>
-          <Button disabled={saving || loading} onClick={() => void handleSave()} type="button">
+          <Button disabled={saving || loading || Boolean(dayLimitError)} onClick={() => void handleSave()} type="button">
             {saving ? "Saving..." : mode === "create" ? "Add entry" : "Save"}
           </Button>
         </FormActions>

@@ -6,6 +6,11 @@ import type {
   CompanyUserListItem,
   TimeEntryView,
 } from "@shared/types/models";
+import {
+  diffCalendarDays,
+  formatLocalDay,
+  parseLocalDay,
+} from "@shared/utils/time";
 import { formatMinutes } from "@shared/utils/time";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import {
@@ -19,17 +24,17 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { entryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
+import { formatCompanyDate, formatCompanyDateRange } from "@/lib/locale-format";
 import { toast } from "@/lib/toast";
 
 const defaultSettings: CompanySettings = {
-  trackingMode: "time",
-  recordType: "start_finish",
   currency: "EUR",
   locale: "en-GB",
   firstDayOfWeek: 1,
   editDaysLimit: 30,
   insertDaysLimit: 30,
   country: "AT",
+  customFields: [],
 };
 
 function startOfDay(date: Date) {
@@ -61,17 +66,40 @@ function isToday(date: Date) {
   return date.toDateString() === new Date().toDateString();
 }
 
-function formatDayParam(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+function parseDayParam(value: string | null) {
+  if (!value) return new Date();
+  return parseLocalDay(value) ?? new Date();
 }
 
-function parseDayParam(value: string | null) {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date();
-  const parsed = new Date(`${value}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+function canBypassDayLimits(role: string | undefined) {
+  return role === "admin" || role === "manager";
+}
+
+function isDayWithinLimit(day: string, limit: number) {
+  return diffCalendarDays(formatLocalDay(new Date()), day) <= limit;
+}
+
+function getEntryHeadline(entry: TimeEntryView) {
+  if (entry.entryType === "work") {
+    return `${toTimeInputValue(entry.startTime)} - ${toTimeInputValue(entry.endTime)}`;
+  }
+
+  return getEntryTypeLabel(entry.entryType);
+}
+
+function getEntryMeta(entry: TimeEntryView, locale: string) {
+  if (entry.entryType === "work") {
+    return formatMinutes(entry.durationMinutes);
+  }
+
+  return formatCompanyDateRange(entry.entryDate, entry.endDate, locale);
+}
+
+function getEntrySupportText(entry: TimeEntryView, labelMap: Map<string, string>) {
+  const customFields = Object.entries(entry.customFieldValues)
+    .map(([key, value]) => `${labelMap.get(key) ?? key}: ${String(value)}`)
+    .join(", ");
+  return customFields;
 }
 
 export function DashboardPage() {
@@ -123,11 +151,16 @@ export function DashboardPage() {
   );
   const selectedUserName =
     selectedUser?.fullName ?? companyIdentity?.user.fullName ?? "User";
-  const showProjectField =
-    settings.trackingMode === "project" ||
-    settings.trackingMode === "project_and_tasks";
-  const showTaskField = settings.trackingMode === "project_and_tasks";
-
+  const bypassDayLimits = canBypassDayLimits(companyIdentity?.user.role);
+  const selectedDayKey = formatLocalDay(selectedDate);
+  const canCreateRecord =
+    bypassDayLimits ||
+    isDayWithinLimit(selectedDayKey, settings.insertDaysLimit);
+  const customFieldLabelMap = useMemo(
+    () =>
+      new Map(settings.customFields.map((field) => [field.id, field.label])),
+    [settings.customFields],
+  );
   function updateContext(next: { userId?: number | null; day?: Date }) {
     const params = new URLSearchParams(searchParams);
     const userId = next.userId ?? effectiveUserId;
@@ -136,7 +169,7 @@ export function DashboardPage() {
     if (userId) params.set("user", String(userId));
     else params.delete("user");
 
-    params.set("day", formatDayParam(day));
+    params.set("day", formatLocalDay(day));
     setSearchParams(params, { replace: true });
   }
 
@@ -145,8 +178,8 @@ export function DashboardPage() {
 
     try {
       const response = await api.listTimeEntries(companySession.token, {
-        from: startOfDay(selectedDate).toISOString(),
-        to: endOfDay(selectedDate).toISOString(),
+        from: formatLocalDay(startOfDay(selectedDate)),
+        to: formatLocalDay(endOfDay(selectedDate)),
         targetUserId: canSwitchUser ? effectiveUserId : undefined,
       });
       setEntries(response.entries);
@@ -166,7 +199,7 @@ export function DashboardPage() {
 
     const params = new URLSearchParams(searchParams);
     if (needsUser) params.set("user", String(companyIdentity.user.id));
-    if (needsDay) params.set("day", formatDayParam(new Date()));
+    if (needsDay) params.set("day", formatLocalDay(new Date()));
     setSearchParams(params, { replace: true });
   }, [companyIdentity?.user.id, searchParams, setSearchParams]);
 
@@ -226,8 +259,8 @@ export function DashboardPage() {
     }
   }
 
-  const createRecordHref = `/dashboard/records/create?user=${effectiveUserId ?? ""}&day=${formatDayParam(selectedDate)}`;
-  const dayPickerHref = `/dashboard/day?user=${effectiveUserId ?? ""}&day=${formatDayParam(selectedDate)}`;
+  const createRecordHref = `/dashboard/records/create?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
+  const dayPickerHref = `/dashboard/day?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
   const userOptions = availableUsers.map((user) => ({
     value: String(user.id),
     label: user.fullName,
@@ -244,7 +277,7 @@ export function DashboardPage() {
           pendingDeleteEntry
             ? pendingDeleteEntry.entryType === "work"
               ? `${toTimeInputValue(pendingDeleteEntry.startTime)} - ${toTimeInputValue(pendingDeleteEntry.endTime)} will be removed.`
-              : `${getEntryTypeLabel(pendingDeleteEntry.entryType)} on ${pendingDeleteEntry.entryDate} will be removed.`
+              : `${getEntryTypeLabel(pendingDeleteEntry.entryType)} on ${formatCompanyDate(pendingDeleteEntry.entryDate, settings.locale)} will be removed.`
             : undefined
         }
         confirmLabel="Delete"
@@ -320,46 +353,38 @@ export function DashboardPage() {
           <div className="flex flex-col gap-2">
             {entries.map((entry) => {
               const canEdit =
-                Date.now() - new Date((entry.startTime ?? `${entry.entryDate}T00:00:00`)).getTime() <=
-                settings.editDaysLimit * 24 * 60 * 60 * 1000;
-              const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatDayParam(selectedDate)}`;
+                bypassDayLimits ||
+                isDayWithinLimit(entry.entryDate, settings.editDaysLimit);
+              const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
+              const supportText = getEntrySupportText(
+                entry,
+                customFieldLabelMap,
+              );
 
               return (
                 <div
                   key={entry.id}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/70 py-3 last:border-b-0 last:pb-0 first:pt-0"
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-border/70 last:border-b-0"
                 >
-                  <div className="grid min-w-0 gap-1">
+                  <div className="grid min-w-0 grid-cols-[minmax(0,9rem)_auto_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[minmax(0,10rem)_auto_minmax(0,1fr)]">
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${entryStateUi[entry.entryType].dotClassName}`} />
-                      <div className="shrink-0 text-sm font-medium text-foreground">
-                        {entry.entryType === "work"
-                          ? `${toTimeInputValue(entry.startTime)} - ${toTimeInputValue(entry.endTime)}`
-                          : getEntryTypeLabel(entry.entryType)}
+                      <span
+                        className={`h-2.5 w-2.5 shrink-0 rounded-full ${entryStateUi[entry.entryType].dotClassName}`}
+                      />
+                      <div className="min-w-0 truncate text-sm font-medium text-foreground">
+                        {getEntryHeadline(entry)}
                       </div>
-                      <span className="shrink-0 text-muted-foreground">/</span>
-                      <span className="shrink-0 text-sm font-medium text-foreground">
-                        {entry.entryType === "work"
-                          ? formatMinutes(entry.durationMinutes)
-                          : entry.endDate
-                            ? `${entry.entryDate} to ${entry.endDate}`
-                            : entry.entryDate}
-                      </span>
-                      {showProjectField ? (
-                        <>
-                          <span className="shrink-0 text-muted-foreground">/</span>
-                          <span className="min-w-0 truncate text-sm text-muted-foreground">
-                            {entry.entryType === "work"
-                              ? `${entry.projectName || "No project"}${showTaskField ? ` / ${entry.taskName || "No task"}` : ""}`
-                              : getEntryTypeLabel(entry.entryType)}
-                          </span>
-                        </>
-                      ) : null}
-                      <span className="shrink-0 text-muted-foreground">/</span>
-                      <span className="min-w-0 truncate text-sm text-muted-foreground">
-                        {entry.notes || entry.sickLeaveAttachment?.fileName || "No note"}
-                      </span>
                     </div>
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs font-medium text-foreground">
+                      {getEntryMeta(entry, settings.locale)}
+                    </span>
+                    {supportText ? (
+                      <div className="min-w-0 truncate text-sm text-muted-foreground">
+                        {supportText}
+                      </div>
+                    ) : (
+                      <div className="min-w-0" />
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Button
@@ -403,17 +428,34 @@ export function DashboardPage() {
       </div>
 
       <div className="flex justify-center">
-        <Button
-          asChild
-          className="h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg hover:opacity-90"
-          size="icon"
-          type="button"
-        >
-          <Link to={createRecordHref} aria-label="Add record">
+        {canCreateRecord ? (
+          <Button
+            asChild
+            className="h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg hover:opacity-90"
+            size="icon"
+            type="button"
+          >
+            <Link to={createRecordHref} aria-label="Add record">
+              <Plus size={30} weight="bold" />
+            </Link>
+          </Button>
+        ) : (
+          <Button
+            disabled
+            className="h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg"
+            size="icon"
+            type="button"
+            aria-label="Add record unavailable"
+          >
             <Plus size={30} weight="bold" />
-          </Link>
-        </Button>
+          </Button>
+        )}
       </div>
+      {!canCreateRecord ? (
+        <p className="text-center text-sm text-muted-foreground">
+          Employees can only add records within the insert day limit.
+        </p>
+      ) : null}
     </FormPage>
   );
 }

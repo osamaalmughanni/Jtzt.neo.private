@@ -1,10 +1,9 @@
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { UserContractInput } from "@shared/types/api";
 import type { UserRole } from "@shared/types/models";
 import { FormActions, FormFields, FormPage, FormPanel, FormSection, Field, FieldCombobox } from "@/components/form-layout";
 import { PageLabel } from "@/components/page-label";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -24,7 +23,6 @@ interface UserFormState {
   isActive: boolean;
   pinCode: string;
   email: string;
-  pictureUrl: string;
   contracts: UserContractInput[];
 }
 
@@ -41,7 +39,6 @@ function createEmptyForm(): UserFormState {
     isActive: true,
     pinCode: "",
     email: "",
-    pictureUrl: "",
     contracts: []
   };
 }
@@ -62,15 +59,6 @@ function validateContracts(contracts: UserContractInput[]) {
   if (!hasCurrentContract) throw new Error("A current active contract is required");
 }
 
-function getInitials(value: string) {
-  return value
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0] ?? "")
-    .join("");
-}
-
 function isCurrentContract(contract: UserContractInput) {
   const today = new Date().toISOString().slice(0, 10);
   return contract.startDate <= today && (contract.endDate === null || contract.endDate >= today);
@@ -82,15 +70,6 @@ function getContractStatus(contract: UserContractInput) {
   if (contract.startDate > today) return "Upcoming";
   if (contract.endDate === null || contract.endDate >= today) return "Current";
   return "Past";
-}
-
-async function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new Error("Could not read image"));
-    reader.readAsDataURL(file);
-  });
 }
 
 export function UserEditorPage({ mode }: UserEditorPageProps) {
@@ -125,7 +104,6 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
           isActive: response.user.isActive,
           pinCode: response.user.pinCode,
           email: response.user.email ?? "",
-          pictureUrl: response.user.pictureUrl ?? "",
           contracts: response.user.contracts.map((contract) => ({
             id: contract.id,
             hoursPerWeek: contract.hoursPerWeek,
@@ -185,19 +163,6 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     }));
   }
 
-  async function handlePictureChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      setField("pictureUrl", await readFileAsDataUrl(file));
-    } catch (error) {
-      toast({
-        title: "Could not load image",
-        description: error instanceof Error ? error.message : "Request failed"
-      });
-    }
-  }
-
   async function handleSave() {
     if (!companySession) return;
 
@@ -219,7 +184,6 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
         isActive: form.isActive,
         pinCode: form.pinCode.trim(),
         email: form.email.trim() || null,
-        pictureUrl: form.pictureUrl || null,
         contracts: form.contracts.map((contract) => ({
           id: contract.id,
           hoursPerWeek: Number(contract.hoursPerWeek),
@@ -270,29 +234,13 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     <FormPage>
       <PageLabel
         title={mode === "create" ? "Create user" : "Edit user"}
-        description={mode === "create" ? "Create a user profile and contracts." : "Edit user profile, status, role, PIN, picture, and contracts."}
+        description={mode === "create" ? "Create a user profile and contracts." : "Edit user profile, status, role, PIN, and contracts."}
       />
       <FormPanel>
         {mode === "edit" && loading ? <p className="text-sm text-muted-foreground">Loading user...</p> : null}
 
         <FormSection>
           <FormFields>
-            <Field label="Picture">
-              <div className="flex items-center gap-4">
-                <Avatar className="h-20 w-20 rounded-full border border-border">
-                  {form.pictureUrl ? <AvatarImage src={form.pictureUrl} alt={form.fullName || "User"} /> : null}
-                  <AvatarFallback>{getInitials(form.fullName || "User") || "U"}</AvatarFallback>
-                </Avatar>
-                <div className="w-full max-w-sm space-y-2">
-                  <Input type="file" accept="image/*" placeholder="Choose picture" onChange={(event) => void handlePictureChange(event)} />
-                  {form.pictureUrl ? (
-                    <Button variant="ghost" onClick={() => setField("pictureUrl", "")} type="button">
-                      Remove picture
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            </Field>
             <Field label="Name">
               <Input placeholder="Jane Doe" value={form.fullName} onChange={(event) => setField("fullName", event.target.value)} />
             </Field>

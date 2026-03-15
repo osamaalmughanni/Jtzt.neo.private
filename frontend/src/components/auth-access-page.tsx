@@ -63,24 +63,20 @@ type RegisterValues = z.infer<typeof registerSchema>;
 type AdminLoginValues = z.infer<typeof adminLoginSchema>;
 
 async function buildRecoverySnapshot(token: string) {
-  const [meResult, dashboardResult, projectsResult, usersResult] = await Promise.allSettled([
+  const [meResult, dashboardResult, usersResult] = await Promise.allSettled([
     api.getCompanyMe(token),
     api.getDashboard(token),
-    api.listProjects(token),
     api.listUsers(token)
   ]);
 
   const me = meResult.status === "fulfilled" ? meResult.value : null;
   const dashboard = dashboardResult.status === "fulfilled" ? dashboardResult.value : null;
-  const projects = projectsResult.status === "fulfilled" ? projectsResult.value : null;
   const users = usersResult.status === "fulfilled" ? usersResult.value : null;
 
   return {
     company: me?.company ?? null,
     currentUser: me?.user ?? null,
     dashboard: dashboard?.summary ?? null,
-    projects: projects?.projects ?? [],
-    tasks: projects?.tasks ?? [],
     users: users?.users ?? []
   };
 }

@@ -9,14 +9,13 @@ const CURRENT_YEAR_CACHE_MAX_AGE_DAYS = 7;
 function getDefaultSettingsRow() {
   return {
     id: 1,
-    tracking_mode: "time",
-    record_type: "start_finish",
     currency: "EUR",
     locale: "en-GB",
     first_day_of_week: 1,
     edit_days_limit: 30,
     insert_days_limit: 30,
-    country: "AT"
+    country: "AT",
+    custom_fields_json: "[]"
   };
 }
 
@@ -24,24 +23,22 @@ function ensureSettingsRow(db: ReturnType<typeof getCompanyDb>) {
   db.prepare(
     `INSERT INTO company_settings (
       id,
-      tracking_mode,
-      record_type,
       currency,
       locale,
       first_day_of_week,
       edit_days_limit,
       insert_days_limit,
-      country
+      country,
+      custom_fields_json
     ) VALUES (
       @id,
-      @tracking_mode,
-      @record_type,
       @currency,
       @locale,
       @first_day_of_week,
       @edit_days_limit,
       @insert_days_limit,
-      @country
+      @country,
+      @custom_fields_json
     ) ON CONFLICT(id) DO NOTHING`
   ).run(getDefaultSettingsRow());
 }
@@ -85,16 +82,18 @@ export const settingsService = {
     db.prepare(
       `UPDATE company_settings
       SET
-        tracking_mode = @trackingMode,
-        record_type = @recordType,
         currency = @currency,
         locale = @locale,
         first_day_of_week = @firstDayOfWeek,
         edit_days_limit = @editDaysLimit,
         insert_days_limit = @insertDaysLimit,
-        country = @country
+        country = @country,
+        custom_fields_json = @customFieldsJson
       WHERE id = 1`
-    ).run(input);
+    ).run({
+      ...input,
+      customFieldsJson: JSON.stringify(input.customFields)
+    });
 
     return this.getSettings(databasePath);
   },

@@ -1,10 +1,20 @@
 export type UserRole = "employee" | "manager" | "admin";
 export type TimeEntryType = "work" | "vacation" | "sick_leave";
+export type CompanyCustomFieldType = "text" | "number" | "date" | "boolean";
 
 export interface SickLeaveAttachment {
   fileName: string;
   mimeType: string;
   dataUrl: string;
+}
+
+export interface CompanyCustomField {
+  id: string;
+  label: string;
+  type: CompanyCustomFieldType;
+  targets: TimeEntryType[];
+  required: boolean;
+  placeholder: string | null;
 }
 
 export interface CompanyRecord {
@@ -29,7 +39,6 @@ export interface CompanyUser {
   isActive?: boolean;
   pinCode?: string;
   email?: string | null;
-  pictureUrl?: string | null;
   role: UserRole;
   createdAt: string;
 }
@@ -58,12 +67,11 @@ export interface TimeEntryRecord {
   entryType: TimeEntryType;
   entryDate: string;
   endDate: string | null;
-  projectId: number | null;
-  taskId: number | null;
   startTime: string | null;
   endTime: string | null;
   notes: string | null;
   sickLeaveAttachment: SickLeaveAttachment | null;
+  customFieldValues: Record<string, string | number | boolean>;
   createdAt: string;
 }
 
@@ -94,7 +102,6 @@ export interface CompanyUserDetail {
   role: UserRole;
   pinCode: string;
   email: string | null;
-  pictureUrl: string | null;
   contracts: UserContract[];
   createdAt: string;
 }
@@ -112,30 +119,23 @@ export interface TimeEntryView {
   entryType: TimeEntryType;
   entryDate: string;
   endDate: string | null;
-  projectId: number | null;
-  projectName: string | null;
-  taskId: number | null;
-  taskName: string | null;
   startTime: string | null;
   endTime: string | null;
   notes: string;
   durationMinutes: number;
   sickLeaveAttachment: SickLeaveAttachment | null;
+  customFieldValues: Record<string, string | number | boolean>;
   createdAt: string;
 }
 
-export type TrackingMode = "time" | "project" | "project_and_tasks";
-export type RecordType = "all" | "start_finish" | "duration";
-
 export interface CompanySettings {
-  trackingMode: TrackingMode;
-  recordType: RecordType;
   currency: string;
   locale: string;
   firstDayOfWeek: number;
   editDaysLimit: number;
   insertDaysLimit: number;
   country: string;
+  customFields: CompanyCustomField[];
 }
 
 export interface PublicHolidayRecord {

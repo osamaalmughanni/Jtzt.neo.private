@@ -9,7 +9,6 @@ export function MenuPage() {
 
   const items = [
     { to: "/dashboard", title: "Dashboard" },
-    { to: "/projects", title: "Projects" },
     ...(companyIdentity?.user.role === "admin"
       ? [
           { to: "/users", title: "Users" },

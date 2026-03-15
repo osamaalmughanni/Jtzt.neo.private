@@ -22,6 +22,15 @@ function normalizeEntryType(value: unknown) {
   return "vacation";
 }
 
+function parseJsonValue<T>(value: unknown, fallback: T): T {
+  if (typeof value !== "string" || value.length === 0) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export function mapCompanyRecord(row: any): CompanyRecord {
   return {
     id: row.id,
@@ -41,7 +50,6 @@ export function mapCompanyUser(row: any): CompanyUser {
     isActive: Boolean(row.is_active),
     pinCode: row.pin_code ?? "0000",
     email: row.email ?? null,
-    pictureUrl: row.picture_url ?? null,
     role: row.role,
     createdAt: row.created_at
   };
@@ -85,7 +93,6 @@ export function mapCompanyUserDetail(row: any, contracts: ReturnType<typeof mapU
     role: row.role,
     pinCode: row.pin_code ?? "0000",
     email: row.email ?? null,
-    pictureUrl: row.picture_url ?? null,
     contracts,
     createdAt: row.created_at
   };
@@ -109,8 +116,6 @@ export function mapTimeEntry(row: any): TimeEntryRecord {
     entryType,
     entryDate: row.entry_date ?? row.start_time?.slice(0, 10),
     endDate: row.end_date ?? null,
-    projectId: row.project_id,
-    taskId: row.task_id,
     startTime: entryType === "work" ? row.start_time : null,
     endTime: row.end_time,
     notes: row.notes,
@@ -122,6 +127,7 @@ export function mapTimeEntry(row: any): TimeEntryRecord {
             dataUrl: row.sick_leave_attachment_data_url
           }
         : null,
+    customFieldValues: parseJsonValue(row.custom_field_values_json, {}),
     createdAt: row.created_at
   };
 }
@@ -134,10 +140,6 @@ export function mapTimeEntryView(row: any): TimeEntryView {
     entryType,
     entryDate: row.entry_date ?? row.start_time?.slice(0, 10),
     endDate: row.end_date ?? null,
-    projectId: row.project_id,
-    projectName: row.project_name ?? null,
-    taskId: row.task_id ?? null,
-    taskName: row.task_name ?? null,
     startTime: entryType === "work" ? row.start_time : null,
     endTime: entryType === "work" ? row.end_time : null,
     notes: row.notes ?? "",
@@ -150,6 +152,7 @@ export function mapTimeEntryView(row: any): TimeEntryView {
             dataUrl: row.sick_leave_attachment_data_url
           }
         : null,
+    customFieldValues: parseJsonValue(row.custom_field_values_json, {}),
     createdAt: row.created_at
   };
 }
@@ -166,14 +169,13 @@ export function mapTask(row: any): TaskRecord {
 
 export function mapCompanySettings(row: any): CompanySettings {
   return {
-    trackingMode: row.tracking_mode,
-    recordType: row.record_type,
     currency: row.currency,
     locale: row.locale,
     firstDayOfWeek: row.first_day_of_week,
     editDaysLimit: row.edit_days_limit,
     insertDaysLimit: row.insert_days_limit,
-    country: row.country ?? row.holiday_country
+    country: row.country ?? row.holiday_country,
+    customFields: parseJsonValue(row.custom_fields_json, [])
   };
 }
 

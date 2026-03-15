@@ -71,7 +71,6 @@ const companyMigrations: Migration[] = [
   {
     id: "003_user_pictures_and_contracts_table",
     up(db) {
-      addColumnIfMissing(db, "users", "picture_url TEXT", "picture_url");
       db.exec(`
         CREATE TABLE IF NOT EXISTS user_contracts (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,18 +145,16 @@ const companyMigrations: Migration[] = [
   {
     id: "004_company_settings_manual_time",
     up(db) {
-      addColumnIfMissing(db, "time_entries", "task_id INTEGER", "task_id");
       db.exec(`
         CREATE TABLE IF NOT EXISTS company_settings (
           id INTEGER PRIMARY KEY CHECK (id = 1),
-          tracking_mode TEXT NOT NULL DEFAULT 'time',
-          record_type TEXT NOT NULL DEFAULT 'start_finish',
           currency TEXT NOT NULL DEFAULT 'EUR',
           locale TEXT NOT NULL DEFAULT 'en-GB',
           first_day_of_week INTEGER NOT NULL DEFAULT 1,
           edit_days_limit INTEGER NOT NULL DEFAULT 30,
           insert_days_limit INTEGER NOT NULL DEFAULT 30,
-          country TEXT NOT NULL DEFAULT 'AT'
+          country TEXT NOT NULL DEFAULT 'AT',
+          custom_fields_json TEXT NOT NULL DEFAULT '[]'
         );
 
         CREATE TABLE IF NOT EXISTS public_holiday_cache (
@@ -173,15 +170,14 @@ const companyMigrations: Migration[] = [
       db.prepare(
         `INSERT INTO company_settings (
           id,
-          tracking_mode,
-          record_type,
           currency,
           locale,
           first_day_of_week,
           edit_days_limit,
           insert_days_limit,
-          country
-        ) VALUES (1, 'time', 'start_finish', 'EUR', 'en-GB', 1, 30, 30, 'AT')
+          country,
+          custom_fields_json
+        ) VALUES (1, 'EUR', 'en-GB', 1, 30, 30, 'AT', '[]')
         ON CONFLICT(id) DO NOTHING`
       ).run();
     }
@@ -276,6 +272,13 @@ const companyMigrations: Migration[] = [
     }
   },
   {
+    id: "011_company_custom_fields",
+    up(db) {
+      addColumnIfMissing(db, "company_settings", "custom_fields_json TEXT NOT NULL DEFAULT '[]'", "custom_fields_json");
+      addColumnIfMissing(db, "time_entries", "custom_field_values_json TEXT NOT NULL DEFAULT '{}'", "custom_field_values_json");
+    }
+  },
+  {
     id: "005_user_roles_admin_manager_employee",
     up(db) {
       db.exec(`
@@ -292,8 +295,7 @@ const companyMigrations: Migration[] = [
           contract_hours_per_week REAL,
           contract_start_date TEXT,
           contract_end_date TEXT,
-          contract_payment_per_hour REAL,
-          picture_url TEXT
+          contract_payment_per_hour REAL
         );
 
         INSERT INTO users_next (
@@ -309,8 +311,7 @@ const companyMigrations: Migration[] = [
           contract_hours_per_week,
           contract_start_date,
           contract_end_date,
-          contract_payment_per_hour,
-          picture_url
+          contract_payment_per_hour
         )
         SELECT
           id,
@@ -330,8 +331,7 @@ const companyMigrations: Migration[] = [
           contract_hours_per_week,
           contract_start_date,
           contract_end_date,
-          contract_payment_per_hour,
-          picture_url
+          contract_payment_per_hour
         FROM users;
 
         DROP TABLE users;
@@ -388,7 +388,6 @@ export function seedCompanyAdmin(
     fullName: payload.fullName,
     role: "admin"
   });
-  seedDefaultProjects(databasePath);
 }
 
 export function seedCompanyUser(
@@ -412,13 +411,5 @@ export function seedCompanyUser(
 }
 
 export function seedDefaultProjects(databasePath: string): void {
-  const db = getCompanyDb(databasePath);
-  const insertProject = db.prepare("INSERT INTO projects (name, description, created_at) VALUES (@name, @description, @createdAt)");
-
-  for (const project of [
-    { name: "Operations", description: "General company operations" },
-    { name: "Internal", description: "Internal tasks and support" }
-  ]) {
-    insertProject.run({ ...project, createdAt: new Date().toISOString() });
-  }
+  void databasePath;
 }

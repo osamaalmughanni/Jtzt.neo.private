@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { formatLocalDay } from "@shared/utils/time";
 import { Button } from "@/components/ui/button";
 import { entryStateUi } from "@/lib/entry-state-ui";
+import { formatCompanyMonthYear } from "@/lib/locale-format";
 import { cn } from "@/lib/utils";
 
 function startOfMonth(date: Date) {
@@ -24,6 +26,7 @@ export function Calendar({
   onSelect,
   firstDayOfWeek = 1,
   className,
+  locale = "en-GB",
   holidayDates = [],
   dayStates = {},
   onMonthChange
@@ -32,6 +35,7 @@ export function Calendar({
   onSelect: (date: Date) => void;
   firstDayOfWeek?: number;
   className?: string;
+  locale?: string;
   holidayDates?: string[];
   dayStates?: Record<string, "work" | "sick_leave" | "vacation" | "mixed">;
   onMonthChange?: (date: Date) => void;
@@ -74,7 +78,7 @@ export function Calendar({
           Prev
         </Button>
         <p className="text-sm font-medium">
-          {viewDate.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+          {formatCompanyMonthYear(viewDate, locale)}
         </p>
         <Button size="sm" variant="ghost" onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} type="button">
           Next
@@ -91,31 +95,31 @@ export function Calendar({
         {days.map((day, index) => {
           if (!day) return <div key={`empty-${index}`} className="h-12" />;
 
-          const isoDate = day.toISOString().slice(0, 10);
+          const isoDate = formatLocalDay(day);
           const isHoliday = holidaySet.has(isoDate);
           const dayState = dayStates[isoDate];
           const isSelected = isSameDay(day, selected);
 
           return (
             <button
-              key={day.toISOString()}
+              key={isoDate}
               className={cn(
-                "flex h-12 items-center justify-center rounded-xl border text-sm font-semibold tabular-nums transition-colors",
-                isSelected
-                  ? "border-foreground bg-foreground text-background shadow-sm"
-                  : dayState
-                    ? entryStateUi[dayState].calendarCellClassName
-                    : "border-transparent bg-background text-foreground hover:bg-muted",
-                isHoliday && !isSelected ? "ring-1 ring-inset ring-amber-500/40 dark:ring-amber-400/40" : undefined,
+                "flex h-12 items-center justify-center rounded-xl border text-sm tabular-nums transition-colors",
+                dayState
+                  ? entryStateUi[dayState].calendarCellClassName
+                  : "border-transparent bg-background text-foreground hover:bg-muted",
+                isSelected ? "border-2 border-foreground shadow-sm" : undefined,
+                isHoliday ? "ring-1 ring-inset ring-amber-500/40 dark:ring-amber-400/40" : undefined,
               )}
               onClick={() => onSelect(day)}
               type="button"
             >
               <span
                 className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-full",
-                  dayState && !isSelected ? entryStateUi[dayState].calendarInnerClassName : undefined,
-                  isHoliday && !dayState && !isSelected ? entryStateUi.holiday.calendarInnerClassName : undefined,
+                  "flex h-8 w-8 items-center justify-center rounded-full font-medium",
+                  dayState ? entryStateUi[dayState].calendarInnerClassName : undefined,
+                  isHoliday && !dayState ? entryStateUi.holiday.calendarInnerClassName : undefined,
+                  isSelected ? "font-bold" : undefined,
                 )}
               >
                 {day.getDate()}

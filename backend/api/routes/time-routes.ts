@@ -1,13 +1,14 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { diffCalendarDays, formatLocalDay } from "../../../shared/utils/time";
 import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
+import type { CompanyTokenPayload } from "../../auth/jwt";
 import { timeService } from "../../services/time-service";
 import { settingsService } from "../../services/settings-service";
 import type { AppVariables } from "../context";
 
 const startTimerSchema = z.object({
-  notes: z.string().optional(),
-  projectId: z.number().nullable().optional()
+  notes: z.string().optional()
 });
 
 const stopTimerSchema = z.object({
@@ -23,6 +24,8 @@ const attachmentSchema = z
   })
   .nullable();
 
+const customFieldValuesSchema = z.record(z.union([z.string(), z.number(), z.boolean()]));
+
 const updateEntrySchema = z.object({
   entryId: z.number(),
   targetUserId: z.number().optional(),
@@ -32,9 +35,8 @@ const updateEntrySchema = z.object({
   startTime: z.string().nullable(),
   endTime: z.string().nullable(),
   notes: z.string(),
-  projectId: z.number().nullable(),
-  taskId: z.number().nullable(),
-  sickLeaveAttachment: attachmentSchema
+  sickLeaveAttachment: attachmentSchema,
+  customFieldValues: customFieldValuesSchema
 });
 
 const createManualEntrySchema = z.object({
@@ -45,9 +47,8 @@ const createManualEntrySchema = z.object({
   startTime: z.string().nullable(),
   endTime: z.string().nullable(),
   notes: z.string(),
-  projectId: z.number().nullable(),
-  taskId: z.number().nullable(),
-  sickLeaveAttachment: attachmentSchema
+  sickLeaveAttachment: attachmentSchema,
+  customFieldValues: customFieldValuesSchema
 });
 
 const deleteEntrySchema = z.object({
@@ -59,7 +60,27 @@ export const timeRoutes = new Hono<{ Variables: AppVariables }>();
 
 timeRoutes.use("*", authMiddleware, requireCompanyUser);
 
-function resolveTargetUserId(session: AppVariables["session"], requestedUserId?: number) {
+function hasCustomFieldValue(value: string | number | boolean | undefined) {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
+  return false;
+}
+
+function validateCustomFields(
+  settings: ReturnType<typeof settingsService.getSettings>,
+  entryType: "work" | "vacation" | "sick_leave",
+  values: Record<string, string | number | boolean>
+) {
+  const applicableFields = settings.customFields.filter((field) => field.targets.includes(entryType));
+  for (const field of applicableFields) {
+    if (field.required && !hasCustomFieldValue(values[field.id])) {
+      throw new Error(`${field.label} is required`);
+    }
+  }
+}
+
+function resolveTargetUserId(session: CompanyTokenPayload, requestedUserId?: number) {
   if (!requestedUserId || requestedUserId === session.userId) {
     return session.userId;
   }
@@ -71,11 +92,35 @@ function resolveTargetUserId(session: AppVariables["session"], requestedUserId?:
   return requestedUserId;
 }
 
-timeRoutes.post("/start", async (c) => {
-  const session = c.get("session");
+function getCompanySession(session: AppVariables["session"]): CompanyTokenPayload {
   if (session.actorType !== "company_user") {
+    throw new Error("Company login required");
+  }
+
+  return session;
+}
+
+function enforceDayLimit(
+  session: CompanyTokenPayload,
+  limit: number,
+  day: string,
+  message: string
+) {
+  if (session.role === "admin" || session.role === "manager") {
+    return;
+  }
+
+  if (diffCalendarDays(formatLocalDay(new Date()), day) > limit) {
+    throw new Error(message);
+  }
+}
+
+timeRoutes.post("/start", async (c) => {
+  const rawSession = c.get("session");
+  if (rawSession.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
+  const session = getCompanySession(rawSession);
   const body = startTimerSchema.parse(await c.req.json());
   return c.json({
     entry: timeService.startTimer(session.databasePath, session.userId, body)
@@ -83,10 +128,11 @@ timeRoutes.post("/start", async (c) => {
 });
 
 timeRoutes.post("/entry", async (c) => {
-  const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  const rawSession = c.get("session");
+  if (rawSession.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
+  const session = getCompanySession(rawSession);
 
   const body = createManualEntrySchema.parse(await c.req.json());
   let targetUserId: number;
@@ -96,25 +142,22 @@ timeRoutes.post("/entry", async (c) => {
     return c.json({ error: "Manager access required" }, 403);
   }
   const settings = settingsService.getSettings(session.databasePath);
-
+  try {
+    enforceDayLimit(session, settings.insertDaysLimit, body.startDate, "Insert day limit reached");
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Insert day limit reached" }, 403);
+  }
   if (body.entryType !== "work" && body.endDate && body.endDate < body.startDate) {
     return c.json({ error: "End date must be on or after start date" }, 400);
   }
 
-  if (body.entryType === "work" && settings.trackingMode === "project" && body.projectId === null) {
-    return c.json({ error: "Project is required" }, 400);
-  }
-
-  if (
-    body.entryType === "work" &&
-    settings.trackingMode === "project_and_tasks" &&
-    (body.projectId === null || body.taskId === null)
-  ) {
-    return c.json({ error: "Project and task are required" }, 400);
-  }
-
   if (body.entryType !== "sick_leave" && body.sickLeaveAttachment !== null) {
     return c.json({ error: "Attachments are only allowed for sick leave" }, 400);
+  }
+  try {
+    validateCustomFields(settings, body.entryType, body.customFieldValues);
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Invalid custom fields" }, 400);
   }
 
   const rangeHoliday = await settingsService.findPublicHolidayInRange(
@@ -132,10 +175,11 @@ timeRoutes.post("/entry", async (c) => {
 });
 
 timeRoutes.post("/stop", async (c) => {
-  const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  const rawSession = c.get("session");
+  if (rawSession.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
+  const session = getCompanySession(rawSession);
   const body = stopTimerSchema.parse(await c.req.json());
   return c.json({
     entry: timeService.stopTimer(session.databasePath, session.userId, body)
@@ -143,10 +187,11 @@ timeRoutes.post("/stop", async (c) => {
 });
 
 timeRoutes.get("/list", (c) => {
-  const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  const rawSession = c.get("session");
+  if (rawSession.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
+  const session = getCompanySession(rawSession);
   let targetUserId: number;
   try {
     const rawTargetUserId = c.req.query("targetUserId");
@@ -163,10 +208,11 @@ timeRoutes.get("/list", (c) => {
 });
 
 timeRoutes.get("/entry/:entryId", (c) => {
-  const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  const rawSession = c.get("session");
+  if (rawSession.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
+  const session = getCompanySession(rawSession);
   let targetUserId: number;
   try {
     const rawTargetUserId = c.req.query("targetUserId");
@@ -183,10 +229,11 @@ timeRoutes.get("/entry/:entryId", (c) => {
 });
 
 timeRoutes.put("/entry", async (c) => {
-  const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  const rawSession = c.get("session");
+  if (rawSession.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
+  const session = getCompanySession(rawSession);
   const body = updateEntrySchema.parse(await c.req.json());
   let targetUserId: number;
   try {
@@ -194,11 +241,22 @@ timeRoutes.put("/entry", async (c) => {
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
+  const settings = settingsService.getSettings(session.databasePath);
+  try {
+    enforceDayLimit(session, settings.editDaysLimit, body.startDate, "Edit day limit reached");
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Edit day limit reached" }, 403);
+  }
   if (body.entryType !== "work" && body.endDate && body.endDate < body.startDate) {
     return c.json({ error: "End date must be on or after start date" }, 400);
   }
   if (body.entryType !== "sick_leave" && body.sickLeaveAttachment !== null) {
     return c.json({ error: "Attachments are only allowed for sick leave" }, 400);
+  }
+  try {
+    validateCustomFields(settings, body.entryType, body.customFieldValues);
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Invalid custom fields" }, 400);
   }
   const rangeHoliday = await settingsService.findPublicHolidayInRange(
     session.databasePath,
@@ -214,10 +272,11 @@ timeRoutes.put("/entry", async (c) => {
 });
 
 timeRoutes.delete("/entry", async (c) => {
-  const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  const rawSession = c.get("session");
+  if (rawSession.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
+  const session = getCompanySession(rawSession);
   const body = deleteEntrySchema.parse(await c.req.json());
   let targetUserId: number;
   try {
@@ -230,10 +289,11 @@ timeRoutes.delete("/entry", async (c) => {
 });
 
 timeRoutes.get("/dashboard", (c) => {
-  const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  const rawSession = c.get("session");
+  if (rawSession.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
+  const session = getCompanySession(rawSession);
   return c.json({
     summary: timeService.getDashboard(session.databasePath, session.userId)
   });

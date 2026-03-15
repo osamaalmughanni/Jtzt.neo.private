@@ -5,14 +5,22 @@ import { settingsService } from "../../services/settings-service";
 import type { AppVariables } from "../context";
 
 const updateSettingsSchema = z.object({
-  trackingMode: z.enum(["time", "project", "project_and_tasks"]),
-  recordType: z.enum(["all", "start_finish", "duration"]),
   currency: z.string().min(3).max(3),
   locale: z.string().min(2).max(64),
   firstDayOfWeek: z.number().int().min(0).max(6),
   editDaysLimit: z.number().int().min(0).max(3650),
   insertDaysLimit: z.number().int().min(0).max(3650),
-  country: z.string().length(2)
+  country: z.string().length(2),
+  customFields: z.array(
+    z.object({
+      id: z.string().min(1).max(100),
+      label: z.string().min(1).max(100),
+      type: z.enum(["text", "number", "date", "boolean"]),
+      targets: z.array(z.enum(["work", "vacation", "sick_leave"])).min(1),
+      required: z.boolean(),
+      placeholder: z.string().max(120).nullable()
+    })
+  ).max(100)
 });
 
 const holidayQuerySchema = z.object({

@@ -21,7 +21,6 @@ const createUserSchema = z.object({
   isActive: z.boolean(),
   pinCode: z.string().regex(/^\d{4}$/),
   email: z.string().email().nullable(),
-  pictureUrl: z.string().max(2_000_000).nullable(),
   contracts: z.array(contractSchema).max(100)
 });
 

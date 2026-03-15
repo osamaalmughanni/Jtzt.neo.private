@@ -121,7 +121,6 @@ export const userService = {
           role,
           pin_code,
           email,
-          picture_url,
           created_at
         FROM users
         WHERE id = ?`
@@ -171,7 +170,6 @@ export const userService = {
         is_active,
         pin_code,
         email,
-        picture_url,
         created_at
       ) VALUES (
         @username,
@@ -181,7 +179,6 @@ export const userService = {
         @isActive,
         @pinCode,
         @email,
-        @pictureUrl,
         @createdAt
       )`
     ).run({
@@ -192,7 +189,6 @@ export const userService = {
       isActive: input.isActive ? 1 : 0,
       pinCode: input.pinCode,
       email: normalizeOptionalText(input.email),
-      pictureUrl: normalizeOptionalText(input.pictureUrl),
       createdAt: new Date().toISOString()
     });
 
@@ -235,8 +231,7 @@ export const userService = {
         role = @role,
         is_active = @isActive,
         pin_code = @pinCode,
-        email = @email,
-        picture_url = @pictureUrl
+        email = @email
       WHERE id = @userId`
     ).run({
       userId: input.userId,
@@ -246,8 +241,7 @@ export const userService = {
       role: input.role,
       isActive: input.isActive ? 1 : 0,
       pinCode: input.pinCode,
-      email: normalizeOptionalText(input.email),
-      pictureUrl: normalizeOptionalText(input.pictureUrl)
+      email: normalizeOptionalText(input.email)
     });
 
     saveContracts(db, input.userId, input.contracts);

@@ -106,7 +106,6 @@ export function getSeoEntry(pathname: string): SeoEntry {
   const privateTitles = new Map<string, string>([
     ["/menu", pageTitle("Pages")],
     ["/dashboard", pageTitle("Overview")],
-    ["/projects", pageTitle("Projects")],
     ["/users", pageTitle("Users")],
     ["/settings", pageTitle("Settings")],
     ["/admin/menu", pageTitle("Pages")],
@@ -119,7 +118,6 @@ export function getSeoEntry(pathname: string): SeoEntry {
     pathname.startsWith("/settings") ||
     pathname === "/menu" ||
     pathname === "/dashboard" ||
-    pathname === "/projects" ||
     pathname.startsWith("/users")
   ) {
     return {

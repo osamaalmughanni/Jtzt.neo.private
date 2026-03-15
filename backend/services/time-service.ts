@@ -14,7 +14,7 @@ function usesDateRange(entryType: TimeEntryType) {
 }
 
 function toDayStartIso(day: string) {
-  return new Date(`${day}T00:00:00`).toISOString();
+  return `${day}T00:00:00`;
 }
 
 function normalizeRangeEndDate(startDate: string, endDate?: string | null) {
@@ -61,30 +61,34 @@ function normalizeManualEntryInput(input: CreateManualTimeEntryInput | UpdateTim
     return {
       entryType,
       ...buildWorkTimestamps(input.startDate, input.startTime, input.endTime),
-      projectId: input.projectId,
-      taskId: input.taskId
+      customFieldValues: input.customFieldValues
     };
   }
 
   return {
     entryType,
     ...buildNonWorkTimestamps(entryType, input.startDate, input.endDate),
-    projectId: null,
-    taskId: null
+    customFieldValues: input.customFieldValues
   };
 }
 
 function getOpenEntry(db: ReturnType<typeof getCompanyDb>, userId: number) {
   return db
     .prepare(
-      `SELECT te.*, p.name as project_name, t.title as task_name
+      `SELECT te.*
        FROM time_entries te
-       LEFT JOIN projects p ON p.id = te.project_id
-       LEFT JOIN tasks t ON t.id = te.task_id
        WHERE te.user_id = ? AND te.entry_type = 'work' AND te.end_time IS NULL
        ORDER BY te.start_time DESC LIMIT 1`
     )
-    .get(userId);
+    .get(userId) as
+    | {
+        id: number;
+        user_id: number;
+        entry_type: TimeEntryType;
+        end_time: string | null;
+        start_time: string | null;
+      }
+    | undefined;
 }
 
 function toFilterDay(isoValue?: string) {
@@ -102,28 +106,26 @@ export const timeService = {
           entry_type,
           entry_date,
           end_date,
-          project_id,
-          task_id,
           start_time,
           end_time,
           notes,
           sick_leave_attachment_name,
           sick_leave_attachment_mime_type,
           sick_leave_attachment_data_url,
+          custom_field_values_json,
           created_at
         ) VALUES (
           @userId,
           @entryType,
           @entryDate,
           @endDate,
-          @projectId,
-          @taskId,
           @startTime,
           @endTime,
           @notes,
           @sickLeaveAttachmentName,
           @sickLeaveAttachmentMimeType,
           @sickLeaveAttachmentDataUrl,
+          @customFieldValuesJson,
           @createdAt
         )`
       )
@@ -132,14 +134,13 @@ export const timeService = {
         entryType: normalized.entryType,
         entryDate: normalized.entryDate,
         endDate: normalized.endDate,
-        projectId: normalized.projectId,
-        taskId: normalized.taskId,
         startTime: normalized.startTime,
         endTime: normalized.endTime,
         notes: input.notes.trim() || null,
         sickLeaveAttachmentName: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.fileName ?? null : null,
         sickLeaveAttachmentMimeType: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.mimeType ?? null : null,
         sickLeaveAttachmentDataUrl: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.dataUrl ?? null : null,
+        customFieldValuesJson: JSON.stringify(normalized.customFieldValues),
         createdAt
       });
 
@@ -160,7 +161,6 @@ export const timeService = {
           user_id,
           entry_type,
           entry_date,
-          project_id,
           start_time,
           notes,
           created_at
@@ -168,7 +168,6 @@ export const timeService = {
           @userId,
           'work',
           @entryDate,
-          @projectId,
           @startTime,
           @notes,
           @createdAt
@@ -177,7 +176,6 @@ export const timeService = {
       .run({
         userId,
         entryDate: createdAt.slice(0, 10),
-        projectId: input.projectId ?? null,
         startTime: createdAt,
         notes: input.notes?.trim() || null,
         createdAt
@@ -188,9 +186,11 @@ export const timeService = {
 
   stopTimer(databasePath: string, userId: number, input: StopTimerInput) {
     const db = getCompanyDb(databasePath);
-    const target = input.entryId
-      ? db.prepare("SELECT id, user_id, end_time, entry_type FROM time_entries WHERE id = ?").get(input.entryId)
-      : getOpenEntry(db, userId);
+    const target = (
+      input.entryId
+        ? db.prepare("SELECT id, user_id, end_time, entry_type FROM time_entries WHERE id = ?").get(input.entryId)
+        : getOpenEntry(db, userId)
+    ) as { id: number; user_id: number; end_time: string | null; entry_type: TimeEntryType } | undefined;
 
     if (!target || target.user_id !== userId || target.entry_type !== "work" || target.end_time) {
       throw new HTTPException(404, { message: "Open time entry not found" });
@@ -226,11 +226,10 @@ export const timeService = {
          start_time = @startTime,
          end_time = @endTime,
          notes = @notes,
-         project_id = @projectId,
-         task_id = @taskId,
          sick_leave_attachment_name = @sickLeaveAttachmentName,
          sick_leave_attachment_mime_type = @sickLeaveAttachmentMimeType,
-         sick_leave_attachment_data_url = @sickLeaveAttachmentDataUrl
+         sick_leave_attachment_data_url = @sickLeaveAttachmentDataUrl,
+         custom_field_values_json = @customFieldValuesJson
        WHERE id = @id`
     ).run({
       id: input.entryId,
@@ -240,11 +239,10 @@ export const timeService = {
       startTime: normalized.startTime,
       endTime: normalized.endTime,
       notes: input.notes.trim(),
-      projectId: normalized.projectId,
-      taskId: normalized.taskId,
       sickLeaveAttachmentName: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.fileName ?? null : null,
       sickLeaveAttachmentMimeType: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.mimeType ?? null : null,
-      sickLeaveAttachmentDataUrl: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.dataUrl ?? null : null
+      sickLeaveAttachmentDataUrl: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.dataUrl ?? null : null,
+      customFieldValuesJson: JSON.stringify(normalized.customFieldValues)
     });
 
     return this.getEntryById(databasePath, input.entryId);
@@ -268,10 +266,8 @@ export const timeService = {
     const toDay = toFilterDay(filters.to);
     const rows = getCompanyDb(databasePath)
       .prepare(
-        `SELECT te.*, p.name as project_name, t.title as task_name
+        `SELECT te.*
          FROM time_entries te
-         LEFT JOIN projects p ON p.id = te.project_id
-         LEFT JOIN tasks t ON t.id = te.task_id
          WHERE te.user_id = @userId
            AND (@fromDay IS NULL OR COALESCE(te.end_date, te.entry_date) >= @fromDay)
            AND (@toDay IS NULL OR te.entry_date <= @toDay)
@@ -303,10 +299,8 @@ export const timeService = {
   getEntryById(databasePath: string, entryId: number) {
     const row = getCompanyDb(databasePath)
       .prepare(
-        `SELECT te.*, p.name as project_name, t.title as task_name
+        `SELECT te.*
          FROM time_entries te
-         LEFT JOIN projects p ON p.id = te.project_id
-         LEFT JOIN tasks t ON t.id = te.task_id
          WHERE te.id = ?`
       )
       .get(entryId);
