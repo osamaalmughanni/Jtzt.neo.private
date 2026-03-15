@@ -23,10 +23,16 @@ import type {
   SystemStatsResponse,
   TimeListResponse,
   UpdateSettingsInput,
+  UpdateTabletCodeInput,
+  UpdateTabletCodeResponse,
   UpdateUserInput,
   UserDetailResponse,
   UserListResponse,
-  UpdateTimeEntryInput
+  UpdateTimeEntryInput,
+  TabletAccessInput,
+  TabletAccessResponse,
+  TabletCodeStatusResponse,
+  TabletLoginInput
 } from "@shared/types/api";
 import type { TimeEntryView } from "@shared/types/models";
 
@@ -65,6 +71,20 @@ export const api = {
   getCompanySecurity(companyName: string) {
     const params = new URLSearchParams({ companyName });
     return request<CompanySecurityResponse>(`/api/auth/company-security?${params.toString()}`);
+  },
+
+  tabletAccess(input: TabletAccessInput) {
+    return request<TabletAccessResponse>("/api/auth/tablet/access", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+
+  tabletLogin(input: TabletLoginInput) {
+    return request<LoginResponse>("/api/auth/tablet/login", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
   },
 
   adminLogin(input: AdminLoginInput) {
@@ -202,6 +222,27 @@ export const api = {
       method: "PUT",
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify(input)
+    });
+  },
+
+  getTabletCodeStatus(token: string) {
+    return request<TabletCodeStatusResponse>("/api/settings/tablet-code", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  updateTabletCode(token: string, input: UpdateTabletCodeInput) {
+    return request<UpdateTabletCodeResponse>("/api/settings/tablet-code", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  regenerateTabletCode(token: string) {
+    return request<UpdateTabletCodeResponse>("/api/settings/tablet-code/regenerate", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
     });
   },
 

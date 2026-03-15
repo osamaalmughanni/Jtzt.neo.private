@@ -61,6 +61,14 @@ const systemMigrations: Migration[] = [
       ensureColumn(db, "companies", "encryption_kdf_salt", "TEXT");
       ensureColumn(db, "companies", "encryption_key_verifier", "TEXT");
     }
+  },
+  {
+    id: "003_company_tablet_code",
+    up(db) {
+      ensureColumn(db, "companies", "tablet_code_hash", "TEXT");
+      ensureColumn(db, "companies", "tablet_code_updated_at", "TEXT");
+      db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_tablet_code_hash ON companies (tablet_code_hash)");
+    }
   }
 ];
 

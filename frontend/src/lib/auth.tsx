@@ -1,16 +1,21 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { CompanyMeResponse } from "@shared/types/api";
 import { api } from "./api";
-import { sessionStorage, type StoredSession } from "./storage";
+import { sessionStorage, type StoredSession, type StoredTabletAccess } from "./storage";
 
 interface AuthContextValue {
   companySession: StoredSession | null;
   adminSession: StoredSession | null;
   companyIdentity: CompanyMeResponse | null;
   adminIdentity: { username: string } | null;
+  tabletAccess: StoredTabletAccess | null;
+  isTabletMode: boolean;
   loading: boolean;
   loginCompany: (session: StoredSession) => Promise<void>;
   loginAdmin: (session: StoredSession) => Promise<void>;
+  setTabletAccess: (access: StoredTabletAccess) => void;
+  clearTabletAccess: () => void;
+  lockTablet: () => void;
   logoutCompany: () => void;
   logoutAdmin: () => void;
   refreshCompany: () => Promise<void>;
@@ -21,6 +26,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [companySession, setCompanySession] = useState<StoredSession | null>(() => sessionStorage.getCompanySession());
   const [adminSession, setAdminSession] = useState<StoredSession | null>(() => sessionStorage.getAdminSession());
+  const [tabletAccess, setTabletAccessState] = useState<StoredTabletAccess | null>(() => sessionStorage.getTabletAccess());
   const [companyIdentity, setCompanyIdentity] = useState<CompanyMeResponse | null>(null);
   const [adminIdentity, setAdminIdentity] = useState<{ username: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,6 +65,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       adminSession,
       companyIdentity,
       adminIdentity,
+      tabletAccess,
+      isTabletMode: companySession?.accessMode === "tablet",
       loading,
       async loginCompany(session) {
         sessionStorage.setCompanySession(session);
@@ -69,6 +77,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sessionStorage.setAdminSession(session);
         setAdminSession(session);
         setAdminIdentity(await api.getAdminMe(session.token));
+      },
+      setTabletAccess(access) {
+        sessionStorage.setTabletAccess(access);
+        setTabletAccessState(access);
+      },
+      clearTabletAccess() {
+        sessionStorage.clearTabletAccess();
+        setTabletAccessState(null);
+      },
+      lockTablet() {
+        sessionStorage.clearCompanySession();
+        setCompanySession(null);
+        setCompanyIdentity(null);
       },
       logoutCompany() {
         sessionStorage.clearCompanySession();
@@ -85,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setCompanyIdentity(await api.getCompanyMe(companySession.token));
       }
     }),
-    [adminIdentity, adminSession, companyIdentity, companySession, loading]
+    [adminIdentity, adminSession, companyIdentity, companySession, loading, tabletAccess]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

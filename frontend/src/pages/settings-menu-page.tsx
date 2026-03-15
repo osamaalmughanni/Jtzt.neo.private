@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CompanySettings } from "@shared/types/models";
+import type { CompanySettings, TabletCodeStatus } from "@shared/types/models";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
@@ -17,9 +17,15 @@ const defaultSettings: CompanySettings = {
   editDaysLimit: 30,
   insertDaysLimit: 30,
   country: "AT",
+  tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
   customFields: [],
+};
+
+const defaultTabletCode: TabletCodeStatus = {
+  configured: false,
+  updatedAt: null
 };
 
 function getLocalePreview(locale: string) {
@@ -52,7 +58,11 @@ function getDateTimeFormatPreview(locale: string, dateTimeFormat: string) {
 export function SettingsMenuPage() {
   const { companySession } = useAuth();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
+  const [tabletCodeStatus, setTabletCodeStatus] = useState<TabletCodeStatus>(defaultTabletCode);
+  const [tabletCodeInput, setTabletCodeInput] = useState("");
+  const [tabletCodeOutput, setTabletCodeOutput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [tabletSaving, setTabletSaving] = useState(false);
   const preview = useMemo(() => getLocalePreview(settings.locale), [settings.locale]);
   const dateTimePreview = useMemo(() => getDateTimeFormatPreview(settings.locale, settings.dateTimeFormat), [settings.dateTimeFormat, settings.locale]);
   const firstDayOptions = [
@@ -72,6 +82,7 @@ export function SettingsMenuPage() {
         description: error instanceof Error ? error.message : "Request failed",
       }),
     );
+    void api.getTabletCodeStatus(companySession.token).then((response) => setTabletCodeStatus(response.tabletCode)).catch(() => undefined);
   }, [companySession]);
 
   async function handleSave() {
@@ -88,6 +99,44 @@ export function SettingsMenuPage() {
       });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveTabletCode() {
+    if (!companySession) return;
+    try {
+      setTabletSaving(true);
+      const response = await api.updateTabletCode(companySession.token, { code: tabletCodeInput });
+      setTabletCodeStatus(response.tabletCode);
+      setTabletCodeOutput(response.code);
+      setTabletCodeInput(response.code);
+      toast({ title: "Tablet code saved" });
+    } catch (error) {
+      toast({
+        title: "Could not save tablet code",
+        description: error instanceof Error ? error.message : "Request failed",
+      });
+    } finally {
+      setTabletSaving(false);
+    }
+  }
+
+  async function handleRegenerateTabletCode() {
+    if (!companySession) return;
+    try {
+      setTabletSaving(true);
+      const response = await api.regenerateTabletCode(companySession.token);
+      setTabletCodeStatus(response.tabletCode);
+      setTabletCodeOutput(response.code);
+      setTabletCodeInput(response.code);
+      toast({ title: "Tablet code regenerated" });
+    } catch (error) {
+      toast({
+        title: "Could not regenerate tablet code",
+        description: error instanceof Error ? error.message : "Request failed",
+      });
+    } finally {
+      setTabletSaving(false);
     }
   }
 
@@ -126,6 +175,20 @@ export function SettingsMenuPage() {
             </Field>
             <Field label="Country">
               <Input placeholder="AT" maxLength={2} value={settings.country} onChange={(event) => setSettings((current) => ({ ...current, country: event.target.value.toUpperCase() }))} />
+            </Field>
+            <Field label="Tablet idle timeout seconds">
+              <Input
+                placeholder="10"
+                type="number"
+                min="0"
+                value={settings.tabletIdleTimeoutSeconds}
+                onChange={(event) =>
+                  setSettings((current) => ({
+                    ...current,
+                    tabletIdleTimeoutSeconds: Math.max(0, Number(event.target.value || 0)),
+                  }))
+                }
+              />
             </Field>
             <Field label="Auto break after hours">
               <Input
@@ -180,6 +243,52 @@ export function SettingsMenuPage() {
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Date-time preview</span>
               <span>{dateTimePreview}</span>
+            </div>
+          </div>
+        </FormSection>
+
+        <FormSection>
+          <div className="flex flex-col gap-4 rounded-2xl border border-border p-4">
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium text-foreground">Tablet access</p>
+              <p className="text-sm text-muted-foreground">
+                Create or rotate the shared tablet code used before PIN entry.
+              </p>
+            </div>
+            <FormFields>
+              <Field label="Tablet code">
+                <Input
+                  placeholder="ABCD-EFGH-IJKL"
+                  value={tabletCodeInput}
+                  onChange={(event) => setTabletCodeInput(event.target.value.toUpperCase())}
+                />
+              </Field>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">
+                  {tabletCodeStatus.configured ? "Tablet mode is active" : "No tablet code configured"}
+                </span>
+                {tabletCodeStatus.updatedAt ? (
+                  <span className="text-muted-foreground">{formatCompanyDateTime(tabletCodeStatus.updatedAt, settings.locale, settings.dateTimeFormat)}</span>
+                ) : null}
+              </div>
+              {tabletCodeOutput ? (
+                <div className="rounded-2xl border border-border bg-muted/30 px-4 py-3 text-sm">
+                  <p className="text-muted-foreground">Current code</p>
+                  <p className="text-base font-medium tracking-[0.16em] text-foreground">{tabletCodeOutput}</p>
+                </div>
+              ) : null}
+            </FormFields>
+            <div className="flex items-center gap-2">
+              <Button
+                disabled={tabletSaving || tabletCodeInput.trim().length < 6}
+                onClick={() => void handleSaveTabletCode()}
+                type="button"
+              >
+                {tabletSaving ? "Saving..." : tabletCodeStatus.configured ? "Change code" : "Create code"}
+              </Button>
+              <Button disabled={tabletSaving} variant="ghost" onClick={() => void handleRegenerateTabletCode()} type="button">
+                Regenerate
+              </Button>
             </div>
           </div>
         </FormSection>

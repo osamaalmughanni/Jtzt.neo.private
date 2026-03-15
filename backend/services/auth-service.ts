@@ -1,7 +1,13 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { HTTPException } from "hono/http-exception";
-import type { AdminLoginInput, CompanyLoginInput, RegisterCompanyInput } from "../../shared/types/api";
+import type {
+  AdminLoginInput,
+  CompanyLoginInput,
+  RegisterCompanyInput,
+  TabletAccessInput,
+  TabletLoginInput
+} from "../../shared/types/api";
 import { getSystemDb } from "../db/system-db";
 import { getCompanyDb } from "../db/company-db";
 import { mapCompanyUserProfile, mapCompanyUser } from "../db/mappers";
@@ -59,6 +65,9 @@ export const authService = {
       encryptionKdfSalt: input.encryptionEnabled ? input.encryptionKdfSalt : undefined,
       encryptionKeyVerifier: input.encryptionEnabled ? normalizeProof(input.encryptionKeyVerifier) : undefined
     });
+    if (!company) {
+      throw new HTTPException(500, { message: "Company could not be created" });
+    }
 
     const userRow = getCompanyDb(company.databasePath)
       .prepare("SELECT id, username, full_name, password_hash, role, is_active, created_at FROM users WHERE username = ?")
@@ -71,6 +80,7 @@ export const authService = {
 
     return signSessionToken({
       actorType: "company_user",
+      accessMode: "full",
       companyId: company.id,
       companyName: company.name,
       databasePath: company.databasePath,
@@ -112,6 +122,47 @@ export const authService = {
 
     return signSessionToken({
       actorType: "company_user",
+      accessMode: "full",
+      companyId: company.id,
+      companyName: company.name,
+      databasePath: company.databasePath,
+      userId: user.id,
+      role: user.role
+    });
+  },
+
+  getTabletAccess(input: TabletAccessInput) {
+    const company = systemService.getCompanyByTabletCode(input.code);
+    if (!company) {
+      throw new HTTPException(401, { message: "Invalid tablet code" });
+    }
+
+    return {
+      companyName: company.name
+    };
+  },
+
+  loginTabletUser(input: TabletLoginInput) {
+    const company = systemService.getCompanyByTabletCode(input.code);
+    if (!company) {
+      throw new HTTPException(401, { message: "Invalid tablet code" });
+    }
+
+    const userRow = getCompanyDb(company.databasePath)
+      .prepare("SELECT id, username, full_name, password_hash, role, is_active, pin_code, created_at FROM users WHERE pin_code = ?")
+      .get(input.pinCode.trim()) as Record<string, unknown> | undefined;
+
+    const user = userRow ? mapCompanyUser(userRow) : null;
+    if (!user) {
+      throw new HTTPException(401, { message: "Invalid PIN code" });
+    }
+    if (!user.isActive) {
+      throw new HTTPException(403, { message: "User is inactive" });
+    }
+
+    return signSessionToken({
+      actorType: "company_user",
+      accessMode: "tablet",
       companyId: company.id,
       companyName: company.name,
       databasePath: company.databasePath,
@@ -129,7 +180,7 @@ export const authService = {
     return companySecurity;
   },
 
-  getCompanySessionDetails(payload: { companyId: number; databasePath: string; userId: number }) {
+  getCompanySessionDetails(payload: { companyId: number; databasePath: string; userId: number; accessMode: "full" | "tablet" }) {
     const company = systemService.getCompanyById(payload.companyId);
     if (!company) {
       throw new HTTPException(404, { message: "Company not found" });
@@ -145,7 +196,8 @@ export const authService = {
 
     return {
       company,
-      user: mapCompanyUserProfile(row)
+      user: mapCompanyUserProfile(row),
+      accessMode: payload.accessMode
     };
   }
 };

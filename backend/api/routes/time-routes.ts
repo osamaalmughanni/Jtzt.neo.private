@@ -87,11 +87,21 @@ function resolveTargetUserId(session: CompanyTokenPayload, requestedUserId?: num
     return session.userId;
   }
 
+  if (session.accessMode === "tablet") {
+    throw new Error("Tablet mode can only create records for the signed-in user");
+  }
+
   if (session.role !== "admin" && session.role !== "manager") {
     throw new Error("Manager access required");
   }
 
   return requestedUserId;
+}
+
+function requireFullAccess(session: CompanyTokenPayload, message: string) {
+  if (session.accessMode !== "full") {
+    throw new Error(message);
+  }
 }
 
 function getCompanySession(session: AppVariables["session"]): CompanyTokenPayload {
@@ -283,6 +293,11 @@ timeRoutes.post("/start", async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
+  try {
+    requireFullAccess(session, "Tablet mode does not support timers");
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Tablet mode does not support timers" }, 403);
+  }
   const body = startTimerSchema.parse(await c.req.json());
   return c.json({
     entry: timeService.startTimer(session.databasePath, session.userId, body)
@@ -334,6 +349,11 @@ timeRoutes.post("/stop", async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
+  try {
+    requireFullAccess(session, "Tablet mode does not support timers");
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Tablet mode does not support timers" }, 403);
+  }
   const body = stopTimerSchema.parse(await c.req.json());
   return c.json({
     entry: timeService.stopTimer(session.databasePath, session.userId, body)
@@ -367,6 +387,11 @@ timeRoutes.get("/entry/:entryId", async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
+  try {
+    requireFullAccess(session, "Tablet mode cannot edit existing records");
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Tablet mode cannot edit existing records" }, 403);
+  }
   let targetUserId: number;
   try {
     const rawTargetUserId = c.req.query("targetUserId");
@@ -388,6 +413,11 @@ timeRoutes.put("/entry", async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
+  try {
+    requireFullAccess(session, "Tablet mode cannot edit existing records");
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Tablet mode cannot edit existing records" }, 403);
+  }
   const body = updateEntrySchema.parse(await c.req.json());
   let targetUserId: number;
   try {
@@ -424,6 +454,11 @@ timeRoutes.delete("/entry", async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
+  try {
+    requireFullAccess(session, "Tablet mode cannot delete records");
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Tablet mode cannot delete records" }, 403);
+  }
   const body = deleteEntrySchema.parse(await c.req.json());
   let targetUserId: number;
   try {

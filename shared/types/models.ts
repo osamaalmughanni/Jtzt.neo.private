@@ -29,6 +29,7 @@ export interface CompanyRecord {
   name: string;
   encryptionEnabled: boolean;
   databasePath: string;
+  tabletCodeUpdatedAt?: string | null;
   createdAt: string;
 }
 
@@ -85,6 +86,7 @@ export interface TimeEntryRecord {
 export interface AuthSession {
   token: string;
   actorType: "admin" | "company_user";
+  accessMode?: "full" | "tablet";
   expiresAt: string;
 }
 
@@ -171,9 +173,15 @@ export interface CompanySettings {
   editDaysLimit: number;
   insertDaysLimit: number;
   country: string;
+  tabletIdleTimeoutSeconds: number;
   autoBreakAfterMinutes: number;
   autoBreakDurationMinutes: number;
   customFields: CompanyCustomField[];
+}
+
+export interface TabletCodeStatus {
+  configured: boolean;
+  updatedAt: string | null;
 }
 
 export interface PublicHolidayRecord {

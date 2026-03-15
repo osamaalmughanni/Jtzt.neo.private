@@ -17,5 +17,12 @@ export function CompanyAdminGuard() {
   const { loading, companySession, companyIdentity } = useAuth();
   if (loading) return null;
   if (!companySession) return <Navigate to="/login" replace />;
-  return companyIdentity?.user.role === "admin" ? <Outlet /> : <Navigate to="/dashboard" replace />;
+  return companySession.accessMode !== "tablet" && companyIdentity?.user.role === "admin" ? <Outlet /> : <Navigate to="/dashboard" replace />;
+}
+
+export function CompanyFullAccessGuard() {
+  const { loading, companySession } = useAuth();
+  if (loading) return null;
+  if (!companySession) return <Navigate to="/login" replace />;
+  return companySession.accessMode !== "tablet" ? <Outlet /> : <Navigate to="/dashboard" replace />;
 }

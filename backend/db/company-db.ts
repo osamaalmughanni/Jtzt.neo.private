@@ -155,6 +155,7 @@ const companyMigrations: Migration[] = [
           edit_days_limit INTEGER NOT NULL DEFAULT 30,
           insert_days_limit INTEGER NOT NULL DEFAULT 30,
           country TEXT NOT NULL DEFAULT 'AT',
+          tablet_idle_timeout_seconds INTEGER NOT NULL DEFAULT 10,
           auto_break_after_minutes INTEGER NOT NULL DEFAULT 300,
           auto_break_duration_minutes INTEGER NOT NULL DEFAULT 30,
           custom_fields_json TEXT NOT NULL DEFAULT '[]'
@@ -295,6 +296,12 @@ const companyMigrations: Migration[] = [
     up(db) {
       addColumnIfMissing(db, "company_settings", "auto_break_after_minutes INTEGER NOT NULL DEFAULT 300", "auto_break_after_minutes");
       addColumnIfMissing(db, "company_settings", "auto_break_duration_minutes INTEGER NOT NULL DEFAULT 30", "auto_break_duration_minutes");
+    }
+  },
+  {
+    id: "014_company_tablet_idle_timeout",
+    up(db) {
+      addColumnIfMissing(db, "company_settings", "tablet_idle_timeout_seconds INTEGER NOT NULL DEFAULT 10", "tablet_idle_timeout_seconds");
     }
   },
   {

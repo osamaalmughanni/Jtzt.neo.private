@@ -8,6 +8,7 @@ import type {
   DashboardSummary,
   PublicHolidayRecord,
   SystemStats,
+  TabletCodeStatus,
   TimeEntryView
 } from "./models";
 import type { TimeEntryType, UserRole, UserContract } from "./models";
@@ -28,6 +29,7 @@ export interface LoginResponse {
   session: {
     token: string;
     actorType: "admin" | "company_user";
+    accessMode?: "full" | "tablet";
     expiresAt: string;
   };
 }
@@ -35,6 +37,7 @@ export interface LoginResponse {
 export interface CompanyMeResponse {
   company: CompanyRecord;
   user: CompanyUserProfile;
+  accessMode: "full" | "tablet";
 }
 
 export interface AdminMeResponse {
@@ -210,6 +213,7 @@ export interface UpdateSettingsInput {
   editDaysLimit: number;
   insertDaysLimit: number;
   country: string;
+  tabletIdleTimeoutSeconds: number;
   autoBreakAfterMinutes: number;
   autoBreakDurationMinutes: number;
   customFields: CompanyCustomField[];
@@ -263,4 +267,30 @@ export interface CompanySecurityResponse {
   kdfAlgorithm: "pbkdf2-sha256" | null;
   kdfIterations: number | null;
   kdfSalt: string | null;
+}
+
+export interface TabletAccessInput {
+  code: string;
+}
+
+export interface TabletLoginInput {
+  code: string;
+  pinCode: string;
+}
+
+export interface TabletAccessResponse {
+  companyName: string;
+}
+
+export interface TabletCodeStatusResponse {
+  tabletCode: TabletCodeStatus;
+}
+
+export interface UpdateTabletCodeInput {
+  code: string;
+}
+
+export interface UpdateTabletCodeResponse {
+  tabletCode: TabletCodeStatus;
+  code: string;
 }

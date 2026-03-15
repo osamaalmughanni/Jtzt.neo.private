@@ -147,7 +147,7 @@ function formatBalanceMinutes(totalMinutes: number) {
 }
 
 export function DashboardPage() {
-  const { companySession, companyIdentity } = useAuth();
+  const { companySession, companyIdentity, isTabletMode } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
@@ -159,17 +159,20 @@ export function DashboardPage() {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [now, setNow] = useState(() => new Date());
 
-  const canSwitchUser = canManageOtherUsers(companyIdentity?.user.role);
+  const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
   const selectedDate = useMemo(
     () => parseDayParam(searchParams.get("day")),
     [searchParams],
   );
   const selectedUserId = useMemo(() => {
+    if (isTabletMode) {
+      return companyIdentity?.user.id ?? null;
+    }
     const rawValue = searchParams.get("user");
     if (!rawValue) return companyIdentity?.user.id ?? null;
     const parsed = Number(rawValue);
     return Number.isNaN(parsed) ? (companyIdentity?.user.id ?? null) : parsed;
-  }, [companyIdentity?.user.id, searchParams]);
+  }, [companyIdentity?.user.id, isTabletMode, searchParams]);
 
   const effectiveUserId = selectedUserId ?? companyIdentity?.user.id ?? null;
   const availableUsers = useMemo<CompanyUserListItem[]>(
@@ -282,13 +285,16 @@ export function DashboardPage() {
     void api
       .listUsers(companySession.token)
       .then((response) => setUsers(response.users))
-      .catch((error) =>
+      .catch((error) => {
+        if (companySession.accessMode === "tablet") {
+          return;
+        }
         toast({
           title: "Could not load users",
           description:
             error instanceof Error ? error.message : "Request failed",
-        }),
-      );
+        });
+      });
   }, [canSwitchUser, companySession]);
 
   useEffect(() => {
@@ -330,26 +336,28 @@ export function DashboardPage() {
   }));
   return (
     <FormPage className="flex flex-col gap-5">
-      <AppConfirmDialog
-        open={pendingDeleteEntry !== null}
-        onOpenChange={(open) =>
-          !open && !deleteSubmitting && setPendingDeleteEntry(null)
-        }
-        title="Delete record"
-        description={
-          pendingDeleteEntry
-            ? pendingDeleteEntry.entryType === "work"
-              ? `${toTimeInputValue(pendingDeleteEntry.startTime)} - ${toTimeInputValue(pendingDeleteEntry.endTime)} will be removed.`
-              : `${getEntryTypeLabel(pendingDeleteEntry.entryType)} on ${formatCompanyDate(pendingDeleteEntry.entryDate, settings.locale)} will be removed.`
-            : undefined
-        }
-        confirmLabel="Delete"
-        destructive
-        confirming={deleteSubmitting}
-        onConfirm={() =>
-          pendingDeleteEntry && void deleteEntry(pendingDeleteEntry.id)
-        }
-      />
+      {!isTabletMode ? (
+        <AppConfirmDialog
+          open={pendingDeleteEntry !== null}
+          onOpenChange={(open) =>
+            !open && !deleteSubmitting && setPendingDeleteEntry(null)
+          }
+          title="Delete record"
+          description={
+            pendingDeleteEntry
+              ? pendingDeleteEntry.entryType === "work"
+                ? `${toTimeInputValue(pendingDeleteEntry.startTime)} - ${toTimeInputValue(pendingDeleteEntry.endTime)} will be removed.`
+                : `${getEntryTypeLabel(pendingDeleteEntry.entryType)} on ${formatCompanyDate(pendingDeleteEntry.entryDate, settings.locale)} will be removed.`
+              : undefined
+          }
+          confirmLabel="Delete"
+          destructive
+          confirming={deleteSubmitting}
+          onConfirm={() =>
+            pendingDeleteEntry && void deleteEntry(pendingDeleteEntry.id)
+          }
+        />
+      ) : null}
       <PageLabel
         title="Overview"
         description="Manage daily records and user context."
@@ -376,17 +384,28 @@ export function DashboardPage() {
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
               <p className="text-sm text-muted-foreground">{selectedUserName}</p>
-              <Link
-                to={dayPickerHref}
-                className="text-left text-2xl font-semibold tracking-[-0.04em] text-foreground transition-opacity hover:opacity-70"
-              >
-                {selectedDate.toLocaleDateString(settings.locale, {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
-              </Link>
+              {isTabletMode ? (
+                <p className="text-left text-2xl font-semibold tracking-[-0.04em] text-foreground">
+                  {selectedDate.toLocaleDateString(settings.locale, {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </p>
+              ) : (
+                <Link
+                  to={dayPickerHref}
+                  className="text-left text-2xl font-semibold tracking-[-0.04em] text-foreground transition-opacity hover:opacity-70"
+                >
+                  {selectedDate.toLocaleDateString(settings.locale, {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </Link>
+              )}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                 <span>{formatMinutes(dayMinutes)} recorded</span>
                 {summary.contractStats.currentContract ? (
@@ -482,34 +501,36 @@ export function DashboardPage() {
                       <div className="min-w-0" />
                     )}
                   </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setPendingDeleteEntry(entry)}
-                      type="button"
-                      aria-label="Delete record"
-                    >
-                      <Trash size={16} weight="bold" />
-                    </Button>
-                    {canEdit ? (
-                      <Button asChild size="icon" variant="ghost">
-                        <Link to={editHref} aria-label="Edit record">
-                          <PencilSimple size={16} weight="bold" />
-                        </Link>
-                      </Button>
-                    ) : (
+                  {!isTabletMode ? (
+                    <div className="flex shrink-0 items-center gap-1">
                       <Button
-                        disabled
-                        size="icon"
                         variant="ghost"
+                        size="icon"
+                        onClick={() => setPendingDeleteEntry(entry)}
                         type="button"
-                        aria-label="Record locked"
+                        aria-label="Delete record"
                       >
-                        <PencilSimple size={16} weight="bold" />
+                        <Trash size={16} weight="bold" />
                       </Button>
-                    )}
-                  </div>
+                      {canEdit ? (
+                        <Button asChild size="icon" variant="ghost">
+                          <Link to={editHref} aria-label="Edit record">
+                            <PencilSimple size={16} weight="bold" />
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Button
+                          disabled
+                          size="icon"
+                          variant="ghost"
+                          type="button"
+                          aria-label="Record locked"
+                        >
+                          <PencilSimple size={16} weight="bold" />
+                        </Button>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

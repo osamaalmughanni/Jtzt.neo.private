@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS companies (
   encryption_kdf_iterations INTEGER,
   encryption_kdf_salt TEXT,
   encryption_key_verifier TEXT,
+  tablet_code_hash TEXT,
+  tablet_code_updated_at TEXT,
   database_path TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
@@ -73,6 +75,7 @@ CREATE TABLE IF NOT EXISTS company_settings (
   edit_days_limit INTEGER NOT NULL DEFAULT 30,
   insert_days_limit INTEGER NOT NULL DEFAULT 30,
   country TEXT NOT NULL DEFAULT 'AT',
+  tablet_idle_timeout_seconds INTEGER NOT NULL DEFAULT 10,
   auto_break_after_minutes INTEGER NOT NULL DEFAULT 300,
   auto_break_duration_minutes INTEGER NOT NULL DEFAULT 30,
   custom_fields_json TEXT NOT NULL DEFAULT '[]'

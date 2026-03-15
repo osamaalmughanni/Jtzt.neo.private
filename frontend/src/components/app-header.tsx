@@ -1,7 +1,7 @@
 import type { Icon } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
-import { ArrowLeft, List } from "phosphor-react";
+import { ArrowLeft, List, LockSimple } from "phosphor-react";
 import { Logo } from "@/components/logo";
 import { PageLabel } from "@/components/page-label";
 import { useAppHeaderState } from "@/components/app-header-state";
@@ -9,9 +9,11 @@ import { getHomePath, type NavigationScope } from "@/lib/navigation";
 import { getPageMeta } from "@/lib/page-meta";
 
 export interface HeaderAction {
-  to: string;
+  to?: string;
   label: string;
   icon: Icon;
+  onClick?: () => void;
+  key?: string;
 }
 
 function getRouteActions(pathname: string, menuTo?: string): HeaderAction[] {
@@ -24,12 +26,14 @@ function getRouteActions(pathname: string, menuTo?: string): HeaderAction[] {
 
 export function AppHeader({
   menuTo,
+  lockTo,
   scope,
   title,
   description,
   actions
 }: {
   menuTo?: string;
+  lockTo?: string;
   scope: NavigationScope;
   title?: string;
   description?: string;
@@ -41,7 +45,13 @@ export function AppHeader({
   const meta = getPageMeta(location.pathname);
   const resolvedTitle = title ?? (meta?.titleKey ? t(meta.titleKey) : undefined);
   const resolvedDescription = description ?? (meta?.descriptionKey ? t(meta.descriptionKey) : undefined);
-  const resolvedActions = pageActions ?? actions ?? getRouteActions(location.pathname, menuTo);
+  const fallbackActions =
+    scope === "tablet"
+      ? lockTo
+        ? [{ to: lockTo, label: "Lock tablet", icon: LockSimple }]
+        : []
+      : getRouteActions(location.pathname, menuTo);
+  const resolvedActions = scope === "tablet" ? actions ?? fallbackActions : pageActions ?? actions ?? fallbackActions;
 
   return (
     <header className="bg-background">
@@ -57,15 +67,26 @@ export function AppHeader({
         <div className="flex items-center gap-2">
           {resolvedActions.map((action) => {
             const ActionIcon = action.icon;
-            return (
+            const actionKey = action.key ?? action.to ?? action.label;
+            return action.to ? (
               <Link
-                key={action.to}
+                key={actionKey}
                 to={action.to}
                 aria-label={action.label}
                 className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-border text-foreground transition-opacity hover:opacity-60"
               >
                 <ActionIcon size={22} weight="bold" />
               </Link>
+            ) : (
+              <button
+                key={actionKey}
+                aria-label={action.label}
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-border text-foreground transition-opacity hover:opacity-60"
+                onClick={action.onClick}
+                type="button"
+              >
+                <ActionIcon size={22} weight="bold" />
+              </button>
             );
           })}
         </div>

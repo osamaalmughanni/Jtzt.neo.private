@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { authMiddleware, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
 import { settingsService } from "../../services/settings-service";
+import { systemService } from "../../services/system-service";
 import type { AppVariables } from "../context";
 
 const updateSettingsSchema = z.object({
@@ -12,6 +13,7 @@ const updateSettingsSchema = z.object({
   editDaysLimit: z.number().int().min(0).max(3650),
   insertDaysLimit: z.number().int().min(0).max(3650),
   country: z.string().length(2),
+  tabletIdleTimeoutSeconds: z.number().int().min(0).max(86400),
   autoBreakAfterMinutes: z.number().int().min(0).max(1440),
   autoBreakDurationMinutes: z.number().int().min(0).max(1440),
   customFields: z.array(
@@ -36,6 +38,10 @@ const updateSettingsSchema = z.object({
 const holidayQuerySchema = z.object({
   country: z.string().length(2),
   year: z.coerce.number().int().min(2000).max(2100)
+});
+
+const tabletCodeSchema = z.object({
+  code: z.string().min(6).max(32)
 });
 
 export const settingsRoutes = new Hono<{ Variables: AppVariables }>();
@@ -73,4 +79,38 @@ settingsRoutes.get("/holidays", async (c) => {
   });
 
   return c.json(await settingsService.getPublicHolidays(session.databasePath, query.country, query.year));
+});
+
+settingsRoutes.get("/tablet-code", requireCompanyAdmin, (c) => {
+  const session = c.get("session");
+  if (session.actorType !== "company_user") {
+    return c.json({ error: "Company login required" }, 403);
+  }
+
+  const tabletCode = systemService.getTabletCodeStatus(session.companyId);
+  if (!tabletCode) {
+    return c.json({ error: "Company not found" }, 404);
+  }
+
+  return c.json({ tabletCode });
+});
+
+settingsRoutes.put("/tablet-code", requireCompanyAdmin, async (c) => {
+  const session = c.get("session");
+  if (session.actorType !== "company_user") {
+    return c.json({ error: "Company login required" }, 403);
+  }
+
+  const body = tabletCodeSchema.parse(await c.req.json());
+  const response = systemService.setTabletCode(session.companyId, body.code);
+  return c.json(response);
+});
+
+settingsRoutes.post("/tablet-code/regenerate", requireCompanyAdmin, (c) => {
+  const session = c.get("session");
+  if (session.actorType !== "company_user") {
+    return c.json({ error: "Company login required" }, 403);
+  }
+
+  return c.json(systemService.regenerateTabletCode(session.companyId));
 });

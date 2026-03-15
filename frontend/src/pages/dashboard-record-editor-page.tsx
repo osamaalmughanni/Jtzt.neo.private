@@ -157,7 +157,7 @@ interface DashboardRecordEditorPageProps {
 export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPageProps) {
   const navigate = useNavigate();
   const { entryId } = useParams();
-  const { companySession, companyIdentity } = useAuth();
+  const { companySession, companyIdentity, isTabletMode } = useAuth();
   const [searchParams] = useSearchParams();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
@@ -175,10 +175,13 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [holidays, setHolidays] = useState<PublicHolidayRecord[]>([]);
 
-  const canSwitchUser = canManageOtherUsers(companyIdentity?.user.role);
+  const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
   const bypassDayLimits = canBypassDayLimits(companyIdentity?.user.role);
   const selectedDay = parseDayParam(searchParams.get("day"));
-  const effectiveUserId = Number(searchParams.get("user") ?? companyIdentity?.user.id ?? 0) || companyIdentity?.user.id || 0;
+  const effectiveUserId =
+    canSwitchUser
+      ? Number(searchParams.get("user") ?? companyIdentity?.user.id ?? 0) || companyIdentity?.user.id || 0
+      : companyIdentity?.user.id || 0;
   const backTo = `/dashboard?user=${effectiveUserId}&day=${selectedDay}`;
   const usesDateRange = true;
   const activeCustomFields = useMemo(

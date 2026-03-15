@@ -46,6 +46,7 @@ export function mapCompanyRecord(row: any): CompanyRecord {
     name: row.name,
     encryptionEnabled: Boolean(row.encryption_enabled),
     databasePath: row.database_path,
+    tabletCodeUpdatedAt: row.tablet_code_updated_at ?? null,
     createdAt: row.created_at
   };
 }
@@ -192,6 +193,7 @@ export function mapCompanySettings(row: any): CompanySettings {
     editDaysLimit: row.edit_days_limit,
     insertDaysLimit: row.insert_days_limit,
     country: row.country ?? row.holiday_country,
+    tabletIdleTimeoutSeconds: row.tablet_idle_timeout_seconds ?? 10,
     autoBreakAfterMinutes: row.auto_break_after_minutes ?? 300,
     autoBreakDurationMinutes: row.auto_break_duration_minutes ?? 30,
     customFields: normalizeCustomFields(row.custom_fields_json)

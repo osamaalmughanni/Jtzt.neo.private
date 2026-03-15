@@ -19,7 +19,11 @@ export const reportRoutes = new Hono<{ Variables: AppVariables }>();
 reportRoutes.use("*", authMiddleware, requireCompanyUser);
 
 function ensureManagerOrAdmin(session: AppVariables["session"]) {
-  if (session.actorType !== "company_user" || (session.role !== "admin" && session.role !== "manager")) {
+  if (
+    session.actorType !== "company_user" ||
+    session.accessMode !== "full" ||
+    (session.role !== "admin" && session.role !== "manager")
+  ) {
     throw new HTTPException(403, { message: "Manager access required" });
   }
 }

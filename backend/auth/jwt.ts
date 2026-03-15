@@ -9,6 +9,7 @@ export interface AdminTokenPayload {
 
 export interface CompanyTokenPayload {
   actorType: "company_user";
+  accessMode: "full" | "tablet";
   companyId: number;
   companyName: string;
   databasePath: string;
@@ -18,11 +19,17 @@ export interface CompanyTokenPayload {
 
 export type SessionTokenPayload = AdminTokenPayload | CompanyTokenPayload;
 
-export function signSessionToken(payload: SessionTokenPayload): { token: string; expiresAt: string } {
-  const expiresIn = `${appConfig.sessionTtlHours}h`;
-  const token = jwt.sign(payload, appConfig.jwtSecret, { expiresIn });
+export function signSessionToken(
+  payload: SessionTokenPayload
+): ({ token: string; expiresAt: string } & Pick<AdminTokenPayload, "actorType">) | ({ token: string; expiresAt: string } & Pick<CompanyTokenPayload, "actorType" | "accessMode">) {
+  const expiresInSeconds = appConfig.sessionTtlHours * 60 * 60;
+  const token = jwt.sign(payload, appConfig.jwtSecret, { expiresIn: expiresInSeconds });
   const expiresAt = new Date(Date.now() + appConfig.sessionTtlHours * 60 * 60 * 1000).toISOString();
-  return { token, expiresAt };
+  if (payload.actorType === "admin") {
+    return { token, expiresAt, actorType: "admin" };
+  }
+
+  return { token, expiresAt, actorType: "company_user", accessMode: payload.accessMode };
 }
 
 export function verifySessionToken(token: string): SessionTokenPayload {

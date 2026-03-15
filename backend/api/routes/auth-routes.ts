@@ -11,6 +11,15 @@ const companyLoginSchema = z.object({
   encryptionKeyProof: z.string().optional()
 });
 
+const tabletAccessSchema = z.object({
+  code: z.string().min(6).max(32)
+});
+
+const tabletLoginSchema = z.object({
+  code: z.string().min(6).max(32),
+  pinCode: z.string().min(1).max(12)
+});
+
 const companyRegistrationSchema = z
   .object({
     name: z.string().min(2),
@@ -51,6 +60,16 @@ authRoutes.post("/register-company", async (c) => {
   return c.json({ session: authService.registerCompany(body) });
 });
 
+authRoutes.post("/tablet/access", async (c) => {
+  const body = tabletAccessSchema.parse(await c.req.json());
+  return c.json(authService.getTabletAccess(body));
+});
+
+authRoutes.post("/tablet/login", async (c) => {
+  const body = tabletLoginSchema.parse(await c.req.json());
+  return c.json({ session: authService.loginTabletUser(body) });
+});
+
 authRoutes.get("/company-security", (c) => {
   const companyName = c.req.query("companyName");
   if (!companyName) {
@@ -69,7 +88,8 @@ authRoutes.get("/me", authMiddleware, requireCompanyUser, (c) => {
     authService.getCompanySessionDetails({
       companyId: session.companyId,
       databasePath: session.databasePath,
-      userId: session.userId
+      userId: session.userId,
+      accessMode: session.accessMode
     })
   );
 });

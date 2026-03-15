@@ -42,13 +42,17 @@ export const userRoutes = new Hono<{ Variables: AppVariables }>();
 userRoutes.use("*", authMiddleware, requireCompanyUser);
 
 function ensureAdmin(session: AppVariables["session"]) {
-  if (session.actorType !== "company_user" || session.role !== "admin") {
+  if (session.actorType !== "company_user" || session.accessMode !== "full" || session.role !== "admin") {
     throw new HTTPException(403, { message: "Admin access required" });
   }
 }
 
 function ensureManagerOrAdmin(session: AppVariables["session"]) {
-  if (session.actorType !== "company_user" || (session.role !== "admin" && session.role !== "manager")) {
+  if (
+    session.actorType !== "company_user" ||
+    session.accessMode !== "full" ||
+    (session.role !== "admin" && session.role !== "manager")
+  ) {
     throw new HTTPException(403, { message: "Manager access required" });
   }
 }

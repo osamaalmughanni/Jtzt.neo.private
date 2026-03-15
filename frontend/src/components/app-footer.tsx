@@ -41,6 +41,12 @@ export function AppFooter({ context, publicMode, authMode }: AppFooterProps) {
             <LanguageSwitcher compact />
             <ThemeToggle compact />
             <Button asChild variant="ghost" size="sm" className="h-8 gap-1 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground">
+              <Link to="/tablet">
+                Tablet
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm" className="h-8 gap-1 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground">
               <Link to={actionTo}>
                 {actionLabel}
                 <ArrowUpRight className="h-3.5 w-3.5" />

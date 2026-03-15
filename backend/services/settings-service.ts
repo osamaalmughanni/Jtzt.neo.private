@@ -16,6 +16,7 @@ function getDefaultSettingsRow() {
     edit_days_limit: 30,
     insert_days_limit: 30,
     country: "AT",
+    tablet_idle_timeout_seconds: 10,
     auto_break_after_minutes: 300,
     auto_break_duration_minutes: 30,
     custom_fields_json: "[]"
@@ -33,6 +34,7 @@ function ensureSettingsRow(db: ReturnType<typeof getCompanyDb>) {
       edit_days_limit,
       insert_days_limit,
       country,
+      tablet_idle_timeout_seconds,
       custom_fields_json
     ) VALUES (
       @id,
@@ -43,6 +45,7 @@ function ensureSettingsRow(db: ReturnType<typeof getCompanyDb>) {
       @edit_days_limit,
       @insert_days_limit,
       @country,
+      @tablet_idle_timeout_seconds,
       @custom_fields_json
     ) ON CONFLICT(id) DO NOTHING`
   ).run(getDefaultSettingsRow());
@@ -94,6 +97,7 @@ export const settingsService = {
         edit_days_limit = @editDaysLimit,
         insert_days_limit = @insertDaysLimit,
         country = @country,
+        tablet_idle_timeout_seconds = @tabletIdleTimeoutSeconds,
         auto_break_after_minutes = @autoBreakAfterMinutes,
         auto_break_duration_minutes = @autoBreakDurationMinutes,
         custom_fields_json = @customFieldsJson
