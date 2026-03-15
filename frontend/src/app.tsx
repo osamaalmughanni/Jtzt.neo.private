@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/app-shell";
 import { AdminGuard, CompanyAdminGuard, CompanyFullAccessGuard, CompanyGuard } from "@/components/route-guards";
+import { useAuth } from "@/lib/auth";
 import { AdminCompaniesPage } from "@/pages/admin-companies-page";
 import { AdminCompanyCreatePage } from "@/pages/admin-company-create-page";
 import { AdminLoginPage } from "@/pages/admin-login-page";
@@ -21,12 +22,29 @@ import { FieldsPage } from "@/pages/fields-page";
 import { UsersPage } from "@/pages/users-page";
 import { UserEditorPage } from "@/pages/user-editor-page";
 
+function SessionAwareHomeRedirect() {
+  const { loading, adminSession, companySession } = useAuth();
+  if (loading) return null;
+  if (adminSession) return <Navigate to="/admin/menu" replace />;
+  if (companySession) {
+    return <Navigate to={companySession.accessMode === "tablet" ? "/dashboard" : "/menu"} replace />;
+  }
+  return <Navigate to="/login" replace />;
+}
+
+function AdminRootRedirect() {
+  const { loading, adminSession } = useAuth();
+  if (loading) return null;
+  return <Navigate to={adminSession ? "/admin/menu" : "/admin/login"} replace />;
+}
+
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<LoginPage />} />
+      <Route path="/" element={<SessionAwareHomeRedirect />} />
       <Route path="/learn" element={<LearnPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/admin" element={<AdminRootRedirect />} />
       <Route path="/tablet" element={<TabletCodePage />} />
       <Route path="/tablet/pin" element={<TabletPinPage />} />
       <Route path="/register" element={<RegisterCompanyPage />} />
@@ -58,7 +76,7 @@ export function App() {
           <Route path="/admin/company/create" element={<AdminCompanyCreatePage />} />
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<SessionAwareHomeRedirect />} />
     </Routes>
   );
 }
