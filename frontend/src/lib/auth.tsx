@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { CompanyMeResponse } from "@shared/types/api";
-import { api } from "./api";
+import { ApiRequestError, api } from "./api";
 import { sessionStorage, type StoredSession, type StoredTabletAccess } from "./storage";
 
 interface AuthContextValue {
@@ -23,6 +23,10 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function isAuthInvalidError(error: unknown) {
+  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [companySession, setCompanySession] = useState<StoredSession | null>(() => sessionStorage.getCompanySession());
   const [adminSession, setAdminSession] = useState<StoredSession | null>(() => sessionStorage.getAdminSession());
@@ -35,20 +39,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (companySession) {
       try {
         setCompanyIdentity(await api.getCompanyMe(companySession.token));
-      } catch {
-        sessionStorage.clearCompanySession();
-        setCompanySession(null);
-        setCompanyIdentity(null);
+      } catch (error) {
+        if (isAuthInvalidError(error)) {
+          sessionStorage.clearCompanySession();
+          setCompanySession(null);
+          setCompanyIdentity(null);
+        }
       }
     }
 
     if (adminSession) {
       try {
         setAdminIdentity(await api.getAdminMe(adminSession.token));
-      } catch {
-        sessionStorage.clearAdminSession();
-        setAdminSession(null);
-        setAdminIdentity(null);
+      } catch (error) {
+        if (isAuthInvalidError(error)) {
+          sessionStorage.clearAdminSession();
+          setAdminSession(null);
+          setAdminIdentity(null);
+        }
       }
     }
 
@@ -71,12 +79,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async loginCompany(session) {
         sessionStorage.setCompanySession(session);
         setCompanySession(session);
-        setCompanyIdentity(await api.getCompanyMe(session.token));
+        try {
+          setCompanyIdentity(await api.getCompanyMe(session.token));
+        } catch (error) {
+          if (isAuthInvalidError(error)) {
+            sessionStorage.clearCompanySession();
+            setCompanySession(null);
+            setCompanyIdentity(null);
+            throw error;
+          }
+        }
       },
       async loginAdmin(session) {
         sessionStorage.setAdminSession(session);
         setAdminSession(session);
-        setAdminIdentity(await api.getAdminMe(session.token));
+        try {
+          setAdminIdentity(await api.getAdminMe(session.token));
+        } catch (error) {
+          if (isAuthInvalidError(error)) {
+            sessionStorage.clearAdminSession();
+            setAdminSession(null);
+            setAdminIdentity(null);
+            throw error;
+          }
+        }
       },
       setTabletAccess(access) {
         sessionStorage.setTabletAccess(access);
@@ -103,7 +129,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       async refreshCompany() {
         if (!companySession) return;
-        setCompanyIdentity(await api.getCompanyMe(companySession.token));
+        try {
+          setCompanyIdentity(await api.getCompanyMe(companySession.token));
+        } catch (error) {
+          if (isAuthInvalidError(error)) {
+            sessionStorage.clearCompanySession();
+            setCompanySession(null);
+            setCompanyIdentity(null);
+            throw error;
+          }
+        }
       }
     }),
     [adminIdentity, adminSession, companyIdentity, companySession, loading, tabletAccess]

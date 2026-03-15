@@ -36,6 +36,16 @@ import type {
 } from "@shared/types/api";
 import type { TimeEntryView } from "@shared/types/models";
 
+export class ApiRequestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     headers: {
@@ -47,7 +57,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = (await response.json().catch(() => ({ error: "Request failed" }))) as { error?: string };
-    throw new Error(error.error ?? "Request failed");
+    throw new ApiRequestError(error.error ?? "Request failed", response.status);
   }
 
   return response.json() as Promise<T>;
