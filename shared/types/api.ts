@@ -130,10 +130,6 @@ export interface DeleteCompanyInput {
   companyId: number;
 }
 
-export interface ResetCompanyInput {
-  companyId: number;
-}
-
 export interface CompanyListResponse {
   companies: CompanyRecord[];
 }

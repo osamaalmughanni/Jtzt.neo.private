@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import fs from "node:fs";
 import { z } from "zod";
 import { authMiddleware, requireAdmin } from "../../auth/middleware";
 import { adminService } from "../../services/admin-service";
@@ -19,10 +20,6 @@ const createCompanySchema = z.object({
 });
 
 const deleteCompanySchema = z.object({
-  companyId: z.number()
-});
-
-const resetCompanySchema = z.object({
   companyId: z.number()
 });
 
@@ -65,10 +62,19 @@ adminRoutes.post("/companies/delete", async (c) => {
   return c.json({ success: true });
 });
 
-adminRoutes.post("/companies/reset", async (c) => {
-  const body = resetCompanySchema.parse(await c.req.json());
-  adminService.resetCompany(body);
-  return c.json({ success: true });
+adminRoutes.get("/companies/:companyId/download", async (c) => {
+  const companyId = Number(c.req.param("companyId"));
+  if (!Number.isFinite(companyId)) {
+    return c.json({ error: "Invalid company id" }, 400);
+  }
+
+  const { company, filePath } = adminService.getCompanyDatabaseDownload(companyId);
+  const fileName = `${company.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "company"}.sqlite`;
+
+  return c.body(fs.readFileSync(filePath), 200, {
+    "Content-Type": "application/x-sqlite3",
+    "Content-Disposition": `attachment; filename="${fileName}"`
+  });
 });
 
 adminRoutes.post("/companies/admins/create", async (c) => {

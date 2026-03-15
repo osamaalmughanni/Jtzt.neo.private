@@ -4,8 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import type {
   CreateCompanyAdminInput,
   CreateCompanyInput,
-  DeleteCompanyInput,
-  ResetCompanyInput
+  DeleteCompanyInput
 } from "../../shared/types/api";
 import {
   closeCompanyDb,
@@ -97,19 +96,6 @@ export const adminService = {
     }
   },
 
-  resetCompany(input: ResetCompanyInput) {
-    const company = systemService.getCompanyById(input.companyId);
-    if (!company) {
-      throw new HTTPException(404, { message: "Company not found" });
-    }
-
-    getCompanyDb(company.databasePath).exec(`
-      DELETE FROM time_entries;
-      DELETE FROM projects;
-    `);
-    seedDefaultProjects(company.databasePath);
-  },
-
   createCompanyAdmin(input: CreateCompanyAdminInput) {
     const company = systemService.getCompanyById(input.companyId);
     if (!company) {
@@ -148,6 +134,18 @@ export const adminService = {
       adminCount,
       totalUsers,
       activeTimers
+    };
+  },
+
+  getCompanyDatabaseDownload(companyId: number) {
+    const company = systemService.getCompanyById(companyId);
+    if (!company) {
+      throw new HTTPException(404, { message: "Company not found" });
+    }
+
+    return {
+      company,
+      filePath: company.databasePath
     };
   }
 };

@@ -14,7 +14,6 @@ import type {
   LoginResponse,
   ProjectListResponse,
   RegisterCompanyInput,
-  ResetCompanyInput,
   StartTimerInput,
   StopTimerInput,
   SystemStatsResponse,
@@ -177,14 +176,6 @@ export const api = {
     });
   },
 
-  resetCompany(token: string, input: ResetCompanyInput) {
-    return request<{ success: boolean }>("/api/admin/companies/reset", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: JSON.stringify(input)
-    });
-  },
-
   createCompanyAdmin(token: string, input: CreateCompanyAdminInput) {
     return request<{ success: boolean }>("/api/admin/companies/admins/create", {
       method: "POST",
@@ -197,5 +188,24 @@ export const api = {
     return request<SystemStatsResponse>("/api/admin/stats", {
       headers: { Authorization: `Bearer ${token}` }
     });
+  },
+
+  async downloadCompanyDb(token: string, companyId: number) {
+    const response = await fetch(`/api/admin/companies/${companyId}/download`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!response.ok) {
+      const error = (await response.json().catch(() => ({ error: "Request failed" }))) as { error?: string };
+      throw new Error(error.error ?? "Request failed");
+    }
+
+    return {
+      blob: await response.blob(),
+      fileName:
+        response.headers
+          .get("Content-Disposition")
+          ?.match(/filename="([^"]+)"/)?.[1] ?? `company-${companyId}.sqlite`
+    };
   }
 };

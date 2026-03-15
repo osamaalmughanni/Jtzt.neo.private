@@ -9,17 +9,21 @@ export interface SeoEntry {
 }
 
 export const SEO_SITE_NAME = "Jtzt";
-export const SEO_DEFAULT_TITLE = "Jtzt | Working Hours Software for Companies";
+export const SEO_DEFAULT_TITLE = "Jtzt | Time Tracking for Companies";
 export const SEO_DEFAULT_DESCRIPTION =
   "Jtzt is a fast, local-first working hours platform for companies that want clear tenant boundaries, clean administration, and reliable time tracking.";
 export const SEO_DEFAULT_KEYWORDS =
   "working hours software, time tracking software, employee time tracking, company timesheets, local-first business software, tenant-based admin software";
 
+function pageTitle(label: string) {
+  return `${label} | ${SEO_SITE_NAME}`;
+}
+
 export const seoEntries = new Map<string, SeoEntry>([
   [
     "/learn",
     {
-      title: "Jtzt | Working Hours Software Built for Company Control",
+      title: pageTitle("Learn More"),
       description:
         "Jtzt helps companies track working hours with a fast local-first architecture, clear tenant separation, and clean internal administration.",
       robots: "index, follow",
@@ -59,7 +63,7 @@ export const seoEntries = new Map<string, SeoEntry>([
   [
     "/",
     {
-      title: "Jtzt Login",
+      title: pageTitle("Sign In"),
       description: "Sign in to Jtzt.",
       robots: "noindex, nofollow",
       canonicalPath: "/",
@@ -69,7 +73,7 @@ export const seoEntries = new Map<string, SeoEntry>([
   [
     "/register",
     {
-      title: "Register Your Company | Jtzt",
+      title: pageTitle("Register"),
       description: "Create your company workspace in Jtzt and start evaluating time tracking, tenant isolation, and secure access controls.",
       robots: "index, follow",
       canonicalPath: "/register",
@@ -79,7 +83,7 @@ export const seoEntries = new Map<string, SeoEntry>([
   [
     "/login",
     {
-      title: "Jtzt Login",
+      title: pageTitle("Sign In"),
       description: "Sign in to Jtzt.",
       robots: "noindex, nofollow",
       canonicalPath: "/login",
@@ -89,7 +93,7 @@ export const seoEntries = new Map<string, SeoEntry>([
   [
     "/admin/login",
     {
-      title: "Jtzt Admin Login",
+      title: pageTitle("Admin Sign In"),
       description: "Admin sign in for Jtzt.",
       robots: "noindex, nofollow",
       canonicalPath: "/admin/login",
@@ -99,9 +103,23 @@ export const seoEntries = new Map<string, SeoEntry>([
 ]);
 
 export function getSeoEntry(pathname: string): SeoEntry {
+  const privateTitles = new Map<string, string>([
+    ["/menu", pageTitle("Pages")],
+    ["/dashboard", pageTitle("Overview")],
+    ["/time", pageTitle("Time")],
+    ["/calendar", pageTitle("Calendar")],
+    ["/projects", pageTitle("Projects")],
+    ["/settings", pageTitle("Settings")],
+    ["/settings/users", pageTitle("Users")],
+    ["/settings/users/create", pageTitle("Create")],
+    ["/admin/menu", pageTitle("Pages")],
+    ["/admin/companies", pageTitle("Companies")],
+    ["/admin/company/create", pageTitle("Create")]
+  ]);
+
   if (pathname.startsWith("/admin") || pathname.startsWith("/settings") || pathname === "/menu" || pathname === "/dashboard" || pathname === "/time" || pathname === "/calendar" || pathname === "/projects") {
     return {
-      title: "Jtzt App",
+      title: privateTitles.get(pathname) ?? pageTitle("App"),
       description: "Private application area for authenticated Jtzt users.",
       robots: "noindex, nofollow",
       canonicalPath: pathname,

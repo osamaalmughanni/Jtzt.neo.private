@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Download, ShieldPlus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { CompanyRecord, SystemStats } from "@shared/types/models";
 import { api } from "@/lib/api";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function AdminCompaniesPage() {
   const { t } = useTranslation();
@@ -15,9 +17,7 @@ export function AdminCompaniesPage() {
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [newAdmin, setNewAdmin] = useState({ companyId: 0, username: "", password: "", fullName: "" });
-  const [pendingResetCompany, setPendingResetCompany] = useState<CompanyRecord | null>(null);
   const [pendingDeleteCompany, setPendingDeleteCompany] = useState<CompanyRecord | null>(null);
-  const [resetSubmitting, setResetSubmitting] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const statItems = [
     { label: t("adminCompanies.stats.companies"), value: stats?.companyCount ?? 0 },
@@ -65,21 +65,25 @@ export function AdminCompaniesPage() {
     }
   }
 
-  async function resetCompany(companyId: number) {
+  async function downloadCompanyDb(company: CompanyRecord) {
     if (!adminSession) return;
-    setResetSubmitting(true);
     try {
-      await api.resetCompany(adminSession.token, { companyId });
-      setPendingResetCompany(null);
-      toast({ title: t("adminCompanies.companyReset") });
-      await load();
+      const { blob, fileName } = await api.downloadCompanyDb(adminSession.token, company.id);
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+      toast({ title: t("adminCompanies.databaseDownloaded") });
     } catch (error) {
       toast({
-        title: t("adminCompanies.companyResetFailed"),
+        title: t("adminCompanies.databaseDownloadFailed"),
         description: error instanceof Error ? error.message : "Request failed"
       });
-    } finally {
-      setResetSubmitting(false);
     }
   }
 
@@ -99,31 +103,6 @@ export function AdminCompaniesPage() {
 
   return (
     <div className="space-y-6">
-      <Dialog open={pendingResetCompany !== null} onOpenChange={(open) => !open && setPendingResetCompany(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("adminCompanies.resetDialogTitle")}</DialogTitle>
-            <DialogDescription>
-              {pendingResetCompany
-                ? t("adminCompanies.resetDialogDescription", { name: pendingResetCompany.name })
-                : t("adminCompanies.resetDialogTitle")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button variant="outline" onClick={() => setPendingResetCompany(null)} disabled={resetSubmitting}>
-              {t("common.cancel")}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => pendingResetCompany && void resetCompany(pendingResetCompany.id)}
-              disabled={resetSubmitting}
-            >
-              {resetSubmitting ? t("adminCompanies.resetting") : t("common.resetDb")}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={pendingDeleteCompany !== null} onOpenChange={(open) => !open && setPendingDeleteCompany(null)}>
         <DialogContent>
           <DialogHeader>
@@ -154,16 +133,11 @@ export function AdminCompaniesPage() {
           <CardTitle>{t("adminCompanies.overviewTitle")}</CardTitle>
           <CardDescription>{t("adminCompanies.overviewDescription")}</CardDescription>
         </CardHeader>
-        <CardContent className="grid p-0 sm:grid-cols-2 xl:grid-cols-4">
-          {statItems.map((item, index) => (
-            <div
-              key={item.label}
-              className={`flex min-h-[88px] flex-col justify-between px-4 py-3 sm:px-5 sm:py-4 ${
-                index < statItems.length - 1 ? "border-b border-border/70 xl:border-b-0 xl:border-r" : ""
-              } ${index === 1 ? "sm:border-b-0 sm:border-r xl:border-r" : ""} ${index === 2 ? "xl:border-r" : ""}`}
-            >
-              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{item.label}</span>
-              <span className="text-xl font-semibold tracking-[-0.02em] sm:text-2xl">{item.value}</span>
+        <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-5">
+          {statItems.map((item) => (
+            <div key={item.label} className="flex items-baseline gap-1.5 text-xs">
+              <p className="truncate text-[10px] text-muted-foreground">{item.label}</p>
+              <p className="text-sm font-semibold tracking-[-0.02em] text-foreground">{item.value}</p>
             </div>
           ))}
         </CardContent>
@@ -180,34 +154,50 @@ export function AdminCompaniesPage() {
               {t("adminCompanies.noCompanies")}
             </div>
           ) : (
-            companies.map((company) => (
-              <div
-                key={company.id}
-                className="rounded-xl border border-border bg-muted/15 p-3 sm:p-4"
-              >
-                <div className="space-y-3">
-                  <div className="flex flex-col gap-1">
-                    <h3 className="text-sm font-semibold tracking-[-0.02em] sm:text-base">{company.name}</h3>
-                    <p className="text-[11px] text-muted-foreground">{t("adminCompanies.createdAt", { value: new Date(company.createdAt).toLocaleString() })}</p>
+            <TooltipProvider delayDuration={120}>
+              {companies.map((company) => (
+                <div
+                  key={company.id}
+                  className="flex items-center gap-2 rounded-xl border border-border bg-muted/15 px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h3 className="truncate text-xs font-semibold tracking-[-0.02em] text-foreground sm:text-sm">{company.name}</h3>
+                      <p className="shrink-0 text-[10px] text-muted-foreground">{t("adminCompanies.createdAt", { value: new Date(company.createdAt).toLocaleString() })}</p>
+                    </div>
                   </div>
 
-                  <div className="rounded-lg border border-border/80 bg-background px-3 py-2">
-                    <p className="text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{t("adminCompanies.databasePath")}</p>
-                    <p className="mt-1 break-all text-[11px] leading-5 text-foreground sm:text-xs">{company.databasePath}</p>
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <Dialog>
-                      <DialogTrigger asChild>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
                         <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 w-full justify-center rounded-lg px-3 text-[11px] sm:text-xs"
-                          onClick={() => setNewAdmin((current) => ({ ...current, companyId: company.id }))}
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+                          onClick={() => void downloadCompanyDb(company)}
                         >
-                          {t("adminCompanies.addAdmin")}
+                          <Download className="h-3.5 w-3.5" />
                         </Button>
-                      </DialogTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("adminCompanies.downloadDatabase")}</TooltipContent>
+                    </Tooltip>
+
+                    <Dialog>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <DialogTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+                              onClick={() => setNewAdmin((current) => ({ ...current, companyId: company.id }))}
+                            >
+                              <ShieldPlus className="h-3.5 w-3.5" />
+                            </Button>
+                          </DialogTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>{t("adminCompanies.addAdmin")}</TooltipContent>
+                      </Tooltip>
                       <DialogContent>
                         <DialogHeader>
                           <DialogTitle>{t("adminCompanies.createCompanyAdmin")}</DialogTitle>
@@ -223,26 +213,24 @@ export function AdminCompaniesPage() {
                         </div>
                       </DialogContent>
                     </Dialog>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="h-8 w-full justify-center rounded-lg px-3 text-[11px] sm:text-xs"
-                      onClick={() => setPendingResetCompany(company)}
-                    >
-                      {t("common.resetDb")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="h-8 w-full justify-center rounded-lg px-3 text-[11px] sm:text-xs"
-                      onClick={() => setPendingDeleteCompany(company)}
-                    >
-                      {t("common.delete")}
-                    </Button>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 rounded-full text-destructive hover:text-destructive"
+                          onClick={() => setPendingDeleteCompany(company)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("common.delete")}</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
-              </div>
-            ))
+              ))}
+            </TooltipProvider>
           )}
         </CardContent>
       </Card>
