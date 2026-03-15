@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { CompanySettings, TabletCodeStatus } from "@shared/types/models";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageLabel } from "@/components/page-label";
@@ -59,6 +60,7 @@ function getDateTimeFormatPreview(locale: string, dateTimeFormat: string) {
 }
 
 export function SettingsMenuPage() {
+  const { t } = useTranslation();
   const { companySession } = useAuth();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [tabletCodeStatus, setTabletCodeStatus] = useState<TabletCodeStatus>(defaultTabletCode);
@@ -69,24 +71,24 @@ export function SettingsMenuPage() {
   const preview = useMemo(() => getLocalePreview(settings.locale), [settings.locale]);
   const dateTimePreview = useMemo(() => getDateTimeFormatPreview(settings.locale, settings.dateTimeFormat), [settings.dateTimeFormat, settings.locale]);
   const firstDayOptions = [
-    { value: "0", label: "Sunday" },
-    { value: "1", label: "Monday" },
-    { value: "2", label: "Tuesday" },
-    { value: "3", label: "Wednesday" },
-    { value: "4", label: "Thursday" },
-    { value: "5", label: "Friday" },
-    { value: "6", label: "Saturday" },
+    { value: "0", label: t("settings.sunday") },
+    { value: "1", label: t("settings.monday") },
+    { value: "2", label: t("settings.tuesday") },
+    { value: "3", label: t("settings.wednesday") },
+    { value: "4", label: t("settings.thursday") },
+    { value: "5", label: t("settings.friday") },
+    { value: "6", label: t("settings.saturday") },
   ];
   useEffect(() => {
     if (!companySession) return;
     void api.getSettings(companySession.token).then((response) => setSettings(response.settings)).catch((error) =>
       toast({
-        title: "Could not load settings",
+        title: t("settings.loadFailed"),
         description: error instanceof Error ? error.message : "Request failed",
       }),
     );
     void api.getTabletCodeStatus(companySession.token).then((response) => setTabletCodeStatus(response.tabletCode)).catch(() => undefined);
-  }, [companySession]);
+  }, [companySession, t]);
 
   async function handleSave() {
     if (!companySession) return;
@@ -94,10 +96,10 @@ export function SettingsMenuPage() {
       setSaving(true);
       const response = await api.updateSettings(companySession.token, settings);
       setSettings(response.settings);
-      toast({ title: "Settings saved" });
+      toast({ title: t("settings.saved") });
     } catch (error) {
       toast({
-        title: "Could not save settings",
+        title: t("settings.saveFailed"),
         description: error instanceof Error ? error.message : "Request failed",
       });
     } finally {
@@ -113,10 +115,10 @@ export function SettingsMenuPage() {
       setTabletCodeStatus(response.tabletCode);
       setTabletCodeOutput(response.code);
       setTabletCodeInput(response.code);
-      toast({ title: "Tablet code saved" });
+      toast({ title: t("settings.saveTabletCode") });
     } catch (error) {
       toast({
-        title: "Could not save tablet code",
+        title: t("settings.saveTabletCodeFailed"),
         description: error instanceof Error ? error.message : "Request failed",
       });
     } finally {
@@ -132,10 +134,10 @@ export function SettingsMenuPage() {
       setTabletCodeStatus(response.tabletCode);
       setTabletCodeOutput(response.code);
       setTabletCodeInput(response.code);
-      toast({ title: "Tablet code regenerated" });
+      toast({ title: t("settings.regenerateTabletCode") });
     } catch (error) {
       toast({
-        title: "Could not regenerate tablet code",
+        title: t("settings.regenerateTabletCodeFailed"),
         description: error instanceof Error ? error.message : "Request failed",
       });
     } finally {
@@ -145,17 +147,17 @@ export function SettingsMenuPage() {
 
   return (
     <FormPage>
-      <PageLabel title="Settings" description="Configure locale, limits, and the company-wide behavior." />
+      <PageLabel title={t("settings.title")} description={t("settings.description")} />
       <FormPanel>
         <FormSection>
           <FormFields>
-            <Field label="Currency">
+            <Field label={t("settings.currency")}>
               <Input placeholder="EUR" maxLength={3} value={settings.currency} onChange={(event) => setSettings((current) => ({ ...current, currency: event.target.value.toUpperCase() }))} />
             </Field>
-            <Field label="Locale">
+            <Field label={t("settings.locale")}>
               <Input placeholder="en-GB" value={settings.locale} onChange={(event) => setSettings((current) => ({ ...current, locale: event.target.value }))} />
             </Field>
-            <Field label="First day of week">
+            <Field label={t("settings.firstDayOfWeek")}>
               <FieldCombobox
                 label="first day"
                 value={String(settings.firstDayOfWeek)}
@@ -163,23 +165,23 @@ export function SettingsMenuPage() {
                 items={firstDayOptions}
               />
             </Field>
-            <Field label="Date and time format">
+            <Field label={t("settings.dateTimeFormat")}>
               <Input
                 placeholder="g"
                 value={settings.dateTimeFormat}
                 onChange={(event) => setSettings((current) => ({ ...current, dateTimeFormat: event.target.value }))}
               />
             </Field>
-            <Field label="Edit days limit">
+            <Field label={t("settings.editDaysLimit")}>
               <Input placeholder="30" type="number" min="0" value={settings.editDaysLimit} onChange={(event) => setSettings((current) => ({ ...current, editDaysLimit: Number(event.target.value) }))} />
             </Field>
-            <Field label="Insert days limit">
+            <Field label={t("settings.insertDaysLimit")}>
               <Input placeholder="30" type="number" min="0" value={settings.insertDaysLimit} onChange={(event) => setSettings((current) => ({ ...current, insertDaysLimit: Number(event.target.value) }))} />
             </Field>
-            <Field label="One record per day">
+            <Field label={t("settings.oneRecordPerDay")}>
               <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
                 <span className="text-sm text-foreground">
-                  {settings.allowOneRecordPerDay ? "Enabled" : "Disabled"}
+                  {settings.allowOneRecordPerDay ? t("settings.enabled") : t("settings.disabled")}
                 </span>
                 <Switch
                   checked={settings.allowOneRecordPerDay}
@@ -192,10 +194,10 @@ export function SettingsMenuPage() {
                 />
               </div>
             </Field>
-            <Field label="Allow intersecting records">
+            <Field label={t("settings.allowIntersectingRecords")}>
               <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
                 <span className="text-sm text-foreground">
-                  {settings.allowIntersectingRecords ? "Enabled" : "Disabled"}
+                  {settings.allowIntersectingRecords ? t("settings.enabled") : t("settings.disabled")}
                 </span>
                 <Switch
                   checked={settings.allowIntersectingRecords}
@@ -208,10 +210,10 @@ export function SettingsMenuPage() {
                 />
               </div>
             </Field>
-            <Field label="Country">
+            <Field label={t("settings.country")}>
               <Input placeholder="AT" maxLength={2} value={settings.country} onChange={(event) => setSettings((current) => ({ ...current, country: event.target.value.toUpperCase() }))} />
             </Field>
-            <Field label="Tablet idle timeout seconds">
+            <Field label={t("settings.tabletIdleTimeoutSeconds")}>
               <Input
                 placeholder="10"
                 type="number"
@@ -225,7 +227,7 @@ export function SettingsMenuPage() {
                 }
               />
             </Field>
-            <Field label="Auto break after hours">
+            <Field label={t("settings.autoBreakAfterHours")}>
               <Input
                 placeholder="5"
                 type="number"
@@ -240,7 +242,7 @@ export function SettingsMenuPage() {
                 }
               />
             </Field>
-            <Field label="Auto break duration minutes">
+            <Field label={t("settings.autoBreakDurationMinutes")}>
               <Input
                 placeholder="30"
                 type="number"
@@ -260,23 +262,23 @@ export function SettingsMenuPage() {
         <FormSection>
           <div className="rounded-2xl border border-border p-4 text-sm">
             <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Language</span>
+              <span className="text-muted-foreground">{t("settings.language")}</span>
               <span>{preview.language}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Decimal mark</span>
+              <span className="text-muted-foreground">{t("settings.decimalMark")}</span>
               <span>{preview.decimalMark}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Date format</span>
+              <span className="text-muted-foreground">{t("settings.dateFormat")}</span>
               <span>{preview.dateFormat}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Time format</span>
+              <span className="text-muted-foreground">{t("settings.timeFormat")}</span>
               <span>{preview.timeFormat}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">Date-time preview</span>
+              <span className="text-muted-foreground">{t("settings.dateTimePreview")}</span>
               <span>{dateTimePreview}</span>
             </div>
           </div>
@@ -285,13 +287,13 @@ export function SettingsMenuPage() {
         <FormSection>
           <div className="flex flex-col gap-4 rounded-2xl border border-border p-4">
             <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium text-foreground">Tablet access</p>
+              <p className="text-sm font-medium text-foreground">{t("settings.tabletAccess")}</p>
               <p className="text-sm text-muted-foreground">
-                Create or rotate the shared tablet code used before PIN entry.
+                {t("settings.tabletAccessDescription")}
               </p>
             </div>
             <FormFields>
-              <Field label="Tablet code">
+              <Field label={t("settings.tabletCode")}>
                 <Input
                   placeholder="ABCD-EFGH-IJKL"
                   value={tabletCodeInput}
@@ -300,7 +302,7 @@ export function SettingsMenuPage() {
               </Field>
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="text-muted-foreground">
-                  {tabletCodeStatus.configured ? "Tablet mode is active" : "No tablet code configured"}
+                  {tabletCodeStatus.configured ? t("settings.tabletModeActive") : t("settings.noTabletCode")}
                 </span>
                 {tabletCodeStatus.updatedAt ? (
                   <span className="text-muted-foreground">{formatCompanyDateTime(tabletCodeStatus.updatedAt, settings.locale, settings.dateTimeFormat)}</span>
@@ -308,7 +310,7 @@ export function SettingsMenuPage() {
               </div>
               {tabletCodeOutput ? (
                 <div className="rounded-2xl border border-border bg-muted/30 px-4 py-3 text-sm">
-                  <p className="text-muted-foreground">Current code</p>
+                  <p className="text-muted-foreground">{t("settings.currentCode")}</p>
                   <p className="text-base font-medium tracking-[0.16em] text-foreground">{tabletCodeOutput}</p>
                 </div>
               ) : null}
@@ -319,10 +321,10 @@ export function SettingsMenuPage() {
                 onClick={() => void handleSaveTabletCode()}
                 type="button"
               >
-                {tabletSaving ? "Saving..." : tabletCodeStatus.configured ? "Change code" : "Create code"}
+                {tabletSaving ? t("settings.saving") : tabletCodeStatus.configured ? t("settings.changeCode") : t("settings.createCode")}
               </Button>
               <Button disabled={tabletSaving} variant="ghost" onClick={() => void handleRegenerateTabletCode()} type="button">
-                Regenerate
+                {t("settings.regenerate")}
               </Button>
             </div>
           </div>
@@ -330,7 +332,7 @@ export function SettingsMenuPage() {
 
         <FormActions>
           <Button disabled={saving} onClick={() => void handleSave()} type="button">
-            {saving ? "Saving..." : "Save"}
+            {saving ? t("settings.saving") : t("settings.save")}
           </Button>
         </FormActions>
       </FormPanel>

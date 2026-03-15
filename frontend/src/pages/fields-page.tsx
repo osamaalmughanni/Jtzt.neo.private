@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { CompanyCustomField, CompanyCustomFieldOption, CompanySettings, TimeEntryType } from "@shared/types/models";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormSection } from "@/components/form-layout";
 import { PageLabel } from "@/components/page-label";
@@ -46,31 +47,32 @@ function createOption(): CompanyCustomFieldOption {
 }
 
 export function FieldsPage() {
+  const { t } = useTranslation();
   const { companySession } = useAuth();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [saving, setSaving] = useState(false);
   const fieldTypeOptions = [
-    { value: "text", label: "Text" },
-    { value: "number", label: "Number" },
-    { value: "date", label: "Date" },
-    { value: "boolean", label: "Yes / no" },
-    { value: "select", label: "Select" },
+    { value: "text", label: t("fields.typeText") },
+    { value: "number", label: t("fields.typeNumber") },
+    { value: "date", label: t("fields.typeDate") },
+    { value: "boolean", label: t("fields.typeBoolean") },
+    { value: "select", label: t("fields.typeSelect") },
   ];
   const targetOptions: Array<{ value: TimeEntryType; label: string }> = [
-    { value: "work", label: "Working" },
-    { value: "vacation", label: "Vacation" },
-    { value: "sick_leave", label: "Sick leave" },
+    { value: "work", label: t("fields.targetWork") },
+    { value: "vacation", label: t("fields.targetVacation") },
+    { value: "sick_leave", label: t("fields.targetSickLeave") },
   ];
 
   useEffect(() => {
     if (!companySession) return;
     void api.getSettings(companySession.token).then((response) => setSettings(response.settings)).catch((error) =>
       toast({
-        title: "Could not load fields",
+        title: t("fields.loadFailed"),
         description: error instanceof Error ? error.message : "Request failed",
       }),
     );
-  }, [companySession]);
+  }, [companySession, t]);
 
   function setField(index: number, nextField: CompanyCustomField) {
     setSettings((current) => ({
@@ -116,17 +118,17 @@ export function FieldsPage() {
         };
 
         if (cleanedField.label.length < 2) {
-          throw new Error("Each field needs a label");
+          throw new Error(t("fields.labelRequired"));
         }
 
         if (cleanedField.targets.length === 0) {
-          throw new Error(`${cleanedField.label} needs at least one target`);
+          throw new Error(t("fields.targetRequired", { label: cleanedField.label }));
         }
 
         if (cleanedField.type === "select") {
           const validOptions = cleanedField.options.filter((option) => option.label.length > 0 && option.value.length > 0);
           if (validOptions.length === 0) {
-            throw new Error(`${cleanedField.label} needs at least one option`);
+            throw new Error(t("fields.optionRequired", { label: cleanedField.label }));
           }
           cleanedField.options = validOptions;
         } else {
@@ -142,10 +144,10 @@ export function FieldsPage() {
         customFields: cleanedFields,
       });
       setSettings(response.settings);
-      toast({ title: "Fields saved" });
+      toast({ title: t("fields.saved") });
     } catch (error) {
       toast({
-        title: "Could not save fields",
+        title: t("fields.saveFailed"),
         description: error instanceof Error ? error.message : "Request failed",
       });
     } finally {
@@ -155,11 +157,11 @@ export function FieldsPage() {
 
   return (
     <FormPage>
-      <PageLabel title="Fields" description="Define the custom data users must fill for working, vacation, or sick leave." />
+      <PageLabel title={t("fields.title")} description={t("fields.description")} />
       <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-5">
-        <p className="text-sm text-muted-foreground">Create fields with their type, targets, and predefined options.</p>
+        <p className="text-sm text-muted-foreground">{t("fields.intro")}</p>
         <Button variant="outline" onClick={() => setSettings((current) => ({ ...current, customFields: [...current.customFields, createField()] }))} type="button">
-          Add field
+          {t("fields.addField")}
         </Button>
       </div>
 
@@ -170,10 +172,10 @@ export function FieldsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex flex-col gap-1">
                   <p className="text-sm font-medium text-foreground">
-                    {field.label.trim() || `Field ${index + 1}`}
+                    {field.label.trim() || t("fields.field", { index: index + 1 })}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {field.type === "select" ? "Select with predefined options" : `Type: ${field.type}`}
+                    {field.type === "select" ? t("fields.selectWithOptions") : t("fields.typeValue", { value: field.type })}
                   </p>
                 </div>
                 <Button
@@ -186,17 +188,17 @@ export function FieldsPage() {
                   }
                   type="button"
                 >
-                  Remove field
+                  {t("fields.removeField")}
                 </Button>
               </div>
 
               <FormFields>
-                <Field label="Label">
-                  <Input placeholder="Client code" value={field.label} onChange={(event) => setField(index, { ...field, label: event.target.value })} />
+                <Field label={t("fields.label")}>
+                  <Input placeholder={t("fields.labelPlaceholder")} value={field.label} onChange={(event) => setField(index, { ...field, label: event.target.value })} />
                 </Field>
-                <Field label="Type">
+                <Field label={t("fields.type")}>
                   <FieldCombobox
-                    label="field type"
+                    label={t("fields.type")}
                     value={field.type}
                     onValueChange={(value) => {
                       const nextType = value as CompanyCustomField["type"];
@@ -209,16 +211,16 @@ export function FieldsPage() {
                     items={fieldTypeOptions}
                   />
                 </Field>
-                <Field label="Placeholder">
-                  <Input placeholder="Enter client code" value={field.placeholder ?? ""} onChange={(event) => setField(index, { ...field, placeholder: event.target.value || null })} />
+                <Field label={t("fields.placeholder")}>
+                  <Input placeholder={t("fields.placeholderPlaceholder")} value={field.placeholder ?? ""} onChange={(event) => setField(index, { ...field, placeholder: event.target.value || null })} />
                 </Field>
-                <Field label="Required">
+                <Field label={t("fields.required")}>
                   <div className="flex items-center justify-between rounded-xl border border-border bg-transparent px-3 py-3">
-                    <span className="text-sm text-foreground">User must fill this field</span>
+                    <span className="text-sm text-foreground">{t("fields.requiredDescription")}</span>
                     <Switch checked={field.required} onCheckedChange={(checked) => setField(index, { ...field, required: checked })} />
                   </div>
                 </Field>
-                <Field label="Applies to">
+                <Field label={t("fields.appliesTo")}>
                   <div className="flex flex-wrap gap-2">
                     {targetOptions.map((target) => (
                       <Button
@@ -237,24 +239,24 @@ export function FieldsPage() {
               {field.type === "select" ? (
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-foreground">Options</p>
+                    <p className="text-sm font-medium text-foreground">{t("fields.options")}</p>
                     <Button
                       variant="ghost"
                       onClick={() => setField(index, { ...field, options: [...field.options, createOption()] })}
                       type="button"
                     >
-                      Add option
+                      {t("fields.addOption")}
                     </Button>
                   </div>
                   <div className="flex flex-col gap-3">
                     {field.options.map((option, optionIndex) => (
                       <div key={option.id} className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4">
                         <FormFields>
-                          <Field label="Option label">
-                            <Input placeholder="On-site" value={option.label} onChange={(event) => setOption(index, optionIndex, { ...option, label: event.target.value })} />
+                          <Field label={t("fields.optionLabel")}>
+                            <Input placeholder={t("fields.optionLabelPlaceholder")} value={option.label} onChange={(event) => setOption(index, optionIndex, { ...option, label: event.target.value })} />
                           </Field>
-                          <Field label="Stored value">
-                            <Input placeholder="on_site" value={option.value} onChange={(event) => setOption(index, optionIndex, { ...option, value: event.target.value })} />
+                          <Field label={t("fields.storedValue")}>
+                            <Input placeholder={t("fields.storedValuePlaceholder")} value={option.value} onChange={(event) => setOption(index, optionIndex, { ...option, value: event.target.value })} />
                           </Field>
                         </FormFields>
                         <div className="flex justify-end">
@@ -263,7 +265,7 @@ export function FieldsPage() {
                             onClick={() => setField(index, { ...field, options: field.options.filter((_, currentIndex) => currentIndex !== optionIndex) })}
                             type="button"
                           >
-                            Remove option
+                            {t("fields.removeOption")}
                           </Button>
                         </div>
                       </div>
@@ -276,7 +278,7 @@ export function FieldsPage() {
 
           {settings.customFields.length === 0 ? (
             <div className="rounded-2xl border border-border bg-card p-5">
-              <p className="text-sm text-muted-foreground">No fields yet.</p>
+              <p className="text-sm text-muted-foreground">{t("fields.empty")}</p>
             </div>
           ) : null}
         </div>
@@ -284,7 +286,7 @@ export function FieldsPage() {
 
       <FormActions>
         <Button disabled={saving} onClick={() => void handleSave()} type="button">
-          {saving ? "Saving..." : "Save"}
+          {saving ? t("fields.saving") : t("fields.save")}
         </Button>
       </FormActions>
     </FormPage>

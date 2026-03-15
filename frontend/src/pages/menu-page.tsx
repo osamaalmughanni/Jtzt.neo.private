@@ -1,29 +1,31 @@
 import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { FormPage } from "@/components/form-layout";
 import { PageLabel } from "@/components/page-label";
 import { useAuth } from "@/lib/auth";
 
 export function MenuPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { companyIdentity, logoutCompany } = useAuth();
 
   const items = [
-    { to: "/dashboard", title: "Dashboard" },
+    { to: "/dashboard", title: t("menu.dashboard") },
     ...((companyIdentity?.user.role === "admin" || companyIdentity?.user.role === "manager")
-      ? [{ to: "/reports", title: "Reports" }]
+      ? [{ to: "/reports", title: t("menu.reports") }]
       : []),
     ...(companyIdentity?.user.role === "admin"
       ? [
-          { to: "/users", title: "Users" },
-          { to: "/fields", title: "Fields" },
-          { to: "/settings", title: "Settings" }
+          { to: "/users", title: t("menu.users") },
+          { to: "/fields", title: t("menu.fields") },
+          { to: "/settings", title: t("menu.settings") }
         ]
       : [])
   ];
 
   return (
     <FormPage>
-      <PageLabel title="Pages" description="Open the main areas of the workspace." />
+      <PageLabel title={t("menu.title")} description={t("menu.description")} />
       <nav className="flex flex-col">
         {items.map((item) => (
           <Link
@@ -46,7 +48,7 @@ export function MenuPage() {
         }}
         type="button"
       >
-        Log out
+        {t("menu.logout")}
       </button>
     </FormPage>
   );

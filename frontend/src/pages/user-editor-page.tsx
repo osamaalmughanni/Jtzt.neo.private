@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { formatLocalDay } from "@shared/utils/time";
 import type { UserContractInput } from "@shared/types/api";
 import type { UserRole } from "@shared/types/models";
@@ -46,38 +47,34 @@ function createEmptyForm(): UserFormState {
   };
 }
 
-function validateContracts(contracts: UserContractInput[]) {
-  if (contracts.length > 100) throw new Error("A user can have at most 100 contracts");
+function validateContracts(contracts: UserContractInput[], t: (key: string) => string) {
+  if (contracts.length > 100) throw new Error(t("userEditor.contractMax"));
   const sorted = [...contracts].sort((left, right) => left.startDate.localeCompare(right.startDate));
   for (let index = 0; index < sorted.length; index += 1) {
     const contract = sorted[index];
-    if (!contract.startDate) throw new Error("Each contract needs a start date");
-    if (contract.endDate !== null && contract.startDate > contract.endDate) throw new Error("Contract end date must be after the start date");
+    if (!contract.startDate) throw new Error(t("userEditor.contractStartRequired"));
+    if (contract.endDate !== null && contract.startDate > contract.endDate) throw new Error(t("userEditor.contractEndAfterStart"));
     const previous = sorted[index - 1];
-    if (previous && contract.startDate <= (previous.endDate ?? "9999-12-31")) throw new Error("Contracts cannot overlap");
+    if (previous && contract.startDate <= (previous.endDate ?? "9999-12-31")) throw new Error(t("userEditor.contractsOverlap"));
   }
 
   const today = new Date().toISOString().slice(0, 10);
   const hasCurrentContract = sorted.some((contract) => contract.startDate <= today && (contract.endDate === null || contract.endDate >= today));
-  if (!hasCurrentContract) throw new Error("A current active contract is required");
+  if (!hasCurrentContract) throw new Error(t("userEditor.currentContractRequired"));
 }
 
-function isCurrentContract(contract: UserContractInput) {
+function getContractStatus(contract: UserContractInput, t: (key: string) => string) {
   const today = new Date().toISOString().slice(0, 10);
-  return contract.startDate <= today && (contract.endDate === null || contract.endDate >= today);
-}
-
-function getContractStatus(contract: UserContractInput) {
-  const today = new Date().toISOString().slice(0, 10);
-  if (!contract.startDate) return "Draft";
-  if (contract.startDate > today) return "Upcoming";
-  if (contract.endDate === null || contract.endDate >= today) return "Current";
-  return "Past";
+  if (!contract.startDate) return t("userEditor.draft");
+  if (contract.startDate > today) return t("userEditor.upcoming");
+  if (contract.endDate === null || contract.endDate >= today) return t("userEditor.current");
+  return t("userEditor.past");
 }
 
 export function UserEditorPage({ mode }: UserEditorPageProps) {
   const { userId } = useParams();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { companySession, companyIdentity } = useAuth();
   const [settingsLocale, setSettingsLocale] = useState("en-GB");
   const [form, setForm] = useState<UserFormState>(createEmptyForm);
@@ -85,13 +82,13 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const statusOptions = [
-    { value: "active", label: "Active" },
-    { value: "inactive", label: "Inactive" }
+    { value: "active", label: t("userEditor.active") },
+    { value: "inactive", label: t("userEditor.inactive") }
   ];
   const roleOptions = [
-    { value: "admin", label: "Admin" },
-    { value: "manager", label: "Manager" },
-    { value: "employee", label: "Employee" }
+    { value: "admin", label: t("userEditor.admin") },
+    { value: "manager", label: t("userEditor.manager") },
+    { value: "employee", label: t("userEditor.employee") }
   ];
 
   useEffect(() => {
@@ -124,12 +121,12 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
       )
       .catch((error) =>
         toast({
-          title: "Could not load user",
+          title: t("userEditor.loadFailed"),
           description: error instanceof Error ? error.message : "Request failed"
         })
       )
       .finally(() => setLoading(false));
-  }, [companySession, mode, userId]);
+  }, [companySession, mode, t, userId]);
 
   function setField<K extends keyof UserFormState>(key: K, value: UserFormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -146,7 +143,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
 
   function addContract() {
     if (form.contracts.length >= 100) {
-      toast({ title: "Contract limit reached", description: "A user can have at most 100 contracts." });
+      toast({ title: t("userEditor.contractLimitReached"), description: t("userEditor.contractLimitDescription") });
       return;
     }
     setForm((current) => ({ ...current, contracts: [...current.contracts, createEmptyContract()] }));
@@ -176,13 +173,13 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     if (!companySession) return;
 
     try {
-      if (form.fullName.trim().length < 2) throw new Error("Full name is required");
-      if (form.username.trim().length < 2) throw new Error("Username is required");
-      if (mode === "create" && form.password.trim().length < 6) throw new Error("Password must be at least 6 characters");
-      if (form.password.trim().length > 0 && form.password.trim().length < 6) throw new Error("Password must be at least 6 characters");
-      if (!/^\d{4}$/.test(form.pinCode.trim())) throw new Error("PIN code must be exactly 4 digits");
-      if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) throw new Error("Enter a valid email");
-      validateContracts(form.contracts);
+      if (form.fullName.trim().length < 2) throw new Error(t("userEditor.fullNameRequired"));
+      if (form.username.trim().length < 2) throw new Error(t("userEditor.usernameRequired"));
+      if (mode === "create" && form.password.trim().length < 6) throw new Error(t("userEditor.passwordLength"));
+      if (form.password.trim().length > 0 && form.password.trim().length < 6) throw new Error(t("userEditor.passwordLength"));
+      if (!/^\d{4}$/.test(form.pinCode.trim())) throw new Error(t("userEditor.pinInvalid"));
+      if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) throw new Error(t("userEditor.emailInvalid"));
+      validateContracts(form.contracts, t);
 
       setSaving(true);
       const payload = {
@@ -204,15 +201,15 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
 
       if (mode === "create") {
         const response = await api.createUser(companySession.token, payload);
-        toast({ title: "User created" });
+        toast({ title: t("userEditor.created") });
         navigate(`/users/${response.userId}/edit`);
       } else {
         await api.updateUser(companySession.token, { userId: Number(userId), ...payload, password: payload.password || undefined });
-        toast({ title: "User saved" });
+        toast({ title: t("userEditor.saved") });
       }
     } catch (error) {
       toast({
-        title: "Could not save user",
+        title: t("userEditor.saveFailed"),
         description: error instanceof Error ? error.message : "Request failed"
       });
     } finally {
@@ -222,16 +219,16 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
 
   async function handleDelete() {
     if (!companySession || mode !== "edit" || !userId) return;
-    if (!window.confirm(`Delete ${form.fullName}?`)) return;
+    if (!window.confirm(t("userEditor.deleteConfirm", { name: form.fullName }))) return;
 
     try {
       setDeleting(true);
       await api.deleteUser(companySession.token, { userId: Number(userId) });
-      toast({ title: "User deleted" });
+      toast({ title: t("userEditor.deleted") });
       navigate("/users");
     } catch (error) {
       toast({
-        title: "Could not delete user",
+        title: t("userEditor.deleteFailed"),
         description: error instanceof Error ? error.message : "Request failed"
       });
     } finally {
@@ -241,10 +238,10 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
 
   return (
     <FormPage>
-      <PageBackAction to="/users" label="Back to users" />
+      <PageBackAction to="/users" label={t("userEditor.back")} />
       <PageLabel
-        title={mode === "create" ? "Create user" : "Edit user"}
-        description={mode === "create" ? "Create a user profile and contracts." : "Edit user profile, status, role, PIN, and contracts."}
+        title={mode === "create" ? t("userEditor.createTitle") : t("userEditor.editTitle")}
+        description={mode === "create" ? t("userEditor.createDescription") : t("userEditor.editDescription")}
       />
       <FormPanel className="flex flex-col gap-6">
         {mode === "edit" && loading ? (
@@ -260,13 +257,13 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
 
             <FormSection>
               <FormFields>
-                <Field label="Name">
+                <Field label={t("userEditor.name")}>
                   <Input placeholder="Jane Doe" value={form.fullName} onChange={(event) => setField("fullName", event.target.value)} />
                 </Field>
-                <Field label="E-mail">
+                <Field label={t("userEditor.email")}>
                   <Input placeholder="jane@company.com" type="email" value={form.email} onChange={(event) => setField("email", event.target.value)} />
                 </Field>
-                <Field label="Status">
+                <Field label={t("userEditor.status")}>
                   <FieldCombobox
                     label="status"
                     value={form.isActive ? "active" : "inactive"}
@@ -279,10 +276,10 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
 
             <FormSection>
               <FormFields>
-                <Field label="Username">
+                <Field label={t("userEditor.username")}>
                   <Input placeholder="jane" value={form.username} onChange={(event) => setField("username", event.target.value)} />
                 </Field>
-                <Field label="PIN code">
+                <Field label={t("userEditor.pin")}>
                   <Input
                     inputMode="numeric"
                     maxLength={4}
@@ -291,15 +288,15 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
                     onChange={(event) => setField("pinCode", event.target.value.replace(/\D/g, "").slice(0, 4))}
                   />
                 </Field>
-                <Field label="Password">
+                <Field label={t("userEditor.password")}>
                   <Input
                     type="password"
-                    placeholder={mode === "edit" ? "Leave blank to keep current password" : "At least 6 characters"}
+                    placeholder={mode === "edit" ? t("userEditor.passwordPlaceholderEdit") : t("userEditor.passwordPlaceholderCreate")}
                     value={form.password}
                     onChange={(event) => setField("password", event.target.value)}
                   />
                 </Field>
-                <Field label="Role">
+                <Field label={t("userEditor.role")}>
                   <FieldCombobox
                     label="role"
                     value={form.role}
@@ -312,42 +309,42 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
 
             <FormSection>
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-foreground">Contracts</p>
+                <p className="text-sm font-medium text-foreground">{t("userEditor.contracts")}</p>
                 <div className="flex gap-2">
                   <Button variant="ghost" onClick={addCurrentContract} type="button">
-                    New current
+                    {t("userEditor.newCurrent")}
                   </Button>
                   <Button variant="outline" onClick={addContract} type="button">
-                    Add contract
+                    {t("userEditor.addContract")}
                   </Button>
                 </div>
               </div>
 
-              {form.contracts.length === 0 ? <p className="text-sm text-muted-foreground">No contracts yet.</p> : null}
+              {form.contracts.length === 0 ? <p className="text-sm text-muted-foreground">{t("userEditor.noContracts")}</p> : null}
 
               <div className="flex flex-col gap-4">
                 {form.contracts.map((contract, index) => (
                   <div key={`${contract.id ?? "new"}-${index}`} className="flex flex-col gap-4 rounded-2xl border border-border bg-background p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-foreground">Contract {index + 1}</p>
+                        <p className="text-sm font-medium text-foreground">{t("userEditor.contract", { index: index + 1 })}</p>
                         <span className="rounded-full border border-border bg-muted px-2 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                          {getContractStatus(contract)}
+                          {getContractStatus(contract, t)}
                         </span>
                       </div>
-                      <Button variant="ghost" onClick={() => removeContract(index)} type="button">
-                        Remove
-                      </Button>
+                        <Button variant="ghost" onClick={() => removeContract(index)} type="button">
+                          {t("userEditor.remove")}
+                        </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {contract.startDate || "No start date"} {contract.endDate ? `to ${contract.endDate}` : "to open end"}
+                      {contract.startDate || t("userEditor.noStartDate")} {contract.endDate ? `${t("userEditor.to")} ${contract.endDate}` : t("userEditor.openEnd")}
                     </p>
                     <FormFields>
-                      <Field label="Current contract">
+                      <Field label={t("userEditor.currentContract")}>
                         <div className="flex items-center justify-between rounded-xl border border-border bg-muted/40 px-3 py-3">
                           <div className="flex flex-col gap-1">
-                            <p className="text-sm text-foreground">Keep this contract open-ended</p>
-                            <p className="text-xs text-muted-foreground">Turn this on to remove the end date and mark it as the active contract period.</p>
+                            <p className="text-sm text-foreground">{t("userEditor.currentContractLabel")}</p>
+                            <p className="text-xs text-muted-foreground">{t("userEditor.currentContractDescription")}</p>
                           </div>
                           <Switch
                             checked={contract.endDate === null}
@@ -355,7 +352,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
                           />
                         </div>
                       </Field>
-                      <Field label="Hours per week">
+                      <Field label={t("userEditor.hoursPerWeek")}>
                         <Input
                           type="number"
                           min="0"
@@ -365,15 +362,15 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
                           onChange={(event) => setContractField(index, "hoursPerWeek", Number(event.target.value))}
                         />
                       </Field>
-                      <Field label="Start date">
+                      <Field label={t("userEditor.startDate")}>
                         <DateInput value={contract.startDate} locale={settingsLocale} onChange={(value) => setContractField(index, "startDate", value)} />
                       </Field>
                       {contract.endDate === null ? null : (
-                        <Field label="End date">
+                        <Field label={t("userEditor.endDate")}>
                           <DateInput value={contract.endDate ?? ""} locale={settingsLocale} onChange={(value) => setContractField(index, "endDate", value || null)} />
                         </Field>
                       )}
-                      <Field label="Payment per hour">
+                      <Field label={t("userEditor.paymentPerHour")}>
                         <Input
                           type="number"
                           min="0"
@@ -397,11 +394,11 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
                   onClick={() => void handleDelete()}
                   type="button"
                 >
-                  {companyIdentity?.user.id === Number(userId) ? "Active user" : deleting ? "Deleting..." : "Delete"}
+                  {companyIdentity?.user.id === Number(userId) ? t("userEditor.activeUser") : deleting ? t("userEditor.deleting") : t("userEditor.delete")}
                 </Button>
               ) : null}
               <Button disabled={saving || loading} onClick={() => void handleSave()} type="button">
-                {saving ? "Saving..." : "Save"}
+                {saving ? t("userEditor.saving") : t("userEditor.save")}
               </Button>
             </FormActions>
           </>

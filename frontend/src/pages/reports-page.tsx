@@ -1,5 +1,6 @@
 import { CheckCheck, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { CompanySettings, CompanyUserListItem } from "@shared/types/models";
 import type { ReportRequestInput } from "@shared/types/api";
@@ -43,12 +44,16 @@ function InlineMultiSelector({
   options,
   search,
   onSearchChange,
+  searchPlaceholder,
+  emptyText,
 }: {
   value: string[];
   onChange: (value: string[]) => void;
   options: ReportOption[];
   search: string;
   onSearchChange: (value: string) => void;
+  searchPlaceholder: string;
+  emptyText: string;
 }) {
   const filteredOptions = options.filter((option) => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -68,7 +73,7 @@ function InlineMultiSelector({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <Input className="flex-1" placeholder="Search" value={search} onChange={(event) => onSearchChange(event.target.value)} />
+        <Input className="flex-1" placeholder={searchPlaceholder} value={search} onChange={(event) => onSearchChange(event.target.value)} />
         <Button
           aria-label="Select all"
           size="icon"
@@ -90,7 +95,7 @@ function InlineMultiSelector({
       </div>
       <div className="flex max-h-56 flex-col overflow-y-auto rounded-md border border-border">
         {filteredOptions.length === 0 ? (
-          <div className="px-3 py-2 text-sm text-muted-foreground">No results.</div>
+          <div className="px-3 py-2 text-sm text-muted-foreground">{emptyText}</div>
         ) : (
           filteredOptions.map((option) => {
             const selected = value.includes(option.value);
@@ -158,6 +163,7 @@ function getAllFieldValues(baseFieldOptions: ReportOption[], customFieldOptions:
 
 export function ReportsPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const { companySession } = useAuth();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
@@ -194,30 +200,30 @@ export function ReportsPage() {
       }));
     }).catch((error) =>
       toast({
-        title: "Could not load report options",
+        title: t("reports.loadFailed"),
         description: error instanceof Error ? error.message : "Request failed",
       }),
     );
-  }, [companySession]);
+  }, [companySession, savedDraft, t]);
 
   const periodOptions: ReportOption[] = [
-    { value: "custom", label: "Custom dates" },
-    { value: "this_week", label: "This week" },
-    { value: "this_month", label: "This month" },
-    { value: "this_year", label: "This year" },
-    { value: "last_month", label: "Last month" },
+    { value: "custom", label: t("reports.customDates") },
+    { value: "this_week", label: t("reports.thisWeek") },
+    { value: "this_month", label: t("reports.thisMonth") },
+    { value: "this_year", label: t("reports.thisYear") },
+    { value: "last_month", label: t("reports.lastMonth") },
   ];
 
   const baseFieldOptions: ReportOption[] = [
-    { value: "user", label: "User" },
-    { value: "role", label: "Role" },
-    { value: "type", label: "Type" },
-    { value: "date", label: "Date" },
-    { value: "start", label: "Start" },
-    { value: "finish", label: "Finish" },
-    { value: "duration", label: "Duration" },
-    { value: "note", label: "Note" },
-    { value: "cost", label: "Cost" },
+    { value: "user", label: t("reports.user") },
+    { value: "role", label: t("reports.role") },
+    { value: "type", label: t("reports.type") },
+    { value: "date", label: t("reports.date") },
+    { value: "start", label: t("reports.start") },
+    { value: "finish", label: t("reports.finish") },
+    { value: "duration", label: t("reports.duration") },
+    { value: "note", label: t("reports.note") },
+    { value: "cost", label: t("reports.cost") },
   ];
 
   const customFieldOptions = settings.customFields.map((field) => ({
@@ -227,12 +233,12 @@ export function ReportsPage() {
 
   const allFieldOptions = [...baseFieldOptions, ...customFieldOptions];
   const groupingOptions: ReportOption[] = [
-    { value: "", label: "No grouping" },
-    { value: "user", label: "User" },
-    { value: "role", label: "Role" },
-    { value: "type", label: "Type" },
-    { value: "date", label: "Day" },
-    { value: "month", label: "Month" },
+    { value: "", label: t("reports.noGrouping") },
+    { value: "user", label: t("reports.user") },
+    { value: "role", label: t("reports.role") },
+    { value: "type", label: t("reports.type") },
+    { value: "date", label: t("reports.day") },
+    { value: "month", label: t("reports.thisMonth") },
     ...customFieldOptions,
   ];
 
@@ -271,15 +277,15 @@ export function ReportsPage() {
 
   function handleCreateReport() {
     if (draft.userIds.length === 0) {
-      toast({ title: "Select at least one user" });
+      toast({ title: t("reports.selectUserRequired") });
       return;
     }
     if (draft.columns.length === 0) {
-      toast({ title: "Select at least one field" });
+      toast({ title: t("reports.selectFieldRequired") });
       return;
     }
     if (draft.endDate < draft.startDate) {
-      toast({ title: "End date must be on or after start date" });
+      toast({ title: t("reports.invalidDateRange") });
       return;
     }
 
@@ -290,11 +296,11 @@ export function ReportsPage() {
 
   return (
     <FormPage>
-      <PageLabel title="Reports" description="Choose the users, period, fields, and grouping before generating a report preview." />
+      <PageLabel title={t("reports.title")} description={t("reports.description")} />
       <FormPanel className="flex flex-col gap-6">
         <FormSection>
           <FormFields>
-            <Field label="Select time period or set dates">
+            <Field label={t("reports.selectTimePeriod")}>
               <FieldCombobox
                 label="time period"
                 value={draft.periodPreset}
@@ -305,51 +311,55 @@ export function ReportsPage() {
                 items={periodOptions}
               />
             </Field>
-            <Field label="Start date">
+            <Field label={t("reports.startDate")}>
               <DateInput value={draft.startDate} locale={settings.locale} onChange={(value) => setDraft((current) => ({ ...current, periodPreset: "custom", startDate: value }))} />
             </Field>
-            <Field label="End date">
+            <Field label={t("reports.endDate")}>
               <DateInput value={draft.endDate} locale={settings.locale} onChange={(value) => setDraft((current) => ({ ...current, periodPreset: "custom", endDate: value }))} />
             </Field>
           </FormFields>
         </FormSection>
 
         <FormSection>
-          <Field label="Users">
+          <Field label={t("reports.users")}>
             <InlineMultiSelector
               value={draft.userIds.map(String)}
               onChange={(values) => setDraft((current) => ({ ...current, userIds: values.map(Number) }))}
               options={userOptions}
               search={userSearch}
               onSearchChange={setUserSearch}
+              searchPlaceholder={t("reports.search")}
+              emptyText={t("reports.noResults")}
             />
           </Field>
         </FormSection>
 
         <FormSection>
-          <Field label="User fields">
+          <Field label={t("reports.userFields")}>
             <InlineMultiSelector
               value={draft.columns}
               onChange={(values) => setDraft((current) => ({ ...current, columns: values }))}
               options={allFieldOptions}
               search={fieldSearch}
               onSearchChange={setFieldSearch}
+              searchPlaceholder={t("reports.search")}
+              emptyText={t("reports.noResults")}
             />
           </Field>
         </FormSection>
 
         <FormSection>
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-foreground">Grouping</p>
+            <p className="text-sm font-medium text-foreground">{t("reports.grouping")}</p>
             <Button variant="ghost" onClick={addGroupingLevel} type="button">
-              Add level
+              {t("reports.addLevel")}
             </Button>
           </div>
           <div className="flex flex-col gap-3">
             {selectedGroups.map((groupValue, index) => (
               <div key={`${index}-${groupValue || "empty"}`} className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <div className="min-w-0 flex-1">
-                  <Field label={index === 0 ? "Group by" : `Then by ${index}`}>
+                  <Field label={index === 0 ? t("reports.groupBy") : t("reports.thenBy", { index })}>
                     <FieldCombobox
                       label={`grouping ${index + 1}`}
                       value={groupValue}
@@ -360,16 +370,16 @@ export function ReportsPage() {
                 </div>
                 {draft.groupBy.length > 0 ? (
                   <Button className="sm:self-auto" variant="ghost" onClick={() => removeGroupingLevel(index)} type="button">
-                    Remove
+                    {t("reports.remove")}
                   </Button>
                 ) : null}
               </div>
             ))}
           </div>
           <FormFields>
-            <Field label="Totals only">
+            <Field label={t("reports.totalsOnly")}>
               <div className="flex items-center justify-between rounded-xl border border-border bg-muted/40 px-3 py-3">
-                <span className="text-sm text-foreground">Show grouped totals only</span>
+                <span className="text-sm text-foreground">{t("reports.totalsOnlyLabel")}</span>
                 <Switch checked={draft.totalsOnly} onCheckedChange={(checked) => setDraft((current) => ({ ...current, totalsOnly: checked }))} />
               </div>
             </Field>
@@ -378,7 +388,7 @@ export function ReportsPage() {
 
         <FormActions>
           <Button onClick={handleCreateReport} type="button">
-            Create report
+            {t("reports.createReport")}
           </Button>
         </FormActions>
       </FormPanel>
