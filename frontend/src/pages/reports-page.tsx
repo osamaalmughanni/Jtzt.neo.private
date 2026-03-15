@@ -342,7 +342,11 @@ export function ReportsPage() {
     }
 
     const draftId = searchParams.get("draft") ?? createReportDraftId();
-    saveReportDraft(draftId, draft);
+    saveReportDraft(draftId, {
+      ...draft,
+      version: 1,
+      savedAt: new Date().toISOString(),
+    });
     navigate(`/reports/preview?draft=${draftId}`);
   }
 

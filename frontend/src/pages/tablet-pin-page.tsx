@@ -78,6 +78,7 @@ export function TabletPinPage() {
     return <Navigate to="/tablet" replace />;
   }
 
+  const activeTabletAccess = tabletAccess;
   const keypadWidth = "min(78vw, calc((100svh - 26rem) * 0.75), 24rem)";
 
   async function unlock(nextPinCode: string) {
@@ -86,7 +87,7 @@ export function TabletPinPage() {
       setErrorState(false);
       setErrorMessage("");
       const response = await api.tabletLogin({
-        code: tabletAccess.code,
+        code: activeTabletAccess.code,
         pinCode: nextPinCode
       });
       await loginCompany(response.session);
@@ -147,7 +148,7 @@ export function TabletPinPage() {
         <div className="grid min-h-0 w-full place-items-center py-4 sm:py-4">
           <div className="grid h-full w-full min-h-0 max-w-[24rem] grid-rows-[auto_auto_minmax(0,1fr)] justify-items-center gap-5 sm:gap-5">
             <div className="flex flex-col items-center gap-2 text-center">
-              <p className="text-base text-muted-foreground sm:text-lg">{tabletAccess.companyName}</p>
+              <p className="text-base text-muted-foreground sm:text-lg">{activeTabletAccess.companyName}</p>
               <p className="text-lg font-medium text-foreground sm:text-xl">{t("tabletPin.enterPin")}</p>
             </div>
 

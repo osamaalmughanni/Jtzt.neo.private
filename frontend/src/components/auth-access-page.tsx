@@ -77,6 +77,8 @@ async function buildRecoverySnapshot(token: string) {
     company: me?.company ?? null,
     currentUser: me?.user ?? null,
     dashboard: dashboard?.summary ?? null,
+    projects: [],
+    tasks: [],
     users: users?.users ?? []
   };
 }

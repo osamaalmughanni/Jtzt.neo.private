@@ -1,7 +1,7 @@
 import { HTTPException } from "hono/http-exception";
 import type { CreateManualTimeEntryInput, StartTimerInput, StopTimerInput, UpdateTimeEntryInput } from "../../shared/types/api";
 import type { TimeEntryType } from "../../shared/types/models";
-import { formatLocalDay, getLocalNowSnapshot, parseLocalDay } from "../../shared/utils/time";
+import { combineLocalDayAndTimeToIsoInTimeZone, formatLocalDay, getLocalNowSnapshot, parseLocalDay } from "../../shared/utils/time";
 import { getCompanyDb } from "../db/company-db";
 import { mapTimeEntryView } from "../db/mappers";
 import { settingsService } from "./settings-service";
@@ -14,8 +14,13 @@ function usesDateRange(entryType: TimeEntryType) {
   return entryType === "vacation" || entryType === "sick_leave";
 }
 
-function toDayStartIso(day: string) {
-  return `${day}T00:00:00`;
+function resolveNonWorkAnchorIso(day: string, timeZone: string) {
+  const anchorIso = combineLocalDayAndTimeToIsoInTimeZone(day, "12:00", timeZone);
+  if (!anchorIso) {
+    throw new HTTPException(400, { message: "Could not resolve business day anchor" });
+  }
+
+  return anchorIso;
 }
 
 function normalizeRangeEndDate(startDate: string, endDate?: string | null) {
@@ -51,19 +56,20 @@ function buildWorkTimestamps(startDate: string, endDate: string | null | undefin
   };
 }
 
-function buildNonWorkTimestamps(entryType: TimeEntryType, startDate: string, endDate?: string | null) {
+function buildNonWorkTimestamps(entryType: TimeEntryType, startDate: string, endDate: string | null | undefined, timeZone: string) {
   const resolvedEndDate = usesDateRange(entryType) ? normalizeRangeEndDate(startDate, endDate) : null;
-  const anchorDate = toDayStartIso(startDate);
+  const startAnchor = resolveNonWorkAnchorIso(startDate, timeZone);
+  const endAnchor = resolveNonWorkAnchorIso(resolvedEndDate ?? startDate, timeZone);
 
   return {
     entryDate: startDate,
     endDate: resolvedEndDate,
-    startTime: anchorDate,
-    endTime: anchorDate
+    startTime: startAnchor,
+    endTime: endAnchor
   };
 }
 
-function normalizeManualEntryInput(input: CreateManualTimeEntryInput | UpdateTimeEntryInput) {
+function normalizeManualEntryInput(databasePath: string, input: CreateManualTimeEntryInput | UpdateTimeEntryInput) {
   const entryType = input.entryType;
   if (isWorkEntry(entryType)) {
     return {
@@ -75,7 +81,7 @@ function normalizeManualEntryInput(input: CreateManualTimeEntryInput | UpdateTim
 
   return {
     entryType,
-    ...buildNonWorkTimestamps(entryType, input.startDate, input.endDate),
+    ...buildNonWorkTimestamps(entryType, input.startDate, input.endDate, settingsService.getSettings(databasePath).timeZone),
     customFieldValues: input.customFieldValues
   };
 }
@@ -136,7 +142,7 @@ export const timeService = {
   },
 
   createManualEntry(databasePath: string, userId: number, input: CreateManualTimeEntryInput) {
-    const normalized = normalizeManualEntryInput(input);
+    const normalized = normalizeManualEntryInput(databasePath, input);
     const createdAt = new Date().toISOString();
     const result = getCompanyDb(databasePath)
       .prepare(
@@ -340,7 +346,7 @@ export const timeService = {
       throw new HTTPException(404, { message: "Time entry not found" });
     }
 
-    const normalized = normalizeManualEntryInput(input);
+    const normalized = normalizeManualEntryInput(databasePath, input);
 
     db.prepare(
       `UPDATE time_entries

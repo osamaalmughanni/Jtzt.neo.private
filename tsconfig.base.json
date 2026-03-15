@@ -10,6 +10,9 @@
     "allowSyntheticDefaultImports": true,
     "baseUrl": ".",
     "paths": {
+      "@/*": [
+        "frontend/src/*"
+      ],
       "@shared/*": [
         "shared/*"
       ],

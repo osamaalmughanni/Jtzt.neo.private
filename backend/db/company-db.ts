@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
+import { combineLocalDayAndTimeToIsoInTimeZone } from "../../shared/utils/time";
 import { appConfig } from "../config";
 import { companySchema } from "./schema";
 
@@ -327,6 +328,56 @@ const companyMigrations: Migration[] = [
     up(db) {
       addColumnIfMissing(db, "company_settings", "time_zone TEXT NOT NULL DEFAULT 'Europe/Vienna'", "time_zone");
       db.exec("UPDATE company_settings SET time_zone = COALESCE(NULLIF(TRIM(time_zone), ''), 'Europe/Vienna')");
+    }
+  },
+  {
+    id: "018_non_work_time_anchors_utc",
+    up(db) {
+      const settings = db.prepare("SELECT time_zone FROM company_settings WHERE id = 1").get() as { time_zone?: string } | undefined;
+      const timeZone = settings?.time_zone?.trim() || "Europe/Vienna";
+      const rows = db.prepare(
+        `SELECT id, entry_date, COALESCE(end_date, entry_date) AS resolved_end_date
+         FROM time_entries
+         WHERE entry_type != 'work'
+           AND (
+             (
+             start_time NOT GLOB '*Z'
+             AND start_time NOT GLOB '*+??:??'
+             AND start_time NOT GLOB '*-??:??'
+             )
+             OR (
+             end_time IS NOT NULL
+             AND end_time NOT GLOB '*Z'
+             AND end_time NOT GLOB '*+??:??'
+             AND end_time NOT GLOB '*-??:??'
+             )
+           )`
+      ).all() as Array<{
+        id: number;
+        entry_date: string;
+        resolved_end_date: string;
+      }>;
+
+      const updateEntry = db.prepare(
+        `UPDATE time_entries
+         SET start_time = @startTime,
+             end_time = @endTime
+         WHERE id = @id`
+      );
+
+      for (const row of rows) {
+        const startTime = combineLocalDayAndTimeToIsoInTimeZone(row.entry_date, "12:00", timeZone);
+        const endTime = combineLocalDayAndTimeToIsoInTimeZone(row.resolved_end_date, "12:00", timeZone);
+        if (!startTime || !endTime) {
+          continue;
+        }
+
+        updateEntry.run({
+          id: row.id,
+          startTime,
+          endTime,
+        });
+      }
     }
   },
   {
