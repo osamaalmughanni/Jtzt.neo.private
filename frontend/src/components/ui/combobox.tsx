@@ -18,6 +18,7 @@ interface ComboboxProps {
   emptyText?: string;
   disabled?: boolean;
   className?: string;
+  searchable?: boolean;
 }
 
 export function Combobox({
@@ -28,7 +29,8 @@ export function Combobox({
   searchPlaceholder = "Search...",
   emptyText = "No option found.",
   disabled = false,
-  className
+  className,
+  searchable = false,
 }: ComboboxProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -65,8 +67,10 @@ export function Combobox({
       return;
     }
 
-    window.setTimeout(() => searchRef.current?.focus(), 0);
-  }, [open]);
+    if (searchable) {
+      window.setTimeout(() => searchRef.current?.focus(), 0);
+    }
+  }, [open, searchable]);
 
   function handleTriggerKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Enter" || event.key === " ") {
@@ -99,12 +103,14 @@ export function Combobox({
 
       {open ? (
         <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 flex w-full flex-col gap-2 rounded-md border border-border bg-[hsl(var(--popover))] text-[hsl(var(--popover-foreground))] p-2 shadow-md">
-          <Input
-            ref={searchRef}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={searchPlaceholder}
-          />
+          {searchable ? (
+            <Input
+              ref={searchRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={searchPlaceholder}
+            />
+          ) : null}
           <div className="max-h-60 overflow-y-auto" role="listbox">
             {filteredOptions.length === 0 ? <p className="px-2 py-2 text-sm text-muted-foreground">{emptyText}</p> : null}
             {filteredOptions.map((option) => (

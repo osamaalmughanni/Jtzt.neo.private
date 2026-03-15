@@ -20,6 +20,7 @@ import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import {
   Field,
   FieldCombobox,
+  FieldSelect,
   FormPage,
   FormSection,
 } from "@/components/form-layout";
@@ -28,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DateInput } from "@/components/ui/date-input";
+import { Combobox } from "@/components/ui/combobox";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { entryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
@@ -470,6 +472,7 @@ export function DashboardPage() {
                     value={typeof tabletPunchValues[field.id] === "string" ? String(tabletPunchValues[field.id]) : ""}
                     onValueChange={(value) => setTabletPunchFieldValue(field, value)}
                     items={field.options.map((option) => ({ value: option.value, label: option.label }))}
+                    placeholder={field.placeholder ?? field.label}
                   />
                 ) : field.type === "date" ? (
                   <DateInput
@@ -532,13 +535,16 @@ export function DashboardPage() {
         <div className="rounded-2xl border border-border bg-card p-5">
           <FormSection>
             <Field label={t("dashboard.workingAs")}>
-              <FieldCombobox
-                label="user"
+              <Combobox
                 value={effectiveUserId ? String(effectiveUserId) : ""}
                 onValueChange={(value) =>
                   updateContext({ userId: Number(value) })
                 }
-                items={userOptions}
+                options={userOptions}
+                placeholder={t("dashboard.workingAs")}
+                searchPlaceholder={t("reports.search")}
+                emptyText="No users found."
+                searchable
               />
             </Field>
           </FormSection>

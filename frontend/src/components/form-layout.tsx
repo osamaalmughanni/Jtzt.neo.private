@@ -1,5 +1,6 @@
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
-import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { AppCombobox } from "@/components/app-combobox";
+import type { ComboboxOption } from "@/components/ui/combobox";
 import { cn } from "@/lib/utils";
 
 export function FormPage({ children, className }: { children: ReactNode; className?: string }) {
@@ -48,7 +49,7 @@ export function FieldCombobox({
   items,
   placeholder,
   disabled,
-  className
+  className,
 }: {
   label: string;
   value: string;
@@ -61,12 +62,11 @@ export function FieldCombobox({
   const normalizedLabel = label.trim().toLowerCase();
 
   return (
-    <Combobox
+    <AppCombobox
       value={value}
       onValueChange={onValueChange}
-      options={items}
+      items={items}
       placeholder={placeholder ?? `Select ${normalizedLabel}`}
-      searchPlaceholder={`Search ${normalizedLabel}`}
       emptyText={`No ${normalizedLabel} found.`}
       disabled={disabled}
       className={className}
