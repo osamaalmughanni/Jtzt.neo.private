@@ -13,6 +13,10 @@ export function AdminCompaniesPage() {
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [newAdmin, setNewAdmin] = useState({ companyId: 0, username: "", password: "", fullName: "" });
+  const [pendingResetCompany, setPendingResetCompany] = useState<CompanyRecord | null>(null);
+  const [pendingDeleteCompany, setPendingDeleteCompany] = useState<CompanyRecord | null>(null);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const statItems = [
     { label: "Companies", value: stats?.companyCount ?? 0 },
     { label: "System admins", value: stats?.adminCount ?? 0 },
@@ -43,8 +47,10 @@ export function AdminCompaniesPage() {
 
   async function removeCompany(companyId: number) {
     if (!adminSession) return;
+    setDeleteSubmitting(true);
     try {
       await api.deleteCompany(adminSession.token, { companyId });
+      setPendingDeleteCompany(null);
       toast({ title: "Company deleted" });
       await load();
     } catch (error) {
@@ -52,13 +58,17 @@ export function AdminCompaniesPage() {
         title: "Delete failed",
         description: error instanceof Error ? error.message : "Request failed"
       });
+    } finally {
+      setDeleteSubmitting(false);
     }
   }
 
   async function resetCompany(companyId: number) {
     if (!adminSession) return;
+    setResetSubmitting(true);
     try {
       await api.resetCompany(adminSession.token, { companyId });
+      setPendingResetCompany(null);
       toast({ title: "Company database reset" });
       await load();
     } catch (error) {
@@ -66,19 +76,9 @@ export function AdminCompaniesPage() {
         title: "Reset failed",
         description: error instanceof Error ? error.message : "Request failed"
       });
+    } finally {
+      setResetSubmitting(false);
     }
-  }
-
-  function confirmReset(company: CompanyRecord) {
-    const confirmed = window.confirm(`Reset the database for "${company.name}"? This will remove company data and cannot be undone.`);
-    if (!confirmed) return;
-    void resetCompany(company.id);
-  }
-
-  function confirmDelete(company: CompanyRecord) {
-    const confirmed = window.confirm(`Delete "${company.name}"? This action cannot be undone.`);
-    if (!confirmed) return;
-    void removeCompany(company.id);
   }
 
   async function createAdmin() {
@@ -97,6 +97,56 @@ export function AdminCompaniesPage() {
 
   return (
     <div className="space-y-6">
+      <Dialog open={pendingResetCompany !== null} onOpenChange={(open) => !open && setPendingResetCompany(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset company database</DialogTitle>
+            <DialogDescription>
+              {pendingResetCompany
+                ? `Reset "${pendingResetCompany.name}" and remove all company data? This cannot be undone.`
+                : "Reset this company database?"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setPendingResetCompany(null)} disabled={resetSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => pendingResetCompany && void resetCompany(pendingResetCompany.id)}
+              disabled={resetSubmitting}
+            >
+              {resetSubmitting ? "Resetting..." : "Reset DB"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pendingDeleteCompany !== null} onOpenChange={(open) => !open && setPendingDeleteCompany(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete company</DialogTitle>
+            <DialogDescription>
+              {pendingDeleteCompany
+                ? `Delete "${pendingDeleteCompany.name}" permanently? This cannot be undone.`
+                : "Delete this company?"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={() => setPendingDeleteCompany(null)} disabled={deleteSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => pendingDeleteCompany && void removeCompany(pendingDeleteCompany.id)}
+              disabled={deleteSubmitting}
+            >
+              {deleteSubmitting ? "Deleting..." : "Delete"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Card className="overflow-hidden">
         <CardHeader className="border-b border-border/80 bg-muted/30">
           <CardTitle>System overview</CardTitle>
@@ -175,7 +225,7 @@ export function AdminCompaniesPage() {
                       size="sm"
                       variant="secondary"
                       className="h-8 w-full justify-center rounded-lg px-3 text-[11px] sm:text-xs"
-                      onClick={() => confirmReset(company)}
+                      onClick={() => setPendingResetCompany(company)}
                     >
                       Reset DB
                     </Button>
@@ -183,7 +233,7 @@ export function AdminCompaniesPage() {
                       size="sm"
                       variant="destructive"
                       className="h-8 w-full justify-center rounded-lg px-3 text-[11px] sm:text-xs"
-                      onClick={() => confirmDelete(company)}
+                      onClick={() => setPendingDeleteCompany(company)}
                     >
                       Delete
                     </Button>
