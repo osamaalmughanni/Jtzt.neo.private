@@ -4,6 +4,9 @@ export interface PageMeta {
 }
 
 const pageMetaEntries: Array<[string, PageMeta]> = [
+  ["/", { title: "Sign in", description: "Sign in to your company workspace." }],
+  ["/login", { title: "Sign in", description: "Sign in to your company workspace." }],
+  ["/register", { title: "Register", description: "Create a company workspace and start using Jtzt." }],
   ["/dashboard", { title: "Overview", description: "Today, this week, and recent activity." }],
   ["/time", { title: "Time", description: "Track sessions, edit entries, and manage notes." }],
   ["/calendar", { title: "Calendar", description: "Daily totals for the selected month." }],

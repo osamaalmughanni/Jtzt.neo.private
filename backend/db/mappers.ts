@@ -14,6 +14,7 @@ export function mapCompanyRecord(row: any): CompanyRecord {
   return {
     id: row.id,
     name: row.name,
+    encryptionEnabled: Boolean(row.encryption_enabled),
     databasePath: row.database_path,
     createdAt: row.created_at
   };

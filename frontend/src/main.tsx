@@ -5,18 +5,21 @@ import { App } from "./app";
 import { GlobalFormBehavior } from "./components/global-form-behavior";
 import { SeoManager } from "./components/seo-manager";
 import { AuthProvider } from "./lib/auth";
+import { ThemeProvider } from "./lib/theme";
 import { Toaster } from "./components/ui/sonner";
 import "./styles/index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <SeoManager />
-        <GlobalFormBehavior />
-        <App />
-        <Toaster />
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <SeoManager />
+          <GlobalFormBehavior />
+          <App />
+          <Toaster />
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

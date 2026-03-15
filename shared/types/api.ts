@@ -13,6 +13,7 @@ export interface CompanyLoginInput {
   companyName: string;
   username: string;
   password: string;
+  encryptionKeyProof?: string;
 }
 
 export interface AdminLoginInput {
@@ -99,6 +100,23 @@ export interface CreateCompanyInput {
   adminUsername: string;
   adminPassword: string;
   adminFullName: string;
+  encryptionEnabled?: boolean;
+  encryptionKdfAlgorithm?: "pbkdf2-sha256";
+  encryptionKdfIterations?: number;
+  encryptionKdfSalt?: string;
+  encryptionKeyVerifier?: string;
+}
+
+export interface RegisterCompanyInput {
+  name: string;
+  adminUsername: string;
+  adminPassword: string;
+  adminFullName?: string;
+  encryptionEnabled: boolean;
+  encryptionKdfAlgorithm?: "pbkdf2-sha256";
+  encryptionKdfIterations?: number;
+  encryptionKdfSalt?: string;
+  encryptionKeyVerifier?: string;
 }
 
 export interface CreateCompanyAdminInput {
@@ -126,4 +144,12 @@ export interface SystemStatsResponse {
 
 export interface ApiErrorPayload {
   error: string;
+}
+
+export interface CompanySecurityResponse {
+  companyName: string;
+  encryptionEnabled: boolean;
+  kdfAlgorithm: "pbkdf2-sha256" | null;
+  kdfIterations: number | null;
+  kdfSalt: string | null;
 }

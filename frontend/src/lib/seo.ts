@@ -72,6 +72,16 @@ export const seoEntries = new Map<string, SeoEntry>([
     }
   ],
   [
+    "/register",
+    {
+      title: "Register Your Company | Jtzt",
+      description: "Create your company workspace in Jtzt and start evaluating time tracking, tenant isolation, and secure access controls.",
+      robots: "index, follow",
+      canonicalPath: "/register",
+      ogType: "website"
+    }
+  ],
+  [
     "/login",
     {
       title: "Jtzt Login",

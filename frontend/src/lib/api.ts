@@ -2,6 +2,7 @@ import type {
   AdminLoginInput,
   CompanyListResponse,
   CompanyLoginInput,
+  CompanySecurityResponse,
   CompanyMeResponse,
   CreateProjectInput,
   CreateTaskInput,
@@ -12,6 +13,7 @@ import type {
   DeleteCompanyInput,
   LoginResponse,
   ProjectListResponse,
+  RegisterCompanyInput,
   ResetCompanyInput,
   StartTimerInput,
   StopTimerInput,
@@ -44,6 +46,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input)
     });
+  },
+
+  registerCompany(input: RegisterCompanyInput) {
+    return request<LoginResponse>("/api/auth/register-company", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+
+  getCompanySecurity(companyName: string) {
+    const params = new URLSearchParams({ companyName });
+    return request<CompanySecurityResponse>(`/api/auth/company-security?${params.toString()}`);
   },
 
   adminLogin(input: AdminLoginInput) {

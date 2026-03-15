@@ -12,6 +12,7 @@ import { LearnPage } from "@/pages/learn-page";
 import { LoginPage } from "@/pages/login-page";
 import { MenuPage } from "@/pages/menu-page";
 import { ProjectsPage } from "@/pages/projects-page";
+import { RegisterCompanyPage } from "@/pages/register-company-page";
 import { SettingsMenuPage } from "@/pages/settings-menu-page";
 import { TimePage } from "@/pages/time-page";
 import { UsersPage } from "@/pages/users-page";
@@ -24,6 +25,7 @@ export function App() {
       <Route path="/company" element={<CompanyPage />} />
       <Route path="/learn" element={<LearnPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterCompanyPage />} />
       <Route path="/admin/login" element={<AdminLoginPage />} />
       <Route element={<CompanyGuard />}>
         <Route element={<AppShell mode="company" />}>

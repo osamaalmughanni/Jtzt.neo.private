@@ -25,14 +25,45 @@ export const adminService = {
       throw new HTTPException(409, { message: "Company already exists" });
     }
 
+    if (input.encryptionEnabled) {
+      if (!input.encryptionKdfSalt || !input.encryptionKdfIterations || !input.encryptionKeyVerifier) {
+        throw new HTTPException(400, { message: "Secure mode metadata is incomplete" });
+      }
+    }
+
     const databasePath = createCompanyDbPath(input.name);
     initializeCompanyDatabase(databasePath).close();
 
     const createdAt = new Date().toISOString();
     const result = getSystemDb()
-      .prepare("INSERT INTO companies (name, database_path, created_at) VALUES (@name, @databasePath, @createdAt)")
+      .prepare(
+        `INSERT INTO companies (
+          name,
+          encryption_enabled,
+          encryption_kdf_algorithm,
+          encryption_kdf_iterations,
+          encryption_kdf_salt,
+          encryption_key_verifier,
+          database_path,
+          created_at
+        ) VALUES (
+          @name,
+          @encryptionEnabled,
+          @encryptionKdfAlgorithm,
+          @encryptionKdfIterations,
+          @encryptionKdfSalt,
+          @encryptionKeyVerifier,
+          @databasePath,
+          @createdAt
+        )`
+      )
       .run({
         name: input.name.trim(),
+        encryptionEnabled: input.encryptionEnabled ? 1 : 0,
+        encryptionKdfAlgorithm: input.encryptionEnabled ? input.encryptionKdfAlgorithm ?? "pbkdf2-sha256" : null,
+        encryptionKdfIterations: input.encryptionEnabled ? input.encryptionKdfIterations ?? null : null,
+        encryptionKdfSalt: input.encryptionEnabled ? input.encryptionKdfSalt ?? null : null,
+        encryptionKeyVerifier: input.encryptionEnabled ? input.encryptionKeyVerifier ?? null : null,
         databasePath,
         createdAt
       });

@@ -9,6 +9,11 @@ CREATE TABLE IF NOT EXISTS admins (
 CREATE TABLE IF NOT EXISTS companies (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
+  encryption_enabled INTEGER NOT NULL DEFAULT 0,
+  encryption_kdf_algorithm TEXT,
+  encryption_kdf_iterations INTEGER,
+  encryption_kdf_salt TEXT,
+  encryption_key_verifier TEXT,
   database_path TEXT NOT NULL,
   created_at TEXT NOT NULL
 );

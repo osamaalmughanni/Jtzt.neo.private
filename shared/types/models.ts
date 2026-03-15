@@ -3,6 +3,7 @@ export type UserRole = "employee" | "company_admin";
 export interface CompanyRecord {
   id: number;
   name: string;
+  encryptionEnabled: boolean;
   databasePath: string;
   createdAt: string;
 }
