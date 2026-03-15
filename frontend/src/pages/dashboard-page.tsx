@@ -32,7 +32,7 @@ import { DateInput } from "@/components/ui/date-input";
 import { Combobox } from "@/components/ui/combobox";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { entryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
+import { getEntryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
 import { formatCompanyDate, formatCompanyDateRange } from "@/lib/locale-format";
 import { toast } from "@/lib/toast";
 
@@ -108,12 +108,12 @@ function isDayWithinLimit(day: string, limit: number) {
   return diffCalendarDays(formatLocalDay(new Date()), day) <= limit;
 }
 
-function getEntryHeadline(entry: TimeEntryView) {
+function getEntryHeadline(entry: TimeEntryView, getLabel: (entryType: TimeEntryView["entryType"]) => string) {
   if (entry.entryType === "work") {
     return `${toTimeInputValue(entry.startTime)} - ${toTimeInputValue(entry.endTime)}`;
   }
 
-  return getEntryTypeLabel(entry.entryType);
+  return getLabel(entry.entryType);
 }
 
 function getEntryMeta(entry: TimeEntryView, locale: string) {
@@ -182,6 +182,8 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const { companySession, companyIdentity, isTabletMode } = useAuth();
   const { t } = useTranslation();
+  const entryStateUi = useMemo(() => getEntryStateUi(t), [t]);
+  const getEntryLabel = (entryType: TimeEntryView["entryType"]) => getEntryTypeLabel(entryType, t);
   const [searchParams, setSearchParams] = useSearchParams();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
@@ -515,7 +517,7 @@ export function DashboardPage() {
                   value: `${toTimeInputValue(pendingDeleteEntry.startTime)} - ${toTimeInputValue(pendingDeleteEntry.endTime)}`
                 })
               : t("dashboard.deleteLeaveDescription", {
-                  type: getEntryTypeLabel(pendingDeleteEntry.entryType),
+                  type: getEntryLabel(pendingDeleteEntry.entryType),
                   date: formatCompanyDate(pendingDeleteEntry.entryDate, settings.locale)
                 })
             : undefined
@@ -657,7 +659,7 @@ export function DashboardPage() {
                 !entry.endTime;
               const entryHeadline = isActiveWorkEntry
                 ? `${toTimeInputValue(entry.startTime)} - ${toTimeInputValue(now.toISOString())}`
-                : getEntryHeadline(entry);
+                : getEntryHeadline(entry, getEntryLabel);
               const entryMeta =
                 entry.entryType === "work"
                   ? formatMinutes(

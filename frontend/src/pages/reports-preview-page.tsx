@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { entryStateUi } from "@/lib/entry-state-ui";
+import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { formatCompanyDate, formatCompanyDateTime } from "@/lib/locale-format";
 import { exportReportExcel, exportReportPdf } from "@/lib/report-export";
 import { loadReportDraft } from "@/lib/report-draft-storage";
@@ -242,6 +242,7 @@ function getTimelineItemLabel(item: ReportResponse["report"]["timeline"][number]
 export function ReportsPreviewPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const entryStateUi = useMemo(() => getEntryStateUi(t), [t]);
   const [searchParams] = useSearchParams();
   const { companySession } = useAuth();
   const draftId = searchParams.get("draft");
@@ -309,6 +310,10 @@ export function ReportsPreviewPage() {
   }, [draft, loading, navigate]);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
+  useEffect(() => {
     if (viewMode !== "gantt") return;
     const node = timelineScrollRef.current;
     if (!node) return;
@@ -325,7 +330,10 @@ export function ReportsPreviewPage() {
     <FormPage className="w-full">
       <PageBackAction to={backTo} label={t("reports.backToReports")} />
       <PageLabel title={t("reports.previewTitle")} description={t("reports.previewDescription")} />
-      <div className="relative left-1/2 right-1/2 w-screen -translate-x-1/2 px-5 sm:px-8 lg:px-10">
+      <div
+        className="relative left-1/2 w-full -translate-x-1/2 px-5 sm:px-8 lg:px-10"
+        style={{ width: "min(120rem, calc(100vw - 2rem))" }}
+      >
         <FormPanel className="flex w-full flex-col gap-6">
           {loading ? <p className="text-sm text-muted-foreground">{t("reports.creating")}</p> : null}
           {report ? (

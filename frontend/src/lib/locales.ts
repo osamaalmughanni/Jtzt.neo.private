@@ -168,6 +168,23 @@ export const resources = {
         inactivePin: "PIN inactive",
         accessFailed: "Access failed"
       },
+      calendar: {
+        prev: "Prev",
+        next: "Next",
+        publicHoliday: "Public holiday",
+        mixed: "Mixed"
+      },
+      dayPicker: {
+        backToOverview: "Back to overview",
+        title: "Select day",
+        holidayDescription:
+          "{{name}} on {{date}}. Leave ranges can include this holiday, and it is excluded from effective leave-day totals.",
+        workDescription: "This day has working time entries.",
+        sickLeaveDescription: "This day is marked as sick leave.",
+        vacationDescription: "This day is covered by vacation.",
+        mixedDescription: "This day contains multiple entry types.",
+        defaultDescription: "Choose the day you want to manage in overview."
+      },
       recordEditor: {
         backToOverview: "Back to overview",
         addTitle: "Add entry",
@@ -614,6 +631,23 @@ export const resources = {
         invalidPin: "PIN nicht erkannt",
         inactivePin: "PIN inaktiv",
         accessFailed: "Zugriff fehlgeschlagen"
+      },
+      calendar: {
+        prev: "Zurück",
+        next: "Weiter",
+        publicHoliday: "Feiertag",
+        mixed: "Gemischt"
+      },
+      dayPicker: {
+        backToOverview: "Zurück zur Übersicht",
+        title: "Tag auswählen",
+        holidayDescription:
+          "{{name}} am {{date}}. Abwesenheitszeiträume können diesen Feiertag enthalten, und er wird von den effektiven Abwesenheitstagen ausgeschlossen.",
+        workDescription: "Dieser Tag enthält Arbeitseinträge.",
+        sickLeaveDescription: "Dieser Tag ist als Krankenstand markiert.",
+        vacationDescription: "Dieser Tag ist durch Urlaub abgedeckt.",
+        mixedDescription: "Dieser Tag enthält mehrere Eintragstypen.",
+        defaultDescription: "Wählen Sie den Tag, den Sie in der Übersicht verwalten möchten."
       },
       recordEditor: {
         backToOverview: "Zurück zur Übersicht",

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { formatLocalDay } from "@shared/utils/time";
 import { Button } from "@/components/ui/button";
-import { entryStateUi } from "@/lib/entry-state-ui";
+import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { formatCompanyMonthYear } from "@/lib/locale-format";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +41,8 @@ export function Calendar({
   dayStates?: Record<string, "work" | "sick_leave" | "vacation" | "mixed">;
   onMonthChange?: (date: Date) => void;
 }) {
+  const { t } = useTranslation();
+  const entryStateUi = useMemo(() => getEntryStateUi(t), [t]);
   const [viewDate, setViewDate] = useState(startOfMonth(selected));
   const selectedMonthKey = `${selected.getFullYear()}-${selected.getMonth()}`;
 
@@ -66,22 +69,26 @@ export function Calendar({
   }, [firstDayOfWeek, viewDate]);
 
   const weekdayLabels = useMemo(() => {
-    const labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    return [...labels.slice(firstDayOfWeek), ...labels.slice(0, firstDayOfWeek)];
-  }, [firstDayOfWeek]);
+    const baseSunday = new Date(Date.UTC(2026, 0, 4));
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(baseSunday);
+      date.setUTCDate(baseSunday.getUTCDate() + ((firstDayOfWeek + index) % 7));
+      return new Intl.DateTimeFormat(locale, { weekday: "short" }).format(date);
+    });
+  }, [firstDayOfWeek, locale]);
   const holidaySet = useMemo(() => new Set(holidayDates), [holidayDates]);
 
   return (
     <div className={cn("flex flex-col gap-4 rounded-2xl border border-border bg-card p-4", className)}>
       <div className="flex items-center justify-between gap-2">
         <Button size="sm" variant="ghost" onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))} type="button">
-          Prev
+          {t("calendar.prev")}
         </Button>
         <p className="text-sm font-medium">
           {formatCompanyMonthYear(viewDate, locale)}
         </p>
         <Button size="sm" variant="ghost" onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))} type="button">
-          Next
+          {t("calendar.next")}
         </Button>
       </div>
 

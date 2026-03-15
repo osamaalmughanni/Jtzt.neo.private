@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import type { PublicHolidayRecord } from "@shared/types/models";
 import { formatLocalDay, parseLocalDay } from "@shared/utils/time";
 import { FormPage, FormPanel } from "@/components/form-layout";
@@ -8,7 +9,7 @@ import { PageLabel } from "@/components/page-label";
 import { Calendar } from "@/components/ui/calendar";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { entryStateUi } from "@/lib/entry-state-ui";
+import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { formatCompanyDate } from "@/lib/locale-format";
 
 function parseDayParam(value: string | null) {
@@ -37,6 +38,7 @@ function enumerateDays(startDate: string, endDate: string) {
 
 export function DashboardDayPickerPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { companyIdentity, companySession } = useAuth();
   const [searchParams] = useSearchParams();
   const [settingsLocale, setSettingsLocale] = useState("en-GB");
@@ -50,6 +52,7 @@ export function DashboardDayPickerPage() {
   const backTo = `/dashboard?user=${userId}&day=${formatLocalDay(selectedDate)}`;
   const selectedHoliday = holidays.find((holiday) => holiday.date === formatLocalDay(selectedDate));
   const selectedDayState = dayStates[formatLocalDay(selectedDate)];
+  const entryStateUi = getEntryStateUi(t);
 
   function handleSelect(date: Date) {
     navigate(`/dashboard?user=${userId}&day=${formatLocalDay(date)}`);
@@ -98,21 +101,24 @@ export function DashboardDayPickerPage() {
 
   return (
     <FormPage>
-      <PageBackAction to={backTo} label="Back to overview" />
+      <PageBackAction to={backTo} label={t("dayPicker.backToOverview")} />
       <PageLabel
-        title="Select day"
+        title={t("dayPicker.title")}
         description={
           selectedHoliday
-            ? `${selectedHoliday.localName} on ${formatCompanyDate(selectedHoliday.date, settingsLocale)}. Leave ranges can include this holiday, and it is excluded from effective leave-day totals.`
+            ? t("dayPicker.holidayDescription", {
+                name: selectedHoliday.localName,
+                date: formatCompanyDate(selectedHoliday.date, settingsLocale),
+              })
             : selectedDayState === "work"
-              ? "This day has working time entries."
+              ? t("dayPicker.workDescription")
               : selectedDayState === "sick_leave"
-                ? "This day is marked as sick leave."
+                ? t("dayPicker.sickLeaveDescription")
                 : selectedDayState === "vacation"
-                  ? "This day is covered by vacation."
+                  ? t("dayPicker.vacationDescription")
                   : selectedDayState === "mixed"
-                    ? "This day contains multiple entry types."
-                    : "Choose the day you want to manage in overview."
+                    ? t("dayPicker.mixedDescription")
+                    : t("dayPicker.defaultDescription")
         }
       />
       <FormPanel className="flex flex-col gap-4 overflow-hidden p-5">
