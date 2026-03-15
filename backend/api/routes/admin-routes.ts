@@ -56,6 +56,22 @@ adminRoutes.post("/companies/create", async (c) => {
   return c.json({ company: adminService.createCompany(body) });
 });
 
+adminRoutes.post("/companies/create/import", async (c) => {
+  const formData = await c.req.formData();
+  const name = String(formData.get("name") ?? "").trim();
+  const file = formData.get("file");
+
+  if (name.length < 2) {
+    return c.json({ error: "Company name is required" }, 400);
+  }
+  if (!(file instanceof File)) {
+    return c.json({ error: "SQLite file is required" }, 400);
+  }
+
+  const databaseBuffer = Buffer.from(await file.arrayBuffer());
+  return c.json({ company: adminService.createCompanyFromDatabase({ name, databaseBuffer }) });
+});
+
 adminRoutes.post("/companies/delete", async (c) => {
   const body = deleteCompanySchema.parse(await c.req.json());
   adminService.deleteCompany(body);
@@ -75,6 +91,22 @@ adminRoutes.get("/companies/:companyId/download", async (c) => {
     "Content-Type": "application/x-sqlite3",
     "Content-Disposition": `attachment; filename="${fileName}"`
   });
+});
+
+adminRoutes.post("/companies/:companyId/import", async (c) => {
+  const companyId = Number(c.req.param("companyId"));
+  if (!Number.isFinite(companyId)) {
+    return c.json({ error: "Invalid company id" }, 400);
+  }
+
+  const formData = await c.req.formData();
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return c.json({ error: "SQLite file is required" }, 400);
+  }
+
+  const databaseBuffer = Buffer.from(await file.arrayBuffer());
+  return c.json({ company: adminService.replaceCompanyDatabase({ companyId, databaseBuffer }) });
 });
 
 adminRoutes.post("/companies/admins/create", async (c) => {

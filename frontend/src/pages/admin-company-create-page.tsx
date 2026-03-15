@@ -1,5 +1,6 @@
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { api } from "@/lib/api";
@@ -8,13 +9,14 @@ import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { FileInput } from "@/components/ui/file-input";
 import { Input } from "@/components/ui/input";
 
 const schema = z.object({
   name: z.string().min(2, "Company name is required"),
-  adminFullName: z.string().min(2, "Full name is required"),
-  adminUsername: z.string().min(2, "Admin username is required"),
-  adminPassword: z.string().min(6, "Password must be at least 6 characters")
+  adminFullName: z.string().default(""),
+  adminUsername: z.string().default(""),
+  adminPassword: z.string().default("")
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -22,6 +24,7 @@ type FormValues = z.infer<typeof schema>;
 export function AdminCompanyCreatePage() {
   const { adminSession } = useAuth();
   const navigate = useNavigate();
+  const [databaseFile, setDatabaseFile] = useState<File | null>(null);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -35,8 +38,24 @@ export function AdminCompanyCreatePage() {
   async function onSubmit(values: FormValues) {
     if (!adminSession) return;
     try {
-      await api.createCompany(adminSession.token, values);
+      if (databaseFile) {
+        await api.createCompanyFromDb(adminSession.token, {
+          name: values.name,
+          file: databaseFile
+        });
+      } else {
+        if (values.adminFullName.trim().length < 2) throw new Error("Full name is required");
+        if (values.adminUsername.trim().length < 2) throw new Error("Admin username is required");
+        if (values.adminPassword.trim().length < 6) throw new Error("Password must be at least 6 characters");
+        await api.createCompany(adminSession.token, {
+          name: values.name,
+          adminFullName: values.adminFullName,
+          adminUsername: values.adminUsername,
+          adminPassword: values.adminPassword
+        });
+      }
       form.reset();
+      setDatabaseFile(null);
       toast({ title: "Company created" });
       navigate("/admin/companies");
     } catch (error) {
@@ -55,7 +74,7 @@ export function AdminCompanyCreatePage() {
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
+            <form className="flex flex-col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
               <div>
                 <FormField
                   control={form.control}
@@ -64,11 +83,21 @@ export function AdminCompanyCreatePage() {
                     <FormItem>
                       <FormLabel>Company name</FormLabel>
                       <FormControl>
-                        <Input placeholder="Acme" {...field} />
+                        <Input placeholder="Ordination Dr. Berger" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <FormLabel>Import existing SQLite</FormLabel>
+                <FileInput
+                  file={databaseFile}
+                  accept=".db,.sqlite,.sqlite3,application/x-sqlite3"
+                  placeholder="Upload an existing company database"
+                  buttonLabel="Select"
+                  onFileChange={setDatabaseFile}
                 />
               </div>
               <FormField
@@ -78,7 +107,7 @@ export function AdminCompanyCreatePage() {
                   <FormItem>
                     <FormLabel>Admin full name</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input placeholder="Anna Berger" {...field} disabled={databaseFile !== null} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -91,7 +120,7 @@ export function AdminCompanyCreatePage() {
                   <FormItem>
                     <FormLabel>Admin username</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input placeholder="anna.berger" {...field} disabled={databaseFile !== null} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -105,7 +134,7 @@ export function AdminCompanyCreatePage() {
                     <FormItem>
                       <FormLabel>Admin password</FormLabel>
                       <FormControl>
-                        <Input type="password" {...field} />
+                        <Input type="password" placeholder="Enter a secure password" {...field} disabled={databaseFile !== null} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -113,7 +142,9 @@ export function AdminCompanyCreatePage() {
                 />
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-muted-foreground">The database file is created inside /data.</p>
+                <p className="text-sm text-muted-foreground">
+                  {databaseFile ? "The uploaded SQLite database will be used as the company data." : "The database file is created inside /data."}
+                </p>
                 <Button type="submit" disabled={form.formState.isSubmitting}>
                   Create company
                 </Button>

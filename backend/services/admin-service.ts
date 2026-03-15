@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import bcrypt from "bcryptjs";
 import { HTTPException } from "hono/http-exception";
 import type {
@@ -18,6 +19,15 @@ import { getSystemDb } from "../db/system-db";
 import { systemService } from "./system-service";
 
 export const adminService = {
+  validateImportedCompanyDatabase(databasePath: string) {
+    const db = initializeCompanyDatabase(databasePath);
+    try {
+      db.prepare("SELECT name FROM sqlite_master LIMIT 1").get();
+    } finally {
+      db.close();
+    }
+  },
+
   createCompany(input: CreateCompanyInput) {
     const existing = systemService.getCompanyByName(input.name);
     if (existing) {
@@ -74,6 +84,92 @@ export const adminService = {
     });
 
     return systemService.getCompanyById(Number(result.lastInsertRowid));
+  },
+
+  createCompanyFromDatabase(input: { name: string; databaseBuffer: Buffer }) {
+    const existing = systemService.getCompanyByName(input.name);
+    if (existing) {
+      throw new HTTPException(409, { message: "Company already exists" });
+    }
+
+    const createdAt = new Date().toISOString();
+    const databasePath = createCompanyDbPath(input.name);
+    const tempPath = path.resolve(path.dirname(databasePath), `${path.basename(databasePath)}.import-${Date.now()}.tmp`);
+
+    try {
+      fs.writeFileSync(tempPath, input.databaseBuffer);
+      this.validateImportedCompanyDatabase(tempPath);
+      fs.renameSync(tempPath, databasePath);
+
+      const result = getSystemDb()
+        .prepare(
+          `INSERT INTO companies (
+            name,
+            encryption_enabled,
+            encryption_kdf_algorithm,
+            encryption_kdf_iterations,
+            encryption_kdf_salt,
+            encryption_key_verifier,
+            database_path,
+            created_at
+          ) VALUES (
+            @name,
+            0,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            @databasePath,
+            @createdAt
+          )`
+        )
+        .run({
+          name: input.name.trim(),
+          databasePath,
+          createdAt
+        });
+
+      return systemService.getCompanyById(Number(result.lastInsertRowid));
+    } catch (error) {
+      if (fs.existsSync(tempPath)) {
+        fs.rmSync(tempPath, { force: true });
+      }
+      if (fs.existsSync(databasePath)) {
+        fs.rmSync(databasePath, { force: true });
+      }
+      throw error;
+    }
+  },
+
+  replaceCompanyDatabase(input: { companyId: number; databaseBuffer: Buffer }) {
+    const company = systemService.getCompanyById(input.companyId);
+    if (!company) {
+      throw new HTTPException(404, { message: "Company not found" });
+    }
+
+    const databasePath = company.databasePath;
+    const tempPath = path.resolve(path.dirname(databasePath), `${path.basename(databasePath)}.import-${Date.now()}.tmp`);
+    closeCompanyDb(databasePath);
+
+    try {
+      fs.writeFileSync(tempPath, input.databaseBuffer);
+      this.validateImportedCompanyDatabase(tempPath);
+
+      for (const filePath of [databasePath, `${databasePath}-shm`, `${databasePath}-wal`]) {
+        if (fs.existsSync(filePath)) {
+          fs.rmSync(filePath, { force: true });
+        }
+      }
+
+      fs.renameSync(tempPath, databasePath);
+      this.validateImportedCompanyDatabase(databasePath);
+      return company;
+    } catch (error) {
+      if (fs.existsSync(tempPath)) {
+        fs.rmSync(tempPath, { force: true });
+      }
+      throw error;
+    }
   },
 
   deleteCompany(input: DeleteCompanyInput) {

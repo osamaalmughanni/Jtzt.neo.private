@@ -194,6 +194,10 @@ export interface DeleteCompanyInput {
   companyId: number;
 }
 
+export interface ImportCompanyDatabaseInput {
+  companyId: number;
+}
+
 export interface CompanyListResponse {
   companies: CompanyRecord[];
 }

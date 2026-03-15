@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, ShieldPlus, Trash2 } from "lucide-react";
+import { Download, ShieldPlus, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { CompanyRecord, SystemStats } from "@shared/types/models";
 import { api } from "@/lib/api";
@@ -8,6 +8,7 @@ import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { FileInput } from "@/components/ui/file-input";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -17,6 +18,8 @@ export function AdminCompaniesPage() {
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [newAdmin, setNewAdmin] = useState({ companyId: 0, username: "", password: "", fullName: "" });
+  const [importingCompanyId, setImportingCompanyId] = useState<number | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [pendingDeleteCompany, setPendingDeleteCompany] = useState<CompanyRecord | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const statItems = [
@@ -101,6 +104,24 @@ export function AdminCompaniesPage() {
     }
   }
 
+  async function importCompanyDatabase(company: CompanyRecord) {
+    if (!adminSession || !importFile) return;
+    try {
+      setImportingCompanyId(company.id);
+      await api.importCompanyDb(adminSession.token, company.id, importFile);
+      setImportFile(null);
+      toast({ title: "Company database replaced" });
+      await load();
+    } catch (error) {
+      toast({
+        title: "Could not replace company database",
+        description: error instanceof Error ? error.message : "Request failed"
+      });
+    } finally {
+      setImportingCompanyId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Dialog open={pendingDeleteCompany !== null} onOpenChange={(open) => !open && setPendingDeleteCompany(null)}>
@@ -168,6 +189,44 @@ export function AdminCompaniesPage() {
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1">
+                    <Dialog>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <DialogTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+                            >
+                              <Upload className="h-3.5 w-3.5" />
+                            </Button>
+                          </DialogTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>Replace database</TooltipContent>
+                      </Tooltip>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Replace company database</DialogTitle>
+                          <DialogDescription>Upload a SQLite file to fully replace this company database.</DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-col gap-3">
+                          <FileInput
+                            file={importFile}
+                            accept=".db,.sqlite,.sqlite3,application/x-sqlite3"
+                            placeholder="Upload a SQLite database"
+                            buttonLabel="Select"
+                            onFileChange={setImportFile}
+                          />
+                          <Button
+                            onClick={() => void importCompanyDatabase(company)}
+                            disabled={importingCompanyId === company.id || !importFile}
+                          >
+                            {importingCompanyId === company.id ? "Replacing..." : "Replace database"}
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button

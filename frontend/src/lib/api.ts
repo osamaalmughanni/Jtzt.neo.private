@@ -275,6 +275,25 @@ export const api = {
     });
   },
 
+  async createCompanyFromDb(token: string, input: { name: string; file: File }) {
+    const formData = new FormData();
+    formData.set("name", input.name);
+    formData.set("file", input.file);
+
+    const response = await fetch("/api/admin/companies/create/import", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const error = (await response.json().catch(() => ({ error: "Request failed" }))) as { error?: string };
+      throw new Error(error.error ?? "Request failed");
+    }
+
+    return response.json() as Promise<{ company: unknown }>;
+  },
+
   deleteCompany(token: string, input: DeleteCompanyInput) {
     return request<{ success: boolean }>("/api/admin/companies/delete", {
       method: "POST",
@@ -314,5 +333,23 @@ export const api = {
           .get("Content-Disposition")
           ?.match(/filename="([^"]+)"/)?.[1] ?? `company-${companyId}.sqlite`
     };
+  },
+
+  async importCompanyDb(token: string, companyId: number, file: File) {
+    const formData = new FormData();
+    formData.set("file", file);
+
+    const response = await fetch(`/api/admin/companies/${companyId}/import`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const error = (await response.json().catch(() => ({ error: "Request failed" }))) as { error?: string };
+      throw new Error(error.error ?? "Request failed");
+    }
+
+    return response.json() as Promise<{ company: unknown }>;
   }
 };
