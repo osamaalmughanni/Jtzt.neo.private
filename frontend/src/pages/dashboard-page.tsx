@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PencilSimple, Plus, Trash } from "phosphor-react";
 import type {
+  CompanyCustomField,
   CompanySettings,
   CompanyUserListItem,
   DashboardSummary,
@@ -114,9 +115,28 @@ function getEntryMeta(entry: TimeEntryView, locale: string) {
   return `${formatCompanyDateRange(entry.entryDate, entry.endDate, locale)} • ${entry.effectiveDayCount} day${entry.effectiveDayCount === 1 ? "" : "s"}`;
 }
 
-function getEntrySupportText(entry: TimeEntryView, labelMap: Map<string, string>) {
+function getCustomFieldDisplayValue(field: CompanyCustomField | undefined, rawValue: string | number | boolean) {
+  if (!field) {
+    return String(rawValue);
+  }
+
+  if (field.type === "boolean" && typeof rawValue === "boolean") {
+    return rawValue ? "Yes" : "No";
+  }
+
+  if (field.type === "select" && typeof rawValue === "string") {
+    return field.options.find((option) => option.value === rawValue)?.label ?? rawValue;
+  }
+
+  return String(rawValue);
+}
+
+function getEntrySupportText(entry: TimeEntryView, fieldsById: Map<string, CompanyCustomField>) {
   const customFields = Object.entries(entry.customFieldValues)
-    .map(([key, value]) => `${labelMap.get(key) ?? key}: ${String(value)}`)
+    .map(([key, value]) => {
+      const field = fieldsById.get(key);
+      return `${field?.label ?? key}: ${getCustomFieldDisplayValue(field, value)}`;
+    })
     .join(", ");
   return customFields;
 }
@@ -182,9 +202,9 @@ export function DashboardPage() {
   const canCreateRecord =
     bypassDayLimits ||
     isDayWithinLimit(selectedDayKey, settings.insertDaysLimit);
-  const customFieldLabelMap = useMemo(
+  const customFieldsById = useMemo(
     () =>
-      new Map(settings.customFields.map((field) => [field.id, field.label])),
+      new Map(settings.customFields.map((field) => [field.id, field])),
     [settings.customFields],
   );
   const activeContractStats =
@@ -434,7 +454,7 @@ export function DashboardPage() {
               const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
               const supportText = getEntrySupportText(
                 entry,
-                customFieldLabelMap,
+                customFieldsById,
               );
 
               return (

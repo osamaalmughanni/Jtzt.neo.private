@@ -116,10 +116,29 @@ function clampDayRange(startDay: string, endDay: string, reportStartDay: string,
   };
 }
 
+function getCustomFieldDisplayValue(field: CompanyCustomField | undefined, rawValue: string | number | boolean | null) {
+  if (!field || rawValue === null) {
+    return rawValue;
+  }
+
+  if (field.type === "boolean" && typeof rawValue === "boolean") {
+    return rawValue ? "Yes" : "No";
+  }
+
+  if (field.type === "select" && typeof rawValue === "string") {
+    const option = field.options.find((item) => item.value === rawValue);
+    return option?.label ?? rawValue;
+  }
+
+  return rawValue;
+}
+
 function getEntryValue(entry: ReportRow, key: string, customFields: CompanyCustomField[], contractsByUser: Map<number, ContractRow[]>) {
   const customValues = parseJsonRecord(entry.custom_field_values_json);
   if (key.startsWith("custom:")) {
-    return customValues[key.slice("custom:".length)] ?? null;
+    const fieldId = key.slice("custom:".length);
+    const field = customFields.find((item) => item.id === fieldId);
+    return getCustomFieldDisplayValue(field, customValues[fieldId] ?? null);
   }
 
   if (key === "user") return entry.full_name;
