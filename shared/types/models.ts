@@ -123,6 +123,10 @@ export interface TimeEntryView {
   endTime: string | null;
   notes: string;
   durationMinutes: number;
+  totalDayCount: number;
+  effectiveDayCount: number;
+  excludedHolidayCount: number;
+  excludedWeekendCount: number;
   sickLeaveAttachment: SickLeaveAttachment | null;
   customFieldValues: Record<string, string | number | boolean>;
   createdAt: string;

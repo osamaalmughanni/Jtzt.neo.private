@@ -32,5 +32,5 @@ reportRoutes.post("/preview", async (c) => {
 
   ensureManagerOrAdmin(session);
   const body = reportSchema.parse(await c.req.json());
-  return c.json({ report: reportService.generate(session.databasePath, body) });
+  return c.json({ report: await reportService.generate(session.databasePath, body) });
 });

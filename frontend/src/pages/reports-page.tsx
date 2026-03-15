@@ -118,6 +118,13 @@ function getLastMonthRange(date: Date) {
   return getMonthRange(new Date(date.getFullYear(), date.getMonth() - 1, 1));
 }
 
+function getYearRange(date: Date) {
+  return {
+    startDate: formatLocalDay(new Date(date.getFullYear(), 0, 1)),
+    endDate: formatLocalDay(new Date(date.getFullYear(), 11, 31)),
+  };
+}
+
 function getWeekRange(date: Date) {
   const next = new Date(date);
   const weekday = next.getDay();
@@ -133,6 +140,7 @@ function applyPeriodPreset(periodPreset: string) {
   if (periodPreset === "this_week") return getWeekRange(today);
   if (periodPreset === "this_month") return getMonthRange(today);
   if (periodPreset === "last_month") return getLastMonthRange(today);
+  if (periodPreset === "this_year") return getYearRange(today);
   return {
     startDate: formatLocalDay(today),
     endDate: formatLocalDay(today),
@@ -191,6 +199,7 @@ export function ReportsPage() {
     { value: "custom", label: "Custom dates" },
     { value: "this_week", label: "This week" },
     { value: "this_month", label: "This month" },
+    { value: "this_year", label: "This year" },
     { value: "last_month", label: "Last month" },
   ];
 

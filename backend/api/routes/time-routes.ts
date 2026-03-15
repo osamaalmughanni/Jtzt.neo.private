@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { diffCalendarDays, formatLocalDay } from "../../../shared/utils/time";
+import { countEffectiveLeaveDays, diffCalendarDays, formatLocalDay } from "../../../shared/utils/time";
 import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
 import type { CompanyTokenPayload } from "../../auth/jwt";
 import { timeService } from "../../services/time-service";
@@ -115,6 +115,55 @@ function enforceDayLimit(
   }
 }
 
+async function enrichEntryWithDayMetrics(
+  databasePath: string,
+  entry: Awaited<ReturnType<typeof timeService.getEntryById>>
+) {
+  if (entry.entryType === "work") {
+    const totalDayCount = entry.endDate ? Math.max(1, diffCalendarDays(entry.endDate, entry.entryDate) + 1) : 1;
+    return {
+      ...entry,
+      totalDayCount,
+      effectiveDayCount: totalDayCount,
+      excludedHolidayCount: 0,
+      excludedWeekendCount: 0,
+    };
+  }
+
+  const startDay = entry.entryDate;
+  const endDay = entry.endDate ?? entry.entryDate;
+  const settings = settingsService.getSettings(databasePath);
+  const holidayYears = new Set<number>();
+  let year = Number(startDay.slice(0, 4));
+  const lastYear = Number(endDay.slice(0, 4));
+  while (year <= lastYear) {
+    holidayYears.add(year);
+    year += 1;
+  }
+
+  const holidays = await Promise.all(
+    Array.from(holidayYears).map((holidayYear) => settingsService.getPublicHolidays(databasePath, settings.country, holidayYear)),
+  );
+  const holidaySet = new Set(
+    holidays
+      .flatMap((response) => response.holidays)
+      .map((holiday) => holiday.date),
+  );
+  const metrics = countEffectiveLeaveDays(startDay, endDay, holidaySet);
+
+  return {
+    ...entry,
+    ...metrics,
+  };
+}
+
+async function enrichEntriesWithDayMetrics(
+  databasePath: string,
+  entries: ReturnType<typeof timeService.listEntries>
+) {
+  return Promise.all(entries.map((entry) => enrichEntryWithDayMetrics(databasePath, entry)));
+}
+
 timeRoutes.post("/start", async (c) => {
   const rawSession = c.get("session");
   if (rawSession.actorType !== "company_user") {
@@ -160,17 +209,9 @@ timeRoutes.post("/entry", async (c) => {
     return c.json({ error: error instanceof Error ? error.message : "Invalid custom fields" }, 400);
   }
 
-  const rangeHoliday = await settingsService.findPublicHolidayInRange(
-    session.databasePath,
-    body.startDate,
-    body.endDate ?? body.startDate
-  );
-  if (rangeHoliday) {
-    return c.json({ error: `Records are not allowed on public holidays like ${rangeHoliday.localName} (${rangeHoliday.date})` }, 400);
-  }
-
+  const createdEntry = timeService.createManualEntry(session.databasePath, targetUserId, body);
   return c.json({
-    entry: timeService.createManualEntry(session.databasePath, targetUserId, body)
+    entry: await enrichEntryWithDayMetrics(session.databasePath, createdEntry)
   });
 });
 
@@ -186,7 +227,7 @@ timeRoutes.post("/stop", async (c) => {
   });
 });
 
-timeRoutes.get("/list", (c) => {
+timeRoutes.get("/list", async (c) => {
   const rawSession = c.get("session");
   if (rawSession.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
@@ -200,14 +241,14 @@ timeRoutes.get("/list", (c) => {
     return c.json({ error: "Manager access required" }, 403);
   }
   return c.json({
-    entries: timeService.listEntries(session.databasePath, targetUserId, {
+    entries: await enrichEntriesWithDayMetrics(session.databasePath, timeService.listEntries(session.databasePath, targetUserId, {
       from: c.req.query("from"),
       to: c.req.query("to")
-    })
+    }))
   });
 });
 
-timeRoutes.get("/entry/:entryId", (c) => {
+timeRoutes.get("/entry/:entryId", async (c) => {
   const rawSession = c.get("session");
   if (rawSession.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
@@ -225,7 +266,7 @@ timeRoutes.get("/entry/:entryId", (c) => {
   if (entry.userId !== targetUserId) {
     return c.json({ error: "Time entry not found" }, 404);
   }
-  return c.json({ entry });
+  return c.json({ entry: await enrichEntryWithDayMetrics(session.databasePath, entry) });
 });
 
 timeRoutes.put("/entry", async (c) => {
@@ -258,16 +299,9 @@ timeRoutes.put("/entry", async (c) => {
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Invalid custom fields" }, 400);
   }
-  const rangeHoliday = await settingsService.findPublicHolidayInRange(
-    session.databasePath,
-    body.startDate,
-    body.endDate ?? body.startDate
-  );
-  if (rangeHoliday) {
-    return c.json({ error: `Records are not allowed on public holidays like ${rangeHoliday.localName} (${rangeHoliday.date})` }, 400);
-  }
+  const updatedEntry = timeService.updateEntry(session.databasePath, targetUserId, body);
   return c.json({
-    entry: timeService.updateEntry(session.databasePath, targetUserId, body)
+    entry: await enrichEntryWithDayMetrics(session.databasePath, updatedEntry)
   });
 });
 
@@ -288,13 +322,17 @@ timeRoutes.delete("/entry", async (c) => {
   return c.json({ success: true });
 });
 
-timeRoutes.get("/dashboard", (c) => {
+timeRoutes.get("/dashboard", async (c) => {
   const rawSession = c.get("session");
   if (rawSession.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
+  const summary = timeService.getDashboard(session.databasePath, session.userId);
   return c.json({
-    summary: timeService.getDashboard(session.databasePath, session.userId)
+    summary: {
+      ...summary,
+      recentEntries: await enrichEntriesWithDayMetrics(session.databasePath, summary.recentEntries),
+    }
   });
 });

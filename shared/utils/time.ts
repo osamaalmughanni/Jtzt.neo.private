@@ -48,6 +48,64 @@ export function diffCalendarDays(leftDay: string, rightDay: string): number {
   return Math.round((leftUtc - rightUtc) / 86400000);
 }
 
+export function enumerateLocalDays(startDay: string, endDay: string): string[] {
+  const start = parseLocalDay(startDay);
+  const end = parseLocalDay(endDay);
+  if (!start || !end || end < start) {
+    return [];
+  }
+
+  const days: string[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    days.push(formatLocalDay(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return days;
+}
+
+export function isWeekendDay(day: string): boolean {
+  const parsed = parseLocalDay(day);
+  if (!parsed) return false;
+  const weekday = parsed.getDay();
+  return weekday === 0 || weekday === 6;
+}
+
+export function countEffectiveLeaveDays(startDay: string, endDay: string, holidayDays: Set<string>): {
+  totalDayCount: number;
+  effectiveDayCount: number;
+  excludedHolidayCount: number;
+  excludedWeekendCount: number;
+} {
+  const days = enumerateLocalDays(startDay, endDay);
+  let effectiveDayCount = 0;
+  let excludedHolidayCount = 0;
+  let excludedWeekendCount = 0;
+
+  for (const day of days) {
+    const weekend = isWeekendDay(day);
+    const holiday = holidayDays.has(day);
+
+    if (holiday) {
+      excludedHolidayCount += 1;
+    } else if (weekend) {
+      excludedWeekendCount += 1;
+    }
+
+    if (!weekend && !holiday) {
+      effectiveDayCount += 1;
+    }
+  }
+
+  return {
+    totalDayCount: days.length,
+    effectiveDayCount,
+    excludedHolidayCount,
+    excludedWeekendCount,
+  };
+}
+
 export function startOfDayIso(date = new Date()): string {
   const value = new Date(date);
   value.setHours(0, 0, 0, 0);

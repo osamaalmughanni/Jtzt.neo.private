@@ -3,6 +3,7 @@ import { diffMinutes } from "../../shared/utils/time";
 import type { ReportColumnDefinition, ReportRequestInput } from "../../shared/types/api";
 import type { CompanyCustomField, TimeEntryType, UserContract } from "../../shared/types/models";
 import { getCompanyDb } from "../db/company-db";
+import { calculateLeaveCompensation } from "./time-entry-metrics-service";
 import { settingsService } from "./settings-service";
 
 type ReportRow = {
@@ -79,8 +80,41 @@ function getColumnDefinition(key: string, customFields: CompanyCustomField[]): R
 }
 
 function resolveContractRate(contracts: ContractRow[], day: string) {
-  const match = contracts.find((contract) => contract.startDate <= day && (contract.endDate === null || contract.endDate >= day));
+  let match: ContractRow | null = null;
+  for (const contract of contracts) {
+    if (contract.startDate <= day && (contract.endDate === null || contract.endDate >= day)) {
+      if (!match || contract.startDate >= match.startDate) {
+        match = contract;
+      }
+    }
+  }
+
   return match?.paymentPerHour ?? 0;
+}
+
+async function getHolidaySet(databasePath: string, country: string, startDate: string, endDate: string) {
+  const holidaySet = new Set<string>();
+  let year = Number(startDate.slice(0, 4));
+  const finalYear = Number(endDate.slice(0, 4));
+
+  while (year <= finalYear) {
+    const response = await settingsService.getPublicHolidays(databasePath, country, year);
+    for (const holiday of response.holidays) {
+      holidaySet.add(holiday.date);
+    }
+    year += 1;
+  }
+
+  return holidaySet;
+}
+
+function clampDayRange(startDay: string, endDay: string, reportStartDay: string, reportEndDay: string) {
+  const clampedStart = startDay < reportStartDay ? reportStartDay : startDay;
+  const clampedEnd = endDay > reportEndDay ? reportEndDay : endDay;
+  return {
+    startDay: clampedStart,
+    endDay: clampedEnd < clampedStart ? clampedStart : clampedEnd,
+  };
 }
 
 function getEntryValue(entry: ReportRow, key: string, customFields: CompanyCustomField[], contractsByUser: Map<number, ContractRow[]>) {
@@ -117,7 +151,7 @@ function normalizeReportValue(value: string | number | boolean | null) {
 }
 
 export const reportService = {
-  generate(databasePath: string, input: ReportRequestInput) {
+  async generate(databasePath: string, input: ReportRequestInput) {
     if (input.userIds.length === 0) {
       throw new HTTPException(400, { message: "Select at least one user" });
     }
@@ -129,6 +163,7 @@ export const reportService = {
     }
 
     const settings = settingsService.getSettings(databasePath);
+    const holidaySet = await getHolidaySet(databasePath, settings.country, input.startDate, input.endDate);
     const db = getCompanyDb(databasePath);
     const placeholders = buildInClause(input.userIds);
     const rows = db.prepare(
@@ -189,13 +224,40 @@ export const reportService = {
       contractsByUser.set(row.user_id, next);
     }
 
+    const leaveMetricCache = new Map<number, ReturnType<typeof calculateLeaveCompensation>>();
+    const entryValue = (row: ReportRow, key: string) => {
+      if ((key === "duration" || key === "cost") && row.entry_type !== "work") {
+        let cached = leaveMetricCache.get(row.id);
+        if (!cached) {
+          const clampedRange = clampDayRange(
+            row.entry_date,
+            row.end_date ?? row.entry_date,
+            input.startDate,
+            input.endDate,
+          );
+          cached = calculateLeaveCompensation(
+            row.entry_type,
+            clampedRange.startDay,
+            clampedRange.endDay,
+            holidaySet,
+            contractsByUser.get(row.user_id) ?? [],
+          );
+          leaveMetricCache.set(row.id, cached);
+        }
+
+        return key === "duration" ? cached.durationMinutes : cached.costAmount;
+      }
+
+      return getEntryValue(row, key, settings.customFields, contractsByUser);
+    };
+
     const validGroupBy = input.groupBy.filter((key, index, array) => key && array.indexOf(key) === index).slice(0, 8);
     const grouped = input.totalsOnly || validGroupBy.length > 0;
 
     const totals = rows.reduce(
       (current, row) => {
-        const durationMinutes = Number(getEntryValue(row, "duration", settings.customFields, contractsByUser) ?? 0);
-        const cost = Number(getEntryValue(row, "cost", settings.customFields, contractsByUser) ?? 0);
+        const durationMinutes = Number(entryValue(row, "duration") ?? 0);
+        const cost = Number(entryValue(row, "cost") ?? 0);
         return {
           entryCount: current.entryCount + 1,
           durationMinutes: current.durationMinutes + durationMinutes,
@@ -212,7 +274,7 @@ export const reportService = {
       const detailRows = rows.map((row) => {
         const next: Record<string, string | number | null> = {};
         for (const column of columns) {
-          next[column.key] = normalizeReportValue(getEntryValue(row, column.key, settings.customFields, contractsByUser));
+          next[column.key] = normalizeReportValue(entryValue(row, column.key));
         }
         return next;
       });
@@ -241,11 +303,11 @@ export const reportService = {
     for (const row of rows) {
       const groupValues: Record<string, string | number | null> = {};
       for (const key of effectiveGroupBy) {
-        groupValues[key] = normalizeReportValue(getEntryValue(row, key, settings.customFields, contractsByUser));
+        groupValues[key] = normalizeReportValue(entryValue(row, key));
       }
       const bucketKey = effectiveGroupBy.length > 0 ? effectiveGroupBy.map((key) => String(groupValues[key] ?? "")).join("||") : "__all__";
-      const durationMinutes = Number(getEntryValue(row, "duration", settings.customFields, contractsByUser) ?? 0);
-      const cost = Number(getEntryValue(row, "cost", settings.customFields, contractsByUser) ?? 0);
+      const durationMinutes = Number(entryValue(row, "duration") ?? 0);
+      const cost = Number(entryValue(row, "cost") ?? 0);
       const current = bucketMap.get(bucketKey);
       if (current) {
         current.entryCount += 1;

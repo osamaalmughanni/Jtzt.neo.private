@@ -11,7 +11,7 @@ import type {
   TimeEntryRecord,
   TimeEntryView
 } from "../../shared/types/models";
-import { diffMinutes } from "../../shared/utils/time";
+import { diffCalendarDays, diffMinutes } from "../../shared/utils/time";
 
 function normalizeEntryType(value: unknown) {
   if (value === "work" || value === "vacation" || value === "sick_leave") {
@@ -134,16 +134,23 @@ export function mapTimeEntry(row: any): TimeEntryRecord {
 
 export function mapTimeEntryView(row: any): TimeEntryView {
   const entryType = normalizeEntryType(row.entry_type);
+  const entryDate = row.entry_date ?? row.start_time?.slice(0, 10);
+  const endDate = row.end_date ?? null;
+  const totalDayCount = endDate ? Math.max(1, diffCalendarDays(endDate, entryDate) + 1) : 1;
   return {
     id: row.id,
     userId: row.user_id,
     entryType,
-    entryDate: row.entry_date ?? row.start_time?.slice(0, 10),
-    endDate: row.end_date ?? null,
+    entryDate,
+    endDate,
     startTime: entryType === "work" ? row.start_time : null,
     endTime: entryType === "work" ? row.end_time : null,
     notes: row.notes ?? "",
     durationMinutes: entryType === "work" ? diffMinutes(row.start_time, row.end_time) : 0,
+    totalDayCount,
+    effectiveDayCount: totalDayCount,
+    excludedHolidayCount: 0,
+    excludedWeekendCount: 0,
     sickLeaveAttachment:
       entryType === "sick_leave" && row.sick_leave_attachment_data_url
         ? {

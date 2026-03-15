@@ -8,7 +8,7 @@ import type {
   SickLeaveAttachment,
   TimeEntryType,
 } from "@shared/types/models";
-import { diffCalendarDays, formatLocalDay } from "@shared/utils/time";
+import { countEffectiveLeaveDays, diffCalendarDays, formatLocalDay } from "@shared/utils/time";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import { Field, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
@@ -89,10 +89,6 @@ function enumerateYears(startDate: string, endDate: string) {
     year += 1;
   }
   return Array.from(years);
-}
-
-function findHolidayInRange(holidays: PublicHolidayRecord[], startDate: string, endDate: string) {
-  return holidays.find((holiday) => holiday.date >= startDate && holiday.date <= endDate) ?? null;
 }
 
 async function readFileAsDataUrl(file: File) {
@@ -191,7 +187,11 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const selectedUserName =
     users.find((user) => user.id === effectiveUserId)?.fullName ?? companyIdentity?.user.fullName ?? "User";
   const resolvedEndDate = endDate;
-  const rangeHoliday = findHolidayInRange(holidays, startDate, resolvedEndDate);
+  const holidaySet = useMemo(() => new Set(holidays.map((holiday) => holiday.date)), [holidays]);
+  const leaveMetrics = useMemo(
+    () => countEffectiveLeaveDays(startDate, resolvedEndDate, holidaySet),
+    [holidaySet, resolvedEndDate, startDate],
+  );
   const insertLocked = !bypassDayLimits && mode === "create" && !isDayWithinLimit(startDate, settings.insertDaysLimit);
   const editLocked = !bypassDayLimits && mode === "edit" && !isDayWithinLimit(startDate, settings.editDaysLimit);
   const dayLimitError = insertLocked
@@ -260,7 +260,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     try {
       if (resolvedEndDate < startDate) throw new Error("End date must be on or after start date");
       if (dayLimitError) throw new Error(dayLimitError);
-      if (rangeHoliday) throw new Error(`Records are not allowed on ${rangeHoliday.localName} (${rangeHoliday.date})`);
       if (entryType === "work") {
         if (!startTime) throw new Error("Start time is required");
         if (!endTime) throw new Error("End time is required");
@@ -388,9 +387,9 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       <PageLabel title={mode === "create" ? "Add entry" : "Edit entry"} description={`${selectedUserName} in overview context`} />
       <FormPanel>
         {loading ? <p className="text-sm text-muted-foreground">Loading entry...</p> : null}
-        {rangeHoliday ? (
+        {entryType !== "work" && (leaveMetrics.excludedHolidayCount > 0 || leaveMetrics.excludedWeekendCount > 0) ? (
           <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
-            {rangeHoliday.localName} on {rangeHoliday.date}. Entries are blocked on public holidays.
+            This range stays valid. Effective leave days: {leaveMetrics.effectiveDayCount}. Excluded: {leaveMetrics.excludedHolidayCount} public holiday{leaveMetrics.excludedHolidayCount === 1 ? "" : "s"} and {leaveMetrics.excludedWeekendCount} weekend day{leaveMetrics.excludedWeekendCount === 1 ? "" : "s"}.
           </div>
         ) : null}
         {dayLimitError ? (

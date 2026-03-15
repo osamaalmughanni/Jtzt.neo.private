@@ -1,23 +1,11 @@
+import rawLogo from "@shared/img/logo.svg?raw";
 import type { ReportResponse } from "@shared/types/api";
 import { formatMinutes } from "@shared/utils/time";
 import { formatCompanyDate, formatCompanyDateTime } from "@/lib/locale-format";
 
-const jtztLogoSvg = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Jtzt logo">
-  <rect width="64" height="64" rx="14" fill="#111827" />
-  <text
-    x="32"
-    y="48"
-    fill="#ffffff"
-    font-family="Arial, Helvetica, sans-serif"
-    font-size="44"
-    font-weight="700"
-    text-anchor="middle"
-  >
-    J
-  </text>
-</svg>
-`.trim();
+function isLocalDayValue(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
 
 function formatCellValue(
   value: string | number | null,
@@ -36,6 +24,9 @@ function formatCellValue(
     }
   }
   if (kind === "date" && typeof value === "string") return formatCompanyDate(value, locale);
+  if (kind === "datetime" && typeof value === "string" && isLocalDayValue(value)) {
+    return formatCompanyDate(value, locale);
+  }
   if (kind === "datetime" && typeof value === "string") return formatCompanyDateTime(value, locale, dateTimeFormat);
   if (kind === "number" && typeof value === "number") return new Intl.NumberFormat(locale).format(value);
   return String(value);
@@ -114,7 +105,9 @@ function buildExcelWorkbook(report: ReportResponse["report"]) {
   }));
 
   const dataRows = report.rows.map((row) =>
-    report.columns.map((column) => getExcelCell(row[column.key] ?? null, column.kind, report.locale, report.currency, report.dateTimeFormat)),
+    report.columns.map((column) =>
+      getExcelCell(row[column.key] ?? null, column.kind, report.locale, report.currency, report.dateTimeFormat),
+    ),
   );
 
   return `<?xml version="1.0"?>
@@ -151,29 +144,8 @@ function buildExcelWorkbook(report: ReportResponse["report"]) {
 </Workbook>`;
 }
 
-function buildTableMarkup(report: ReportResponse["report"]) {
-  const headerCells = report.columns
-    .map((column) => `<th>${escapeHtml(column.label)}</th>`)
-    .join("");
-  const bodyRows = report.rows
-    .map(
-      (row) =>
-        `<tr>${report.columns
-          .map((column) => `<td>${escapeHtml(formatCellValue(row[column.key] ?? null, column.kind, report.locale, report.currency, report.dateTimeFormat))}</td>`)
-          .join("")}</tr>`,
-    )
-    .join("");
-
-  return `
-    <table class="report-table">
-      <thead><tr>${headerCells}</tr></thead>
-      <tbody>${bodyRows}</tbody>
-    </table>
-  `;
-}
-
-function createDownload(html: string, fileName: string, mimeType: string) {
-  const blob = new Blob([html], { type: mimeType });
+function createDownload(content: string, fileName: string, mimeType: string) {
+  const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -182,171 +154,169 @@ function createDownload(html: string, fileName: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
+function escapePdfText(value: string) {
+  return value.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
+}
+
+function normalizePdfText(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncatePdfText(value: string, maxChars: number) {
+  const normalized = normalizePdfText(value);
+  if (normalized.length <= maxChars) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(0, maxChars - 3))}...`;
+}
+
+function formatPdfCellValue(
+  value: string | number | null,
+  kind: ReportResponse["report"]["columns"][number]["kind"],
+  locale: string,
+  currency: string,
+  dateTimeFormat: string,
+) {
+  if (value === null || value === "") return "";
+  if (kind === "currency" && typeof value === "number") {
+    return `${value.toFixed(2)} ${currency}`;
+  }
+
+  return normalizePdfText(formatCellValue(value, kind, locale, currency, dateTimeFormat));
+}
+
+function buildPdf(report: ReportResponse["report"]) {
+  const pageWidth = 841.89;
+  const pageHeight = 595.28;
+  const margin = 28;
+  const headerHeight = 52;
+  const footerHeight = 14;
+  const tableHeaderHeight = 18;
+  const rowHeight = 14;
+  const tableTop = pageHeight - margin - headerHeight;
+  const usableHeight = tableTop - margin - footerHeight - tableHeaderHeight;
+  const rowsPerPage = Math.max(10, Math.floor(usableHeight / rowHeight));
+  const contentWidth = pageWidth - margin * 2;
+  const columnWidth = contentWidth / Math.max(1, report.columns.length);
+  const maxCharsPerCell = Math.max(6, Math.floor((columnWidth - 6) / 5.2));
+  const formattedRows = report.rows.map((row) =>
+    report.columns.map((column) =>
+      truncatePdfText(
+        formatPdfCellValue(
+          row[column.key] ?? null,
+          column.kind,
+          report.locale,
+          report.currency,
+          report.dateTimeFormat,
+        ),
+        maxCharsPerCell,
+      ),
+    ),
+  );
+  const pageChunks = Array.from({ length: Math.max(1, Math.ceil(formattedRows.length / rowsPerPage)) }, (_, index) =>
+    formattedRows.slice(index * rowsPerPage, (index + 1) * rowsPerPage),
+  );
+
+  const objects: string[] = [];
+  const addObject = (content: string) => {
+    objects.push(content);
+    return objects.length;
+  };
+
+  const fontRegularId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>");
+  const fontBoldId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+  const pageIds: number[] = [];
+  const logoWord = normalizePdfText(rawLogo).includes("Jtzt") ? "Jtzt" : "Jtzt";
+
+  for (let pageIndex = 0; pageIndex < pageChunks.length; pageIndex += 1) {
+    const rows = pageChunks[pageIndex];
+    const commands: string[] = [];
+    const pushText = (text: string, x: number, y: number, size: number, fontKey: "F1" | "F2" = "F1") => {
+      commands.push(`BT /${fontKey} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${escapePdfText(text)}) Tj ET`);
+    };
+
+    commands.push("0 0 0 rg");
+    commands.push("0 0 0 RG");
+    commands.push("0.5 w");
+
+    pushText(logoWord, margin, pageHeight - margin - 4, 16, "F2");
+    pushText("Report", margin + 40, pageHeight - margin - 4, 13, "F2");
+    pushText(
+      normalizePdfText(`${formatCompanyDate(report.startDate, report.locale)} to ${formatCompanyDate(report.endDate, report.locale)}`),
+      margin,
+      pageHeight - margin - 18,
+      8.5,
+    );
+
+    const headerY = tableTop;
+    commands.push(`${margin} ${headerY} m ${pageWidth - margin} ${headerY} l S`);
+    commands.push(`${margin} ${headerY - tableHeaderHeight} m ${pageWidth - margin} ${headerY - tableHeaderHeight} l S`);
+
+    for (let columnIndex = 0; columnIndex < report.columns.length; columnIndex += 1) {
+      const x = margin + columnIndex * columnWidth;
+      if (columnIndex > 0) {
+        commands.push(`${x.toFixed(2)} ${margin} m ${x.toFixed(2)} ${headerY} l S`);
+      }
+      pushText(truncatePdfText(normalizePdfText(report.columns[columnIndex].label), maxCharsPerCell), x + 3, headerY - 12, 7.5, "F2");
+    }
+
+    rows.forEach((row, rowIndex) => {
+      const rowTop = headerY - tableHeaderHeight - rowIndex * rowHeight;
+      const rowBottom = rowTop - rowHeight;
+      commands.push(`${margin} ${rowBottom} m ${pageWidth - margin} ${rowBottom} l S`);
+      row.forEach((cell, columnIndex) => {
+        const x = margin + columnIndex * columnWidth;
+        pushText(cell, x + 3, rowTop - 10, 7, "F1");
+      });
+    });
+
+    pushText(`Page ${pageIndex + 1} / ${pageChunks.length}`, pageWidth - margin - 46, margin - 2, 7);
+
+    const contentStream = commands.join("\n");
+    const contentId = addObject(`<< /Length ${contentStream.length} >>\nstream\n${contentStream}\nendstream`);
+    const pageId = addObject(
+      `<< /Type /Page /Parent 0 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Contents ${contentId} 0 R /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> >> >>`,
+    );
+    pageIds.push(pageId);
+  }
+
+  const pagesId = addObject(`<< /Type /Pages /Count ${pageIds.length} /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] >>`);
+  const catalogId = addObject(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
+
+  objects.forEach((object, index) => {
+    if (object.includes("/Parent 0 0 R")) {
+      objects[index] = object.replace("/Parent 0 0 R", `/Parent ${pagesId} 0 R`);
+    }
+  });
+
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [0];
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return pdf;
+}
+
 export function exportReportExcel(report: ReportResponse["report"]) {
   const workbook = buildExcelWorkbook(report);
   createDownload(workbook, buildFileName(report, "xls"), "application/vnd.ms-excel;charset=utf-8;");
 }
 
 export function exportReportPdf(report: ReportResponse["report"]) {
-  const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1280,height=900");
-  if (!printWindow) return;
-
-  printWindow.document.write(`
-    <html>
-      <head>
-        <title>Jtzt Report</title>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <style>
-          :root {
-            color-scheme: light;
-          }
-          body {
-            font-family: Inter, Arial, sans-serif;
-            padding: 28px 32px 40px;
-            color: #0f172a;
-            background: #ffffff;
-          }
-          .page {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-          }
-          .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 20px;
-            padding-bottom: 18px;
-            border-bottom: 2px solid #e2e8f0;
-          }
-          .brand {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-          }
-          .logo {
-            width: 48px;
-            height: 48px;
-            flex: 0 0 auto;
-          }
-          .title {
-            margin: 0;
-            font-size: 24px;
-            line-height: 1.1;
-            font-weight: 700;
-          }
-          .subtitle {
-            margin: 6px 0 0;
-            color: #475569;
-            font-size: 12px;
-          }
-          .meta {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px 16px;
-            min-width: 280px;
-          }
-          .meta-card {
-            border: 1px solid #cbd5e1;
-            border-radius: 12px;
-            padding: 10px 12px;
-            background: #f8fafc;
-          }
-          .meta-label {
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: #64748b;
-            margin: 0 0 4px;
-          }
-          .meta-value {
-            font-size: 12px;
-            font-weight: 600;
-            color: #0f172a;
-            margin: 0;
-          }
-          .report-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 11px;
-          }
-          .report-table th,
-          .report-table td {
-            border: 1px solid #cbd5e1;
-            padding: 7px 9px;
-            text-align: left;
-            vertical-align: top;
-          }
-          .report-table thead th {
-            background: #e2e8f0;
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            white-space: nowrap;
-          }
-          .report-table tbody tr:nth-child(even) td {
-            background: #f8fafc;
-          }
-          .footer {
-            display: flex;
-            justify-content: space-between;
-            color: #64748b;
-            font-size: 11px;
-            padding-top: 12px;
-            border-top: 1px solid #e2e8f0;
-          }
-          @page {
-            size: A4 landscape;
-            margin: 14mm;
-          }
-          @media print {
-            body {
-              padding: 0;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="page">
-          <div class="header">
-            <div class="brand">
-              <div class="logo">${jtztLogoSvg}</div>
-              <div>
-                <h1 class="title">Jtzt Report</h1>
-                <p class="subtitle">${escapeHtml(formatCompanyDate(report.startDate, report.locale))} to ${escapeHtml(formatCompanyDate(report.endDate, report.locale))}</p>
-              </div>
-            </div>
-            <div class="meta">
-              <div class="meta-card">
-                <p class="meta-label">Entries</p>
-                <p class="meta-value">${escapeHtml(new Intl.NumberFormat(report.locale).format(report.totals.entryCount))}</p>
-              </div>
-              <div class="meta-card">
-                <p class="meta-label">Hours</p>
-                <p class="meta-value">${escapeHtml(formatMinutes(report.totals.durationMinutes))}</p>
-              </div>
-              <div class="meta-card">
-                <p class="meta-label">Cost</p>
-                <p class="meta-value">${escapeHtml(formatCellValue(report.totals.cost, "currency", report.locale, report.currency))}</p>
-              </div>
-              <div class="meta-card">
-                <p class="meta-label">Grouped</p>
-                <p class="meta-value">${report.grouped ? "Yes" : "No"}</p>
-              </div>
-            </div>
-          </div>
-          ${buildTableMarkup(report)}
-          <div class="footer">
-            <span>Generated by Jtzt</span>
-            <span>${escapeHtml(new Date().toLocaleString(report.locale))}</span>
-          </div>
-        </div>
-      </body>
-    </html>
-  `);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.print();
+  const pdf = buildPdf(report);
+  createDownload(pdf, buildFileName(report, "pdf"), "application/pdf");
 }

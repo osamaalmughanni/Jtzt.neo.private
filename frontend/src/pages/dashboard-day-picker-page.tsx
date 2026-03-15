@@ -103,7 +103,7 @@ export function DashboardDayPickerPage() {
         title="Select day"
         description={
           selectedHoliday
-            ? `${selectedHoliday.localName} on ${formatCompanyDate(selectedHoliday.date, settingsLocale)}. Records are blocked on this public holiday.`
+            ? `${selectedHoliday.localName} on ${formatCompanyDate(selectedHoliday.date, settingsLocale)}. Leave ranges can include this holiday, and it is excluded from effective leave-day totals.`
             : selectedDayState === "work"
               ? "This day has working time entries."
               : selectedDayState === "sick_leave"

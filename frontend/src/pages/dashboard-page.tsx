@@ -93,7 +93,7 @@ function getEntryMeta(entry: TimeEntryView, locale: string) {
     return formatMinutes(entry.durationMinutes);
   }
 
-  return formatCompanyDateRange(entry.entryDate, entry.endDate, locale);
+  return `${formatCompanyDateRange(entry.entryDate, entry.endDate, locale)} • ${entry.effectiveDayCount} day${entry.effectiveDayCount === 1 ? "" : "s"}`;
 }
 
 function getEntrySupportText(entry: TimeEntryView, labelMap: Map<string, string>) {

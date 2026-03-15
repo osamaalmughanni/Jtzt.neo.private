@@ -13,6 +13,10 @@ import { exportReportExcel, exportReportPdf } from "@/lib/report-export";
 import { loadReportDraft } from "@/lib/report-draft-storage";
 import { toast } from "@/lib/toast";
 
+function isLocalDayValue(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 function formatCellValue(
   value: string | number | null,
   kind: ReportResponse["report"]["columns"][number]["kind"],
@@ -30,6 +34,9 @@ function formatCellValue(
     }
   }
   if (kind === "date" && typeof value === "string") return formatCompanyDate(value, locale);
+  if (kind === "datetime" && typeof value === "string" && isLocalDayValue(value)) {
+    return formatCompanyDate(value, locale);
+  }
   if (kind === "datetime" && typeof value === "string") return formatCompanyDateTime(value, locale, dateTimeFormat);
   if (kind === "number" && typeof value === "number") return new Intl.NumberFormat(locale).format(value);
   return String(value);
