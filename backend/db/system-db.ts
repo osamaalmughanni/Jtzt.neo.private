@@ -69,6 +69,13 @@ const systemMigrations: Migration[] = [
       ensureColumn(db, "companies", "tablet_code_updated_at", "TEXT");
       db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_tablet_code_hash ON companies (tablet_code_hash)");
     }
+  },
+  {
+    id: "004_company_tablet_code_value",
+    up(db) {
+      ensureColumn(db, "companies", "tablet_code_value", "TEXT");
+      db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_tablet_code_value ON companies (tablet_code_value)");
+    }
   }
 ];
 

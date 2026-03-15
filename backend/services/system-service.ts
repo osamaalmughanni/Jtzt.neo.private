@@ -50,13 +50,15 @@ export const systemService = {
 
   getCompanyByTabletCode(code: string) {
     const normalized = normalizeTabletCode(code);
-    if (normalized.length < 6) {
+    if (normalized.length === 0) {
       return null;
     }
 
     const row = getSystemDb()
-      .prepare("SELECT id, name, encryption_enabled, database_path, tablet_code_updated_at, created_at FROM companies WHERE tablet_code_hash = ?")
-      .get(hashTabletCode(normalized));
+      .prepare(
+        "SELECT id, name, encryption_enabled, database_path, tablet_code_updated_at, created_at FROM companies WHERE tablet_code_value = ? OR tablet_code_hash = ?"
+      )
+      .get(normalized, hashTabletCode(normalized));
     return row ? mapCompanyRecord(row) : null;
   },
 
@@ -90,8 +92,8 @@ export const systemService = {
 
   getTabletCodeStatus(companyId: number) {
     const row = getSystemDb()
-      .prepare("SELECT tablet_code_hash, tablet_code_updated_at FROM companies WHERE id = ?")
-      .get(companyId) as { tablet_code_hash: string | null; tablet_code_updated_at: string | null } | undefined;
+      .prepare("SELECT tablet_code_value, tablet_code_hash, tablet_code_updated_at FROM companies WHERE id = ?")
+      .get(companyId) as { tablet_code_value: string | null; tablet_code_hash: string | null; tablet_code_updated_at: string | null } | undefined;
 
     if (!row) {
       return null;
@@ -99,26 +101,37 @@ export const systemService = {
 
     return {
       configured: Boolean(row.tablet_code_hash),
+      code: row.tablet_code_value ?? null,
       updatedAt: row.tablet_code_updated_at ?? null
     };
   },
 
   setTabletCode(companyId: number, code: string) {
     const normalized = normalizeTabletCode(code);
-    if (normalized.length < 6 || normalized.length > 24) {
-      throw new HTTPException(400, { message: "Tablet code must be between 6 and 24 letters or numbers" });
+    if (normalized.length === 0 || normalized.length > 24) {
+      throw new HTTPException(400, { message: "Tablet code must contain at least 1 letter or number and at most 24" });
     }
 
-    const formattedCode = formatTabletCode(normalized);
     const updatedAt = new Date().toISOString();
-    getSystemDb()
-      .prepare("UPDATE companies SET tablet_code_hash = ?, tablet_code_updated_at = ? WHERE id = ?")
-      .run(hashTabletCode(formattedCode), updatedAt, companyId);
+    try {
+      getSystemDb()
+        .prepare("UPDATE companies SET tablet_code_value = ?, tablet_code_hash = ?, tablet_code_updated_at = ? WHERE id = ?")
+        .run(normalized, hashTabletCode(normalized), updatedAt, companyId);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("idx_companies_tablet_code_value")) {
+        throw new HTTPException(409, { message: "Tablet code is already used by another company" });
+      }
+      if (error instanceof Error && error.message.includes("UNIQUE constraint failed: companies.tablet_code_value")) {
+        throw new HTTPException(409, { message: "Tablet code is already used by another company" });
+      }
+      throw error;
+    }
 
     return {
-      code: formattedCode,
+      code: normalized,
       tabletCode: {
         configured: true,
+        code: normalized,
         updatedAt
       }
     };

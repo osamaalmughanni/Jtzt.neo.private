@@ -43,7 +43,7 @@ const holidayQuerySchema = z.object({
 });
 
 const tabletCodeSchema = z.object({
-  code: z.string().min(6).max(32)
+  code: z.string().min(1).max(64)
 });
 
 export const settingsRoutes = new Hono<{ Variables: AppVariables }>();

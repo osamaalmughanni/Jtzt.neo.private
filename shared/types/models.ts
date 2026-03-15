@@ -183,6 +183,7 @@ export interface CompanySettings {
 
 export interface TabletCodeStatus {
   configured: boolean;
+  code: string | null;
   updatedAt: string | null;
 }
 

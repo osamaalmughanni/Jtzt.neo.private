@@ -29,6 +29,7 @@ const defaultSettings: CompanySettings = {
 
 const defaultTabletCode: TabletCodeStatus = {
   configured: false,
+  code: null,
   updatedAt: null
 };
 
@@ -65,7 +66,6 @@ export function SettingsMenuPage() {
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [tabletCodeStatus, setTabletCodeStatus] = useState<TabletCodeStatus>(defaultTabletCode);
   const [tabletCodeInput, setTabletCodeInput] = useState("");
-  const [tabletCodeOutput, setTabletCodeOutput] = useState("");
   const [saving, setSaving] = useState(false);
   const [tabletSaving, setTabletSaving] = useState(false);
   const preview = useMemo(() => getLocalePreview(settings.locale), [settings.locale]);
@@ -79,6 +79,13 @@ export function SettingsMenuPage() {
     { value: "5", label: t("settings.friday") },
     { value: "6", label: t("settings.saturday") },
   ];
+  async function refreshTabletCodeStatus() {
+    if (!companySession) return;
+    const response = await api.getTabletCodeStatus(companySession.token);
+    setTabletCodeStatus(response.tabletCode);
+    setTabletCodeInput(response.tabletCode.code ?? "");
+  }
+
   useEffect(() => {
     if (!companySession) return;
     void api.getSettings(companySession.token).then((response) => setSettings(response.settings)).catch((error) =>
@@ -87,15 +94,20 @@ export function SettingsMenuPage() {
         description: error instanceof Error ? error.message : "Request failed",
       }),
     );
-    void api.getTabletCodeStatus(companySession.token).then((response) => setTabletCodeStatus(response.tabletCode)).catch(() => undefined);
+    void refreshTabletCodeStatus().catch(() => undefined);
   }, [companySession, t]);
 
   async function handleSave() {
     if (!companySession) return;
     try {
       setSaving(true);
+      const nextTabletCode = tabletCodeInput.trim();
+      if (nextTabletCode.length > 0 && nextTabletCode !== (tabletCodeStatus.code ?? "")) {
+        await api.updateTabletCode(companySession.token, { code: nextTabletCode });
+      }
       const response = await api.updateSettings(companySession.token, settings);
       setSettings(response.settings);
+      await refreshTabletCodeStatus();
       toast({ title: t("settings.saved") });
     } catch (error) {
       toast({
@@ -111,10 +123,8 @@ export function SettingsMenuPage() {
     if (!companySession) return;
     try {
       setTabletSaving(true);
-      const response = await api.updateTabletCode(companySession.token, { code: tabletCodeInput });
-      setTabletCodeStatus(response.tabletCode);
-      setTabletCodeOutput(response.code);
-      setTabletCodeInput(response.code);
+      await api.updateTabletCode(companySession.token, { code: tabletCodeInput });
+      await refreshTabletCodeStatus();
       toast({ title: t("settings.saveTabletCode") });
     } catch (error) {
       toast({
@@ -130,10 +140,8 @@ export function SettingsMenuPage() {
     if (!companySession) return;
     try {
       setTabletSaving(true);
-      const response = await api.regenerateTabletCode(companySession.token);
-      setTabletCodeStatus(response.tabletCode);
-      setTabletCodeOutput(response.code);
-      setTabletCodeInput(response.code);
+      await api.regenerateTabletCode(companySession.token);
+      await refreshTabletCodeStatus();
       toast({ title: t("settings.regenerateTabletCode") });
     } catch (error) {
       toast({
@@ -295,9 +303,9 @@ export function SettingsMenuPage() {
             <FormFields>
               <Field label={t("settings.tabletCode")}>
                 <Input
-                  placeholder="ABCD-EFGH-IJKL"
+                  placeholder="Enter tablet code"
                   value={tabletCodeInput}
-                  onChange={(event) => setTabletCodeInput(event.target.value.toUpperCase())}
+                  onChange={(event) => setTabletCodeInput(event.target.value)}
                 />
               </Field>
               <div className="flex items-center justify-between gap-3 text-sm">
@@ -308,16 +316,16 @@ export function SettingsMenuPage() {
                   <span className="text-muted-foreground">{formatCompanyDateTime(tabletCodeStatus.updatedAt, settings.locale, settings.dateTimeFormat)}</span>
                 ) : null}
               </div>
-              {tabletCodeOutput ? (
+              {tabletCodeStatus.code ? (
                 <div className="rounded-2xl border border-border bg-muted/30 px-4 py-3 text-sm">
                   <p className="text-muted-foreground">{t("settings.currentCode")}</p>
-                  <p className="text-base font-medium tracking-[0.16em] text-foreground">{tabletCodeOutput}</p>
+                  <p className="text-base font-medium tracking-[0.16em] text-foreground">{tabletCodeStatus.code}</p>
                 </div>
               ) : null}
             </FormFields>
             <div className="flex items-center gap-2">
               <Button
-                disabled={tabletSaving || tabletCodeInput.trim().length < 6}
+                disabled={tabletSaving || tabletCodeInput.trim().length === 0}
                 onClick={() => void handleSaveTabletCode()}
                 type="button"
               >

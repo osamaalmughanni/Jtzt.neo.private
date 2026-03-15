@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS companies (
   encryption_kdf_iterations INTEGER,
   encryption_kdf_salt TEXT,
   encryption_key_verifier TEXT,
+  tablet_code_value TEXT,
   tablet_code_hash TEXT,
   tablet_code_updated_at TEXT,
   database_path TEXT NOT NULL,
