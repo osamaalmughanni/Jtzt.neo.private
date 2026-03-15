@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { PencilSimple, Plus, Trash } from "phosphor-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { PencilSimple, Play, Stop, Plus, Trash } from "phosphor-react";
+import { useTranslation } from "react-i18next";
 import type {
   CompanyCustomField,
   CompanySettings,
@@ -10,6 +11,7 @@ import type {
 } from "@shared/types/models";
 import {
   diffCalendarDays,
+  diffMinutes,
   formatLocalDay,
   parseLocalDay,
 } from "@shared/utils/time";
@@ -24,6 +26,8 @@ import {
 import { PageLabel } from "@/components/page-label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DateInput } from "@/components/ui/date-input";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { entryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
@@ -37,7 +41,10 @@ const defaultSettings: CompanySettings = {
   firstDayOfWeek: 1,
   editDaysLimit: 30,
   insertDaysLimit: 30,
+  allowOneRecordPerDay: false,
+  allowIntersectingRecords: false,
   country: "AT",
+  tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
   customFields: [],
@@ -146,8 +153,33 @@ function formatBalanceMinutes(totalMinutes: number) {
   return `${prefix}${formatMinutes(Math.abs(totalMinutes))}`;
 }
 
+function triggerHapticFeedback() {
+  if (typeof navigator !== "undefined" && navigator.vibrate) {
+    navigator.vibrate(10);
+  }
+}
+
+function calculateLiveWorkDurationMinutes(
+  startTime: string | null,
+  endTime: string | null,
+  settings: Pick<CompanySettings, "autoBreakAfterMinutes" | "autoBreakDurationMinutes">,
+) {
+  const rawMinutes = diffMinutes(startTime ?? "", endTime);
+  if (settings.autoBreakAfterMinutes <= 0 || settings.autoBreakDurationMinutes <= 0) {
+    return rawMinutes;
+  }
+
+  if (rawMinutes < settings.autoBreakAfterMinutes) {
+    return rawMinutes;
+  }
+
+  return Math.max(0, rawMinutes - settings.autoBreakDurationMinutes);
+}
+
 export function DashboardPage() {
+  const navigate = useNavigate();
   const { companySession, companyIdentity, isTabletMode } = useAuth();
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
@@ -157,6 +189,9 @@ export function DashboardPage() {
   const [pendingDeleteEntry, setPendingDeleteEntry] =
     useState<TimeEntryView | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [tabletPunchOpen, setTabletPunchOpen] = useState(false);
+  const [tabletPunchValues, setTabletPunchValues] = useState<Record<string, string | number | boolean>>({});
+  const [tabletPunchSubmitting, setTabletPunchSubmitting] = useState(false);
   const [now, setNow] = useState(() => new Date());
 
   const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
@@ -205,6 +240,7 @@ export function DashboardPage() {
   const canCreateRecord =
     bypassDayLimits ||
     isDayWithinLimit(selectedDayKey, settings.insertDaysLimit);
+  const canUseTabletPunch = summary.activeEntry ? true : isToday(selectedDate) && canCreateRecord;
   const customFieldsById = useMemo(
     () =>
       new Map(settings.customFields.map((field) => [field.id, field])),
@@ -216,6 +252,10 @@ export function DashboardPage() {
       : statsRange === "week"
         ? summary.contractStats.week
         : summary.contractStats.month;
+  const requiredTabletWorkFields = useMemo(
+    () => settings.customFields.filter((field) => field.targets.includes("work") && field.required),
+    [settings.customFields]
+  );
 
   function cycleStatsRange() {
     setStatsRange((current) =>
@@ -251,7 +291,7 @@ export function DashboardPage() {
       setSummary(dashboardResponse.summary);
     } catch (error) {
       toast({
-        title: "Could not load records",
+        title: t("dashboard.couldNotLoadRecords"),
         description: error instanceof Error ? error.message : "Request failed",
       });
     }
@@ -290,7 +330,7 @@ export function DashboardPage() {
           return;
         }
         toast({
-          title: "Could not load users",
+          title: t("dashboard.couldNotLoadUsers"),
           description:
             error instanceof Error ? error.message : "Request failed",
         });
@@ -316,16 +356,78 @@ export function DashboardPage() {
         targetUserId: canSwitchUser ? effectiveUserId : undefined,
       });
       setPendingDeleteEntry(null);
-      toast({ title: "Record deleted" });
+      toast({ title: t("dashboard.recordDeleted") });
       await loadEntries();
     } catch (error) {
       toast({
-        title: "Could not delete record",
+        title: t("dashboard.couldNotDeleteRecord"),
         description: error instanceof Error ? error.message : "Request failed",
       });
     } finally {
       setDeleteSubmitting(false);
     }
+  }
+
+  function setTabletPunchFieldValue(field: CompanyCustomField, nextValue: string) {
+    setTabletPunchValues((current) => ({
+      ...current,
+      [field.id]:
+        field.type === "number"
+          ? nextValue === ""
+            ? ""
+            : Number(nextValue)
+          : field.type === "boolean"
+            ? nextValue === "true"
+            : nextValue
+    }));
+  }
+
+  async function startTabletTimer(customFieldValues: Record<string, string | number | boolean>) {
+    if (!companySession) return;
+    try {
+      setTabletPunchSubmitting(true);
+      await api.startTimer(companySession.token, { customFieldValues });
+      setTabletPunchOpen(false);
+      setTabletPunchValues({});
+      toast({ title: t("dashboard.timerStarted") });
+      await loadEntries();
+    } catch (error) {
+      toast({
+        title: t("dashboard.couldNotStartTimer"),
+        description: error instanceof Error ? error.message : "Request failed"
+      });
+    } finally {
+      setTabletPunchSubmitting(false);
+    }
+  }
+
+  async function stopTabletTimer() {
+    if (!companySession || !summary.activeEntry) return;
+    try {
+      await api.stopTimer(companySession.token, { entryId: summary.activeEntry.id });
+      toast({ title: t("dashboard.timerStopped") });
+      await loadEntries();
+    } catch (error) {
+      toast({
+        title: t("dashboard.couldNotStopTimer"),
+        description: error instanceof Error ? error.message : "Request failed"
+      });
+    }
+  }
+
+  function handleTabletPunch() {
+    triggerHapticFeedback();
+    if (summary.activeEntry) {
+      void stopTabletTimer();
+      return;
+    }
+
+    if (requiredTabletWorkFields.length > 0) {
+      setTabletPunchOpen(true);
+      return;
+    }
+
+    void startTabletTimer({});
   }
 
   const createRecordHref = `/dashboard/records/create?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
@@ -335,37 +437,101 @@ export function DashboardPage() {
     label: user.fullName,
   }));
   return (
-    <FormPage className="flex flex-col gap-5">
-      {!isTabletMode ? (
-        <AppConfirmDialog
-          open={pendingDeleteEntry !== null}
-          onOpenChange={(open) =>
-            !open && !deleteSubmitting && setPendingDeleteEntry(null)
-          }
-          title="Delete record"
-          description={
-            pendingDeleteEntry
-              ? pendingDeleteEntry.entryType === "work"
-                ? `${toTimeInputValue(pendingDeleteEntry.startTime)} - ${toTimeInputValue(pendingDeleteEntry.endTime)} will be removed.`
-                : `${getEntryTypeLabel(pendingDeleteEntry.entryType)} on ${formatCompanyDate(pendingDeleteEntry.entryDate, settings.locale)} will be removed.`
-              : undefined
-          }
-          confirmLabel="Delete"
-          destructive
-          confirming={deleteSubmitting}
-          onConfirm={() =>
-            pendingDeleteEntry && void deleteEntry(pendingDeleteEntry.id)
-          }
-        />
-      ) : null}
+    <FormPage className="flex h-full min-h-full flex-1 flex-col gap-5">
+      <Dialog
+        open={tabletPunchOpen}
+        onOpenChange={(open) => {
+          if (tabletPunchSubmitting) return;
+          setTabletPunchOpen(open);
+          if (!open) setTabletPunchValues({});
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("dashboard.requiredWorkFieldsTitle")}</DialogTitle>
+            <DialogDescription>{t("dashboard.requiredWorkFieldsDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            {requiredTabletWorkFields.map((field) => (
+              <Field key={field.id} label={field.label}>
+                {field.type === "boolean" ? (
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                    value={String(tabletPunchValues[field.id] ?? "")}
+                    onChange={(event) => setTabletPunchFieldValue(field, event.target.value)}
+                  >
+                    <option value="">{t("recordEditor.selectYesOrNo")}</option>
+                    <option value="true">{t("recordEditor.yes")}</option>
+                    <option value="false">{t("recordEditor.no")}</option>
+                  </select>
+                ) : field.type === "select" ? (
+                  <FieldCombobox
+                    label={field.label}
+                    value={typeof tabletPunchValues[field.id] === "string" ? String(tabletPunchValues[field.id]) : ""}
+                    onValueChange={(value) => setTabletPunchFieldValue(field, value)}
+                    items={field.options.map((option) => ({ value: option.value, label: option.label }))}
+                  />
+                ) : field.type === "date" ? (
+                  <DateInput
+                    value={typeof tabletPunchValues[field.id] === "string" ? String(tabletPunchValues[field.id]) : ""}
+                    locale={settings.locale}
+                    onChange={(value) => setTabletPunchFieldValue(field, value)}
+                  />
+                ) : (
+                  <input
+                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                    type={field.type === "number" ? "number" : "text"}
+                    placeholder={field.placeholder ?? field.label}
+                    value={String(tabletPunchValues[field.id] ?? "")}
+                    onChange={(event) => setTabletPunchFieldValue(field, event.target.value)}
+                  />
+                )}
+              </Field>
+            ))}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setTabletPunchOpen(false)} type="button" disabled={tabletPunchSubmitting}>
+                {t("recordEditor.cancel")}
+              </Button>
+              <Button onClick={() => void startTabletTimer(tabletPunchValues)} type="button" disabled={tabletPunchSubmitting}>
+                {t("dashboard.startWork")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <AppConfirmDialog
+        open={pendingDeleteEntry !== null}
+        onOpenChange={(open) =>
+          !open && !deleteSubmitting && setPendingDeleteEntry(null)
+        }
+        title={t("dashboard.deleteRecord")}
+        description={
+          pendingDeleteEntry
+            ? pendingDeleteEntry.entryType === "work"
+              ? t("dashboard.deleteWorkDescription", {
+                  value: `${toTimeInputValue(pendingDeleteEntry.startTime)} - ${toTimeInputValue(pendingDeleteEntry.endTime)}`
+                })
+              : t("dashboard.deleteLeaveDescription", {
+                  type: getEntryTypeLabel(pendingDeleteEntry.entryType),
+                  date: formatCompanyDate(pendingDeleteEntry.entryDate, settings.locale)
+                })
+            : undefined
+        }
+        confirmLabel="Delete"
+        destructive
+        confirming={deleteSubmitting}
+        onConfirm={() =>
+          pendingDeleteEntry && void deleteEntry(pendingDeleteEntry.id)
+        }
+      />
       <PageLabel
-        title="Overview"
-        description="Manage daily records and user context."
+        title={t("dashboard.pageTitle")}
+        description={t("dashboard.pageDescription")}
       />
       {canSwitchUser ? (
         <div className="rounded-2xl border border-border bg-card p-5">
           <FormSection>
-            <Field label="Working as">
+            <Field label={t("dashboard.workingAs")}>
               <FieldCombobox
                 label="user"
                 value={effectiveUserId ? String(effectiveUserId) : ""}
@@ -385,14 +551,17 @@ export function DashboardPage() {
             <div className="flex flex-col gap-1">
               <p className="text-sm text-muted-foreground">{selectedUserName}</p>
               {isTabletMode ? (
-                <p className="text-left text-2xl font-semibold tracking-[-0.04em] text-foreground">
+                <Link
+                  to={dayPickerHref}
+                  className="text-left text-2xl font-semibold tracking-[-0.04em] text-foreground transition-opacity hover:opacity-70"
+                >
                   {selectedDate.toLocaleDateString(settings.locale, {
                     weekday: "long",
                     day: "numeric",
                     month: "long",
                     year: "numeric",
                   })}
-                </p>
+                </Link>
               ) : (
                 <Link
                   to={dayPickerHref}
@@ -407,9 +576,9 @@ export function DashboardPage() {
                 </Link>
               )}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                <span>{formatMinutes(dayMinutes)} recorded</span>
+                <span>{t("dashboard.recorded", { value: formatMinutes(dayMinutes) })}</span>
                 {summary.contractStats.currentContract ? (
-                  <span>{summary.contractStats.currentContract.hoursPerWeek.toFixed(2)} h/week</span>
+                  <span>{t("dashboard.perWeek", { value: summary.contractStats.currentContract.hoursPerWeek.toFixed(2) })}</span>
                 ) : null}
               </div>
             </div>
@@ -426,7 +595,7 @@ export function DashboardPage() {
                 onClick={() => updateContext({ day: new Date() })}
                 type="button"
               >
-                Today
+                {t("dashboard.today")}
               </Button>
             </div>
           </div>
@@ -434,25 +603,25 @@ export function DashboardPage() {
           <div className="flex flex-col gap-3 border-t border-border/70 pt-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
-                <p className="text-sm font-medium text-foreground">Balance</p>
+                <p className="text-sm font-medium text-foreground">{t("dashboard.balance")}</p>
                 <p className="truncate text-sm text-muted-foreground">
-                  Total {formatBalanceMinutes(summary.contractStats.totalBalanceMinutes)}
+                  {t("dashboard.total", { value: formatBalanceMinutes(summary.contractStats.totalBalanceMinutes) })}
                 </p>
               </div>
               <Button variant="ghost" onClick={cycleStatsRange} type="button" className="h-8 px-3 text-xs">
-                {statsRange === "month" ? "Month" : statsRange === "week" ? "Week" : "Day"}
+                {statsRange === "month" ? t("dashboard.month") : statsRange === "week" ? t("dashboard.week") : t("dashboard.day")}
               </Button>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="h-7 rounded-full px-2.5 text-xs font-medium">
-                Expected {formatMinutes(activeContractStats.expectedMinutes)}
+                {t("dashboard.expected", { value: formatMinutes(activeContractStats.expectedMinutes) })}
               </Badge>
               <Badge variant="outline" className="h-7 rounded-full px-2.5 text-xs font-medium">
-                Recorded {formatMinutes(activeContractStats.recordedMinutes)}
+                {t("dashboard.recordedBadge", { value: formatMinutes(activeContractStats.recordedMinutes) })}
               </Badge>
               <Badge variant="outline" className="h-7 rounded-full px-2.5 text-xs font-medium">
-                Balance {formatBalanceMinutes(activeContractStats.balanceMinutes)}
+                {t("dashboard.balanceBadge", { value: formatBalanceMinutes(activeContractStats.balanceMinutes) })}
               </Badge>
             </div>
           </div>
@@ -461,118 +630,190 @@ export function DashboardPage() {
 
       <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5">
         <div>
-          <p className="text-sm font-medium text-foreground">Records</p>
+          <p className="text-sm font-medium text-foreground">{t("dashboard.records")}</p>
         </div>
 
-        <div className="max-h-[22rem] overflow-y-auto">
-          <div className="flex flex-col gap-2">
+        <div className="overflow-visible">
+          <div className="flex flex-col gap-1.5">
             {entries.map((entry) => {
               const canEdit =
                 bypassDayLimits ||
                 isDayWithinLimit(entry.entryDate, settings.editDaysLimit);
+              const canDelete = canEdit;
               const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
               const supportText = getEntrySupportText(
                 entry,
                 customFieldsById,
               );
+              const isActiveWorkEntry =
+                entry.entryType === "work" &&
+                summary.activeEntry?.id === entry.id &&
+                !entry.endTime;
+              const entryHeadline = isActiveWorkEntry
+                ? `${toTimeInputValue(entry.startTime)} - ${toTimeInputValue(now.toISOString())}`
+                : getEntryHeadline(entry);
+              const entryMeta =
+                entry.entryType === "work"
+                  ? formatMinutes(
+                      isActiveWorkEntry
+                        ? calculateLiveWorkDurationMinutes(entry.startTime, null, settings)
+                        : calculateLiveWorkDurationMinutes(entry.startTime, entry.endTime, settings),
+                    )
+                  : getEntryMeta(entry, settings.locale);
 
               return (
                 <div
                   key={entry.id}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-border/70 last:border-b-0"
+                  className="flex items-center gap-3"
                 >
-                  <div className="grid min-w-0 grid-cols-[minmax(0,max-content)_minmax(0,max-content)_minmax(0,1fr)] items-center gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span
-                        className={`h-2.5 w-2.5 shrink-0 rounded-full ${entryStateUi[entry.entryType].dotClassName}`}
-                      />
-                      <div className="min-w-0 truncate whitespace-nowrap text-sm font-medium leading-none text-foreground">
-                        {getEntryHeadline(entry)}
-                      </div>
+                  <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+                    <span
+                      className={
+                        isActiveWorkEntry
+                          ? "h-2.5 w-2.5 shrink-0 animate-[pulse_1.2s_ease-in-out_infinite] rounded-full bg-destructive"
+                          : `h-2.5 w-2.5 shrink-0 rounded-full ${entryStateUi[entry.entryType].dotClassName}`
+                      }
+                    />
+                    <div className="min-w-0 truncate whitespace-nowrap text-sm font-medium leading-tight text-foreground">
+                      {entryHeadline}
                     </div>
-                    <span className="min-w-0 truncate whitespace-nowrap rounded-full bg-muted px-2 py-1 text-xs font-medium leading-none text-foreground">
-                      {getEntryMeta(entry, settings.locale)}
+                    <span
+                      className={
+                        isActiveWorkEntry
+                          ? "shrink-0 truncate whitespace-nowrap rounded-full bg-destructive px-2 py-1 text-xs font-medium leading-tight text-destructive-foreground"
+                          : "shrink-0 truncate whitespace-nowrap rounded-full bg-muted px-2 py-1 text-xs font-medium leading-tight text-foreground"
+                      }
+                    >
+                      {entryMeta}
                     </span>
                     {supportText ? (
-                      <div className="min-w-0 truncate whitespace-nowrap text-sm leading-none text-muted-foreground">
+                      <div className="min-w-0 flex-1 truncate whitespace-nowrap text-sm leading-tight text-muted-foreground">
                         {supportText}
                       </div>
-                    ) : (
-                      <div className="min-w-0" />
-                    )}
+                    ) : null}
                   </div>
-                  {!isTabletMode ? (
-                    <div className="flex shrink-0 items-center gap-1">
+                  <div className="relative z-10 flex shrink-0 items-center justify-end gap-1 pl-1">
+                    {canDelete ? (
                       <Button
                         variant="ghost"
+                        className="h-10 w-10"
                         size="icon"
+                        onPointerDown={triggerHapticFeedback}
                         onClick={() => setPendingDeleteEntry(entry)}
                         type="button"
-                        aria-label="Delete record"
+                        aria-label={t("dashboard.deleteRecord")}
                       >
                         <Trash size={16} weight="bold" />
                       </Button>
+                    ) : (
+                      <Button
+                        disabled
+                        variant="ghost"
+                        className="h-10 w-10"
+                        size="icon"
+                        type="button"
+                        aria-label={t("dashboard.recordLocked")}
+                      >
+                        <Trash size={16} weight="bold" />
+                      </Button>
+                    )}
                       {canEdit ? (
-                        <Button asChild size="icon" variant="ghost">
-                          <Link to={editHref} aria-label="Edit record">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-10 w-10"
+                          onPointerDown={triggerHapticFeedback}
+                          onClick={() => navigate(editHref)}
+                          type="button"
+                          aria-label={t("dashboard.editRecord")}
+                        >
                             <PencilSimple size={16} weight="bold" />
-                          </Link>
                         </Button>
                       ) : (
                         <Button
                           disabled
+                          className="h-10 w-10"
                           size="icon"
                           variant="ghost"
                           type="button"
-                          aria-label="Record locked"
+                          aria-label={t("dashboard.recordLocked")}
                         >
                           <PencilSimple size={16} weight="bold" />
                         </Button>
                       )}
-                    </div>
-                  ) : null}
+                  </div>
                 </div>
               );
             })}
 
             {entries.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No records for this day
+                {t("dashboard.noRecords")}
               </p>
             ) : null}
           </div>
         </div>
       </div>
 
-      <div className="flex justify-center">
-        {canCreateRecord ? (
-          <Button
-            asChild
-            className="h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg hover:opacity-90"
-            size="icon"
-            type="button"
-          >
-            <Link to={createRecordHref} aria-label="Add record">
-              <Plus size={30} weight="bold" />
-            </Link>
-          </Button>
-        ) : (
-          <Button
-            disabled
-            className="h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg"
-            size="icon"
-            type="button"
-            aria-label="Add record unavailable"
-          >
-            <Plus size={30} weight="bold" />
-          </Button>
-        )}
+      <div className="flex min-h-[8rem] flex-1 items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          {isTabletMode ? (
+            <>
+              <Button
+                className={
+                  summary.activeEntry
+                    ? "h-20 w-20 animate-[pulse_1.4s_ease-in-out_infinite] rounded-full bg-destructive text-destructive-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                    : "h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                }
+                size="icon"
+                type="button"
+                disabled={!canUseTabletPunch}
+                onClick={handleTabletPunch}
+                aria-label={summary.activeEntry ? t("dashboard.stopWork") : t("dashboard.startWork")}
+              >
+                {summary.activeEntry ? <Stop size={36} weight="fill" /> : <Play size={36} weight="fill" />}
+              </Button>
+              {canCreateRecord ? (
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="h-9 rounded-full px-4 text-xs font-medium"
+                  onPointerDown={triggerHapticFeedback}
+                >
+                  <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
+                </Button>
+              ) : null}
+            </>
+          ) : canCreateRecord ? (
+            <Button
+              asChild
+              className="h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+              size="icon"
+              type="button"
+              onPointerDown={triggerHapticFeedback}
+            >
+              <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
+                <Plus size={36} weight="bold" />
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              disabled
+              className="h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out"
+              size="icon"
+              type="button"
+              aria-label={t("dashboard.addRecordUnavailable")}
+            >
+              <Plus size={36} weight="bold" />
+            </Button>
+          )}
+          {!canCreateRecord ? (
+            <p className="text-center text-sm text-muted-foreground">
+              {t("dashboard.employeesInsertLimit")}
+            </p>
+          ) : null}
+        </div>
       </div>
-      {!canCreateRecord ? (
-        <p className="text-center text-sm text-muted-foreground">
-          Employees can only add records within the insert day limit.
-        </p>
-      ) : null}
     </FormPage>
   );
 }

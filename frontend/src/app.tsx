@@ -34,11 +34,11 @@ export function App() {
       <Route element={<CompanyGuard />}>
         <Route element={<AppShell mode="company" />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/dashboard/day" element={<DashboardDayPickerPage />} />
           <Route path="/dashboard/records/create" element={<DashboardRecordEditorPage mode="create" />} />
+          <Route path="/dashboard/records/:entryId/edit" element={<DashboardRecordEditorPage mode="edit" />} />
           <Route element={<CompanyFullAccessGuard />}>
             <Route path="/menu" element={<MenuPage />} />
-            <Route path="/dashboard/day" element={<DashboardDayPickerPage />} />
-            <Route path="/dashboard/records/:entryId/edit" element={<DashboardRecordEditorPage mode="edit" />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/reports/preview" element={<ReportsPreviewPage />} />
             <Route element={<CompanyAdminGuard />}>

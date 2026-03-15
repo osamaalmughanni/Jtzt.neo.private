@@ -9,15 +9,6 @@ import { settingsService } from "../../services/settings-service";
 import { calculateLeaveCompensation, calculateWorkDurationMinutes, enumerateDayRange, getExpectedContractMinutesForDay, getWeekRange, getMonthRange } from "../../services/time-entry-metrics-service";
 import type { AppVariables } from "../context";
 
-const startTimerSchema = z.object({
-  notes: z.string().optional()
-});
-
-const stopTimerSchema = z.object({
-  entryId: z.number().optional(),
-  notes: z.string().optional()
-});
-
 const attachmentSchema = z
   .object({
     fileName: z.string().min(1).max(255),
@@ -27,6 +18,16 @@ const attachmentSchema = z
   .nullable();
 
 const customFieldValuesSchema = z.record(z.union([z.string(), z.number(), z.boolean()]));
+
+const startTimerSchema = z.object({
+  notes: z.string().optional(),
+  customFieldValues: customFieldValuesSchema.optional()
+});
+
+const stopTimerSchema = z.object({
+  entryId: z.number().optional(),
+  notes: z.string().optional()
+});
 
 const updateEntrySchema = z.object({
   entryId: z.number(),
@@ -124,6 +125,60 @@ function enforceDayLimit(
 
   if (diffCalendarDays(formatLocalDay(new Date()), day) > limit) {
     throw new Error(message);
+  }
+}
+
+function enforceSingleRecordPerDay(
+  databasePath: string,
+  userId: number,
+  settings: ReturnType<typeof settingsService.getSettings>,
+  startDate: string,
+  endDate?: string | null,
+  excludeEntryId?: number,
+) {
+  if (!settings.allowOneRecordPerDay) {
+    return;
+  }
+
+  const rangeEnd = endDate && endDate >= startDate ? endDate : startDate;
+  if (timeService.hasEntryOnRange(databasePath, userId, startDate, rangeEnd, excludeEntryId)) {
+    throw new Error("Only one record per day is allowed");
+  }
+}
+
+function enforceIntersectingRecords(
+  databasePath: string,
+  userId: number,
+  settings: ReturnType<typeof settingsService.getSettings>,
+  candidate: {
+    entryType: "work" | "vacation" | "sick_leave";
+    startDate: string;
+    endDate?: string | null;
+    startTime: string | null;
+    endTime: string | null;
+  },
+  excludeEntryId?: number,
+) {
+  if (settings.allowIntersectingRecords) {
+    return;
+  }
+
+  const normalizedEndDate = candidate.endDate && candidate.endDate >= candidate.startDate ? candidate.endDate : candidate.startDate;
+  if (
+    timeService.hasIntersectingEntry(
+      databasePath,
+      userId,
+      {
+        entryType: candidate.entryType,
+        entryDate: candidate.startDate,
+        endDate: normalizedEndDate === candidate.startDate ? null : normalizedEndDate,
+        startTime: candidate.startTime,
+        endTime: candidate.endTime,
+      },
+      excludeEntryId,
+    )
+  ) {
+    throw new Error("Intersecting records are not allowed");
   }
 }
 
@@ -293,12 +348,25 @@ timeRoutes.post("/start", async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
-  try {
-    requireFullAccess(session, "Tablet mode does not support timers");
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : "Tablet mode does not support timers" }, 403);
-  }
   const body = startTimerSchema.parse(await c.req.json());
+  const settings = settingsService.getSettings(session.databasePath);
+  try {
+    enforceSingleRecordPerDay(session.databasePath, session.userId, settings, formatLocalDay(new Date()));
+    enforceIntersectingRecords(session.databasePath, session.userId, settings, {
+      entryType: "work",
+      startDate: formatLocalDay(new Date()),
+      endDate: null,
+      startTime: new Date().toISOString(),
+      endTime: null,
+    });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Record rule violation" }, 400);
+  }
+  try {
+    validateCustomFields(settings, "work", body.customFieldValues ?? {});
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Invalid custom fields" }, 400);
+  }
   return c.json({
     entry: timeService.startTimer(session.databasePath, session.userId, body)
   });
@@ -321,6 +389,14 @@ timeRoutes.post("/entry", async (c) => {
   const settings = settingsService.getSettings(session.databasePath);
   try {
     enforceDayLimit(session, settings.insertDaysLimit, body.startDate, "Insert day limit reached");
+    enforceSingleRecordPerDay(session.databasePath, targetUserId, settings, body.startDate, body.endDate);
+    enforceIntersectingRecords(session.databasePath, targetUserId, settings, {
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      startTime: body.startTime,
+      endTime: body.endTime,
+    });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Insert day limit reached" }, 403);
   }
@@ -349,11 +425,6 @@ timeRoutes.post("/stop", async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
-  try {
-    requireFullAccess(session, "Tablet mode does not support timers");
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : "Tablet mode does not support timers" }, 403);
-  }
   const body = stopTimerSchema.parse(await c.req.json());
   return c.json({
     entry: timeService.stopTimer(session.databasePath, session.userId, body)
@@ -387,11 +458,6 @@ timeRoutes.get("/entry/:entryId", async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
-  try {
-    requireFullAccess(session, "Tablet mode cannot edit existing records");
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : "Tablet mode cannot edit existing records" }, 403);
-  }
   let targetUserId: number;
   try {
     const rawTargetUserId = c.req.query("targetUserId");
@@ -413,11 +479,6 @@ timeRoutes.put("/entry", async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
-  try {
-    requireFullAccess(session, "Tablet mode cannot edit existing records");
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : "Tablet mode cannot edit existing records" }, 403);
-  }
   const body = updateEntrySchema.parse(await c.req.json());
   let targetUserId: number;
   try {
@@ -428,6 +489,14 @@ timeRoutes.put("/entry", async (c) => {
   const settings = settingsService.getSettings(session.databasePath);
   try {
     enforceDayLimit(session, settings.editDaysLimit, body.startDate, "Edit day limit reached");
+    enforceSingleRecordPerDay(session.databasePath, targetUserId, settings, body.startDate, body.endDate, body.entryId);
+    enforceIntersectingRecords(session.databasePath, targetUserId, settings, {
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      startTime: body.startTime,
+      endTime: body.endTime,
+    }, body.entryId);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Edit day limit reached" }, 403);
   }
@@ -454,11 +523,6 @@ timeRoutes.delete("/entry", async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
-  try {
-    requireFullAccess(session, "Tablet mode cannot delete records");
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : "Tablet mode cannot delete records" }, 403);
-  }
   const body = deleteEntrySchema.parse(await c.req.json());
   let targetUserId: number;
   try {

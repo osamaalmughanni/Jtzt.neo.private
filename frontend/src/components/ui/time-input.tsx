@@ -1,7 +1,7 @@
 import { Clock } from "phosphor-react";
-import type { ChangeEvent, ComponentPropsWithoutRef, FocusEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, inputBaseClassName } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 function getCurrentTimeValue() {
@@ -9,67 +9,142 @@ function getCurrentTimeValue() {
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
-interface TimeInputProps extends Omit<ComponentPropsWithoutRef<typeof Input>, "type"> {
+function parseTime(value: string) {
+  if (!/^\d{2}:\d{2}$/.test(value)) {
+    return { hours: "", minutes: "" };
+  }
+
+  const [hours, minutes] = value.split(":");
+  return { hours, minutes };
+}
+
+function clampSegment(type: "hours" | "minutes", value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 2);
+  if (digits.length === 0) {
+    return "";
+  }
+
+  if (digits.length === 1) {
+    return digits;
+  }
+
+  const limit = type === "hours" ? 23 : 59;
+  return String(Math.min(Number(digits), limit)).padStart(2, "0");
+}
+
+function isValidTime(hours: string, minutes: string) {
+  if (hours.length !== 2 || minutes.length !== 2) {
+    return false;
+  }
+
+  const hourValue = Number(hours);
+  const minuteValue = Number(minutes);
+  return hourValue >= 0 && hourValue <= 23 && minuteValue >= 0 && minuteValue <= 59;
+}
+
+interface TimeInputProps {
+  value: string;
+  onChange: (value: string) => void;
   onNowClick?: (value: string) => void;
   nowDisabled?: boolean;
-  wrapperClassName?: string;
-}
-
-function sanitizeTimeValue(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
-}
-
-function normalizeTimeValue(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (digits.length < 3) return value;
-
-  const rawHours = Number(digits.slice(0, 2));
-  const rawMinutes = Number(digits.slice(2, 4).padEnd(2, "0"));
-  const hours = String(Math.min(rawHours, 23)).padStart(2, "0");
-  const minutes = String(Math.min(rawMinutes, 59)).padStart(2, "0");
-  return `${hours}:${minutes}`;
+  className?: string;
 }
 
 export function TimeInput({
-  className,
+  value,
   onChange,
-  onBlur,
   onNowClick,
   nowDisabled,
-  wrapperClassName,
-  ...props
+  className,
 }: TimeInputProps) {
-  function handleChange(event: ChangeEvent<HTMLInputElement>) {
-    const nextValue = sanitizeTimeValue(event.target.value);
-    event.target.value = nextValue;
-    onChange?.(event);
+  const hoursRef = useRef<HTMLInputElement | null>(null);
+  const minutesRef = useRef<HTMLInputElement | null>(null);
+  const initialSegments = useMemo(() => parseTime(value), [value]);
+  const [segments, setSegments] = useState(initialSegments);
+  const [draftSegments, setDraftSegments] = useState(initialSegments);
+
+  useEffect(() => {
+    setSegments(initialSegments);
+    setDraftSegments(initialSegments);
+  }, [initialSegments]);
+
+  function updateSegment(type: "hours" | "minutes", nextValue: string) {
+    const nextSegments = {
+      ...draftSegments,
+      [type]: clampSegment(type, nextValue),
+    };
+    setDraftSegments(nextSegments);
+
+    if (isValidTime(nextSegments.hours, nextSegments.minutes)) {
+      setSegments(nextSegments);
+      onChange(`${nextSegments.hours}:${nextSegments.minutes}`);
+    }
   }
 
-  function handleBlur(event: FocusEvent<HTMLInputElement>) {
-    const nextValue = normalizeTimeValue(event.target.value);
-    event.target.value = nextValue;
-    onBlur?.(event);
+  function handleFocus(type: "hours" | "minutes") {
+    setDraftSegments((current) => ({
+      ...current,
+      [type]: "",
+    }));
+  }
+
+  function handleBlur() {
+    if (!isValidTime(draftSegments.hours, draftSegments.minutes)) {
+      setDraftSegments(segments);
+    }
   }
 
   return (
-    <div className={cn("flex items-center gap-2", wrapperClassName)}>
-      <Input
-        className={cn("flex-1", className)}
-        inputMode="numeric"
-        placeholder="08:00"
-        {...props}
-        onBlur={handleBlur}
-        onChange={handleChange}
-      />
+    <div className={cn("flex items-center gap-2", className)}>
+      <div className="flex flex-1 items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1"
+          onClick={() => hoursRef.current?.focus()}
+        >
+          <Input
+            ref={hoursRef}
+            className={cn(inputBaseClassName, "h-auto w-full border-0 bg-transparent p-0 text-center shadow-none focus-visible:ring-0")}
+            inputMode="numeric"
+            placeholder="HH"
+            value={draftSegments.hours}
+            onChange={(event) => updateSegment("hours", event.target.value)}
+            onFocus={() => handleFocus("hours")}
+            onBlur={handleBlur}
+          />
+        </button>
+        <span className="text-muted-foreground">:</span>
+        <button
+          type="button"
+          className="flex min-w-0 flex-1"
+          onClick={() => minutesRef.current?.focus()}
+        >
+          <Input
+            ref={minutesRef}
+            className={cn(inputBaseClassName, "h-auto w-full border-0 bg-transparent p-0 text-center shadow-none focus-visible:ring-0")}
+            inputMode="numeric"
+            placeholder="MM"
+            value={draftSegments.minutes}
+            onChange={(event) => updateSegment("minutes", event.target.value)}
+            onFocus={() => handleFocus("minutes")}
+            onBlur={handleBlur}
+          />
+        </button>
+      </div>
       <Button
         variant="outline"
         size="icon"
         type="button"
         aria-label="Use current time"
         disabled={nowDisabled}
-        onClick={() => onNowClick?.(getCurrentTimeValue())}
+        onClick={() => {
+          const nowValue = getCurrentTimeValue();
+          const nextSegments = parseTime(nowValue);
+          setSegments(nextSegments);
+          setDraftSegments(nextSegments);
+          onChange(nowValue);
+          onNowClick?.(nowValue);
+        }}
       >
         <Clock size={18} weight="bold" />
       </Button>

@@ -192,6 +192,8 @@ export function mapCompanySettings(row: any): CompanySettings {
     firstDayOfWeek: row.first_day_of_week,
     editDaysLimit: row.edit_days_limit,
     insertDaysLimit: row.insert_days_limit,
+    allowOneRecordPerDay: Boolean(row.allow_one_record_per_day ?? 0),
+    allowIntersectingRecords: Boolean(row.allow_intersecting_records ?? 0),
     country: row.country ?? row.holiday_country,
     tabletIdleTimeoutSeconds: row.tablet_idle_timeout_seconds ?? 10,
     autoBreakAfterMinutes: row.auto_break_after_minutes ?? 300,

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import type {
   CompanyCustomField,
   CompanySettings,
@@ -29,7 +30,10 @@ const defaultSettings: CompanySettings = {
   firstDayOfWeek: 1,
   editDaysLimit: 30,
   insertDaysLimit: 30,
+  allowOneRecordPerDay: false,
+  allowIntersectingRecords: false,
   country: "AT",
+  tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
   customFields: [],
@@ -156,6 +160,7 @@ interface DashboardRecordEditorPageProps {
 
 export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPageProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { entryId } = useParams();
   const { companySession, companyIdentity, isTabletMode } = useAuth();
   const [searchParams] = useSearchParams();
@@ -188,6 +193,11 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     () => settings.customFields.filter((field) => field.targets.includes(entryType)),
     [entryType, settings.customFields],
   );
+  const entryTypeTabs: Array<{ value: TimeEntryType; label: string }> = [
+    { value: "work", label: t("recordEditor.working") },
+    { value: "vacation", label: t("recordEditor.vacation") },
+    { value: "sick_leave", label: t("recordEditor.sickLeave") },
+  ];
 
   const selectedUserName =
     users.find((user) => user.id === effectiveUserId)?.fullName ?? companyIdentity?.user.fullName ?? "User";
@@ -200,9 +210,9 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const insertLocked = !bypassDayLimits && mode === "create" && !isDayWithinLimit(startDate, settings.insertDaysLimit);
   const editLocked = !bypassDayLimits && mode === "edit" && !isDayWithinLimit(startDate, settings.editDaysLimit);
   const dayLimitError = insertLocked
-    ? "Employees can only add entries within the insert day limit."
+    ? t("recordEditor.employeesInsertLimit")
     : editLocked
-      ? "Employees can only edit entries within the edit day limit."
+      ? t("recordEditor.employeesEditLimit")
       : null;
 
   useEffect(() => {
@@ -240,7 +250,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       })
       .catch((error) =>
         toast({
-          title: "Could not load record",
+        title: t("recordEditor.couldNotLoadRecord"),
           description: error instanceof Error ? error.message : "Request failed",
         }),
       )
@@ -263,11 +273,11 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     if (!companySession || !effectiveUserId) return;
 
     try {
-      if (resolvedEndDate < startDate) throw new Error("End date must be on or after start date");
+      if (resolvedEndDate < startDate) throw new Error(t("recordEditor.endDateAfterStart"));
       if (dayLimitError) throw new Error(dayLimitError);
       if (entryType === "work") {
-        if (!startTime) throw new Error("Start time is required");
-        if (!endTime) throw new Error("End time is required");
+        if (!startTime) throw new Error(t("recordEditor.startTimeRequired"));
+        if (!endTime) throw new Error(t("recordEditor.endTimeRequired"));
       }
       for (const field of activeCustomFields) {
         const value = customFieldValues[field.id];
@@ -306,20 +316,32 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
           targetUserId: canSwitchUser ? effectiveUserId : undefined,
           ...payload,
         });
-        toast({ title: "Entry added" });
+        toast({ title: t("recordEditor.entryAdded") });
       } else {
         await api.updateTimeEntry(companySession.token, {
           entryId: Number(entryId),
           targetUserId: canSwitchUser ? effectiveUserId : undefined,
           ...payload,
         });
-        toast({ title: "Entry saved" });
+        toast({ title: t("recordEditor.entrySaved") });
+      }
+
+      if (entryType !== "work" && (leaveMetrics.excludedHolidayCount > 0 || leaveMetrics.excludedWeekendCount > 0)) {
+        toast({
+          title: t("recordEditor.thisRangeStaysValid", {
+            effective: leaveMetrics.effectiveDayCount,
+            holidays: leaveMetrics.excludedHolidayCount,
+            holidaySuffix: leaveMetrics.excludedHolidayCount === 1 ? "" : "s",
+            weekends: leaveMetrics.excludedWeekendCount,
+            weekendSuffix: leaveMetrics.excludedWeekendCount === 1 ? "" : "s"
+          })
+        });
       }
 
       navigate(backTo);
     } catch (error) {
       toast({
-        title: mode === "create" ? "Could not add entry" : "Could not save entry",
+        title: mode === "create" ? t("recordEditor.couldNotAddEntry") : t("recordEditor.couldNotSaveEntry"),
         description: error instanceof Error ? error.message : "Request failed",
       });
     } finally {
@@ -334,7 +356,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       setSickLeaveAttachment(nextAttachment);
     } catch (error) {
       toast({
-        title: "Could not prepare attachment",
+        title: t("recordEditor.couldNotPrepareAttachment"),
         description: error instanceof Error ? error.message : "Request failed",
       });
     }
@@ -350,11 +372,11 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
         targetUserId: canSwitchUser ? effectiveUserId : undefined,
       });
       setConfirmDeleteOpen(false);
-      toast({ title: "Record deleted" });
+      toast({ title: t("recordEditor.recordDeleted") });
       navigate(backTo);
     } catch (error) {
       toast({
-        title: "Could not delete record",
+        title: t("recordEditor.couldNotDeleteRecord"),
         description: error instanceof Error ? error.message : "Request failed",
       });
     } finally {
@@ -381,22 +403,17 @@ function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
       <AppConfirmDialog
         open={confirmDeleteOpen}
         onOpenChange={(open) => !deleting && setConfirmDeleteOpen(open)}
-        title="Delete record"
-        description={mode === "edit" ? "This record will be removed." : undefined}
-        confirmLabel="Delete"
+        title={t("recordEditor.deleteRecord")}
+        description={mode === "edit" ? t("recordEditor.deleteDescription") : undefined}
+        confirmLabel={t("recordEditor.delete")}
         destructive
         confirming={deleting}
         onConfirm={() => void handleDelete()}
       />
-      <PageBackAction to={backTo} label="Back to overview" />
-      <PageLabel title={mode === "create" ? "Add entry" : "Edit entry"} description={`${selectedUserName} in overview context`} />
+      <PageBackAction to={backTo} label={t("recordEditor.backToOverview")} />
+      <PageLabel title={mode === "create" ? t("recordEditor.addTitle") : t("recordEditor.editTitle")} description={t("recordEditor.description", { name: selectedUserName })} />
       <FormPanel>
-        {loading ? <p className="text-sm text-muted-foreground">Loading entry...</p> : null}
-        {entryType !== "work" && (leaveMetrics.excludedHolidayCount > 0 || leaveMetrics.excludedWeekendCount > 0) ? (
-          <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
-            This range stays valid. Effective leave days: {leaveMetrics.effectiveDayCount}. Excluded: {leaveMetrics.excludedHolidayCount} public holiday{leaveMetrics.excludedHolidayCount === 1 ? "" : "s"} and {leaveMetrics.excludedWeekendCount} weekend day{leaveMetrics.excludedWeekendCount === 1 ? "" : "s"}.
-          </div>
-        ) : null}
+        {loading ? <p className="text-sm text-muted-foreground">{t("recordEditor.loading")}</p> : null}
         {dayLimitError ? (
           <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
             {dayLimitError}
@@ -421,29 +438,27 @@ function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
 
         <FormSection>
           <FormFields>
-            <Field label={usesDateRange ? "From date" : "Date"}>
+            <Field label={usesDateRange ? t("recordEditor.fromDate") : t("recordEditor.fromDate")}>
               <DateInput value={startDate} locale={settings.locale} onChange={setStartDate} />
             </Field>
             {usesDateRange ? (
-              <Field label="To date">
+              <Field label={t("recordEditor.toDate")}>
                 <DateInput value={endDate} locale={settings.locale} onChange={setEndDate} />
               </Field>
             ) : null}
             {entryType === "work" ? (
               <>
-                <Field label="Start time">
+                <Field label={t("recordEditor.startTime")}>
                   <TimeInput
-                    placeholder="08:00"
                     value={startTime}
-                    onChange={(event) => setStartTime(event.target.value)}
+                    onChange={setStartTime}
                     onNowClick={setStartTime}
                   />
                 </Field>
-                <Field label="End time">
+                <Field label={t("recordEditor.endTime")}>
                   <TimeInput
-                    placeholder="16:30"
                     value={endTime}
-                    onChange={(event) => setEndTime(event.target.value)}
+                    onChange={setEndTime}
                     onNowClick={setEndTime}
                   />
                 </Field>
@@ -453,13 +468,13 @@ function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
               <Field key={field.id} label={field.label}>
                 {field.type === "boolean" ? (
                   <select
-                    className="flex h-10 w-full rounded-md border border-input bg-[hsl(var(--input))] px-3 py-2 text-sm"
+                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
                     value={String(customFieldValues[field.id] ?? "")}
                     onChange={(event) => setCustomFieldValue(field, event.target.value)}
                   >
-                    <option value="">{field.required ? "Select yes or no" : "Optional"}</option>
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
+                    <option value="">{field.required ? t("recordEditor.selectYesOrNo") : t("recordEditor.optional")}</option>
+                    <option value="true">{t("recordEditor.yes")}</option>
+                    <option value="false">{t("recordEditor.no")}</option>
                   </select>
                 ) : field.type === "select" ? (
                   <FieldCombobox
@@ -479,7 +494,7 @@ function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
                   />
                 ) : (
                   <input
-                    className="flex h-10 w-full rounded-md border border-input bg-[hsl(var(--input))] px-3 py-2 text-sm"
+                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
                     type={field.type === "number" ? "number" : "text"}
                     placeholder={field.placeholder ?? field.label}
                     value={String(customFieldValues[field.id] ?? "")}
@@ -489,23 +504,17 @@ function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
               </Field>
             ))}
             {entryType === "sick_leave" ? (
-              <Field label="Document">
-                <div className="flex flex-col gap-3 rounded-2xl border border-border bg-background p-4">
+              <Field label={t("recordEditor.document")}>
+                <div className="flex flex-col gap-2">
                   <input
-                    className="sr-only"
-                    id="sick-leave-document"
+                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm text-foreground file:mr-3 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
                     type="file"
                     accept="application/pdf,image/*"
+                    capture="environment"
                     onChange={(event) => void handleAttachmentChange(event.target.files?.[0] ?? null)}
                   />
-                  <label
-                    htmlFor="sick-leave-document"
-                    className="flex h-10 cursor-pointer items-center justify-center rounded-md border border-input bg-[hsl(var(--input))] px-3 text-sm text-foreground"
-                  >
-                    Upload doctor approval
-                  </label>
                   {sickLeaveAttachment ? (
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm text-foreground">{sickLeaveAttachment.fileName}</p>
                         <p className="text-xs text-muted-foreground">{sickLeaveAttachment.mimeType}</p>
@@ -513,28 +522,26 @@ function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
                       <div className="flex items-center gap-2">
                         <Button asChild variant="ghost" type="button">
                           <a href={sickLeaveAttachment.dataUrl} download={sickLeaveAttachment.fileName}>
-                            Open
+                            {t("recordEditor.open")}
                           </a>
                         </Button>
                         <Button variant="ghost" onClick={() => setSickLeaveAttachment(null)} type="button">
-                          Remove
+                          {t("recordEditor.remove")}
                         </Button>
                       </div>
                     </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">Optional: upload a doctor approval PDF or image for this sick leave period.</p>
-                  )}
+                  ) : null}
                 </div>
               </Field>
             ) : null}
-            <Field label="Notes">
+            <Field label={t("recordEditor.notes")}>
               <Textarea
                 placeholder={
                   entryType === "work"
-                    ? "Describe the work"
+                    ? t("recordEditor.workNotesPlaceholder")
                     : entryType === "vacation"
-                      ? "Add context for the vacation"
-                      : "Add context for the absence"
+                      ? t("recordEditor.vacationNotesPlaceholder")
+                      : t("recordEditor.absenceNotesPlaceholder")
                 }
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
@@ -547,16 +554,16 @@ function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
           <div className="flex flex-1 justify-start">
             {mode === "edit" ? (
               <Button variant="ghost" disabled={deleting || saving} onClick={() => setConfirmDeleteOpen(true)} type="button">
-                {deleting ? "Deleting..." : "Delete"}
+                {deleting ? t("recordEditor.deleting") : t("recordEditor.delete")}
               </Button>
             ) : null}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={() => navigate(backTo)} type="button">
-              Cancel
+              {t("recordEditor.cancel")}
             </Button>
             <Button disabled={saving || loading || deleting || Boolean(dayLimitError)} onClick={() => void handleSave()} type="button">
-              {saving ? "Saving..." : mode === "create" ? "Add entry" : "Save"}
+              {saving ? t("recordEditor.saving") : mode === "create" ? t("recordEditor.addEntry") : t("recordEditor.save")}
             </Button>
           </div>
         </FormActions>

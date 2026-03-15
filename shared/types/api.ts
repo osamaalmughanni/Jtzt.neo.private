@@ -46,6 +46,7 @@ export interface AdminMeResponse {
 
 export interface StartTimerInput {
   notes?: string;
+  customFieldValues?: Record<string, string | number | boolean>;
 }
 
 export interface StopTimerInput {
@@ -212,6 +213,8 @@ export interface UpdateSettingsInput {
   firstDayOfWeek: number;
   editDaysLimit: number;
   insertDaysLimit: number;
+  allowOneRecordPerDay: boolean;
+  allowIntersectingRecords: boolean;
   country: string;
   tabletIdleTimeoutSeconds: number;
   autoBreakAfterMinutes: number;

@@ -4,6 +4,7 @@ import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, For
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatCompanyDateTime } from "@/lib/locale-format";
@@ -16,6 +17,8 @@ const defaultSettings: CompanySettings = {
   firstDayOfWeek: 1,
   editDaysLimit: 30,
   insertDaysLimit: 30,
+  allowOneRecordPerDay: false,
+  allowIntersectingRecords: false,
   country: "AT",
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
@@ -172,6 +175,38 @@ export function SettingsMenuPage() {
             </Field>
             <Field label="Insert days limit">
               <Input placeholder="30" type="number" min="0" value={settings.insertDaysLimit} onChange={(event) => setSettings((current) => ({ ...current, insertDaysLimit: Number(event.target.value) }))} />
+            </Field>
+            <Field label="One record per day">
+              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                <span className="text-sm text-foreground">
+                  {settings.allowOneRecordPerDay ? "Enabled" : "Disabled"}
+                </span>
+                <Switch
+                  checked={settings.allowOneRecordPerDay}
+                  onCheckedChange={(checked) =>
+                    setSettings((current) => ({
+                      ...current,
+                      allowOneRecordPerDay: checked,
+                    }))
+                  }
+                />
+              </div>
+            </Field>
+            <Field label="Allow intersecting records">
+              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                <span className="text-sm text-foreground">
+                  {settings.allowIntersectingRecords ? "Enabled" : "Disabled"}
+                </span>
+                <Switch
+                  checked={settings.allowIntersectingRecords}
+                  onCheckedChange={(checked) =>
+                    setSettings((current) => ({
+                      ...current,
+                      allowIntersectingRecords: checked,
+                    }))
+                  }
+                />
+              </div>
             </Field>
             <Field label="Country">
               <Input placeholder="AT" maxLength={2} value={settings.country} onChange={(event) => setSettings((current) => ({ ...current, country: event.target.value.toUpperCase() }))} />

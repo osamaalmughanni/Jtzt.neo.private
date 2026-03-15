@@ -10,7 +10,13 @@ interface TabletPinKeyProps {
 export function TabletPinKey({ children, muted = false, onClick }: TabletPinKeyProps) {
   return (
     <div className="relative aspect-square w-full">
-      <div className="absolute inset-0 rounded-full bg-white/16 shadow-[0_10px_30px_rgba(0,0,0,0.28)]" />
+      <div
+        className="absolute inset-0 rounded-full shadow-lg"
+        style={{
+          backgroundColor: "hsl(var(--muted) / 0.92)",
+          boxShadow: "0 10px 30px hsl(var(--background) / 0.4)",
+        }}
+      />
       <button
         type="button"
         onPointerDown={() => {
@@ -20,8 +26,8 @@ export function TabletPinKey({ children, muted = false, onClick }: TabletPinKeyP
         }}
         onClick={onClick}
         className={cn(
-          "absolute inset-0 flex items-center justify-center rounded-full bg-transparent text-white transition-transform active:scale-95",
-          muted ? "text-[#c6c6c6]" : ""
+          "absolute inset-0 flex items-center justify-center rounded-full bg-transparent transition-transform active:scale-95",
+          muted ? "text-muted-foreground" : "text-foreground"
         )}
       >
         <span

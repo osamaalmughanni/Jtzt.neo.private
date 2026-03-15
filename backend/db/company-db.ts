@@ -154,6 +154,8 @@ const companyMigrations: Migration[] = [
           first_day_of_week INTEGER NOT NULL DEFAULT 1,
           edit_days_limit INTEGER NOT NULL DEFAULT 30,
           insert_days_limit INTEGER NOT NULL DEFAULT 30,
+          allow_one_record_per_day INTEGER NOT NULL DEFAULT 0,
+          allow_intersecting_records INTEGER NOT NULL DEFAULT 0,
           country TEXT NOT NULL DEFAULT 'AT',
           tablet_idle_timeout_seconds INTEGER NOT NULL DEFAULT 10,
           auto_break_after_minutes INTEGER NOT NULL DEFAULT 300,
@@ -180,11 +182,13 @@ const companyMigrations: Migration[] = [
           first_day_of_week,
           edit_days_limit,
           insert_days_limit,
+          allow_one_record_per_day,
+          allow_intersecting_records,
           country,
           auto_break_after_minutes,
           auto_break_duration_minutes,
           custom_fields_json
-        ) VALUES (1, 'EUR', 'en-GB', 'g', 1, 30, 30, 'AT', 300, 30, '[]')
+        ) VALUES (1, 'EUR', 'en-GB', 'g', 1, 30, 30, 0, 0, 'AT', 300, 30, '[]')
         ON CONFLICT(id) DO NOTHING`
       ).run();
     }
@@ -302,6 +306,18 @@ const companyMigrations: Migration[] = [
     id: "014_company_tablet_idle_timeout",
     up(db) {
       addColumnIfMissing(db, "company_settings", "tablet_idle_timeout_seconds INTEGER NOT NULL DEFAULT 10", "tablet_idle_timeout_seconds");
+    }
+  },
+  {
+    id: "015_company_allow_one_record_per_day",
+    up(db) {
+      addColumnIfMissing(db, "company_settings", "allow_one_record_per_day INTEGER NOT NULL DEFAULT 0", "allow_one_record_per_day");
+    }
+  },
+  {
+    id: "016_company_allow_intersecting_records",
+    up(db) {
+      addColumnIfMissing(db, "company_settings", "allow_intersecting_records INTEGER NOT NULL DEFAULT 0", "allow_intersecting_records");
     }
   },
   {

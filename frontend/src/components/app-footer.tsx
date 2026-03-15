@@ -59,7 +59,7 @@ export function AppFooter({ context, publicMode, authMode }: AppFooterProps) {
   }
 
   return (
-    <Card className="mt-5 border-border/80 bg-card/95 px-3 py-2 shadow-sm">
+    <Card className="border-border/80 bg-card/95 px-3 py-2 shadow-sm">
       <div className="flex items-center gap-2 overflow-hidden text-[11px] text-muted-foreground sm:text-xs">
         <p className="truncate whitespace-nowrap">© Jtzt / jtzt.com</p>
         <div className="ml-auto flex items-center gap-2">

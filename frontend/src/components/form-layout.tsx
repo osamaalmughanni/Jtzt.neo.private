@@ -35,7 +35,7 @@ export function FieldSelect(props: ComponentPropsWithoutRef<"select">) {
   const { className, ...rest } = props;
   return (
     <select
-      className={cn("flex h-10 w-full rounded-md border border-input bg-[hsl(var(--input))] px-3 py-2 text-sm", className)}
+      className={cn("flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm", className)}
       {...rest}
     />
   );

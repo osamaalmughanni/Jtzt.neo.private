@@ -172,6 +172,8 @@ export interface CompanySettings {
   firstDayOfWeek: number;
   editDaysLimit: number;
   insertDaysLimit: number;
+  allowOneRecordPerDay: boolean;
+  allowIntersectingRecords: boolean;
   country: string;
   tabletIdleTimeoutSeconds: number;
   autoBreakAfterMinutes: number;

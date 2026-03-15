@@ -1,7 +1,12 @@
 export function diffMinutes(startIso: string, endIso: string | null): number {
   const endTime = endIso ? new Date(endIso).getTime() : Date.now();
   const startTime = new Date(startIso).getTime();
-  return Math.max(0, Math.round((endTime - startTime) / 60000));
+  const diff = endTime - startTime;
+  if (diff <= 0) {
+    return 0;
+  }
+
+  return Math.ceil(diff / 60000);
 }
 
 export function formatMinutes(totalMinutes: number): string {

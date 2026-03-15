@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Input, inputBaseClassName } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +62,9 @@ export function DateInput({
   onChange: (value: string) => void;
   className?: string;
 }) {
+  const dayRef = useRef<HTMLInputElement | null>(null);
+  const monthRef = useRef<HTMLInputElement | null>(null);
+  const yearRef = useRef<HTMLInputElement | null>(null);
   const initialSegments = useMemo(() => parseIsoDate(value), [value]);
   const [segments, setSegments] = useState(initialSegments);
   const [draftSegments, setDraftSegments] = useState(initialSegments);
@@ -103,24 +106,35 @@ export function DateInput({
     month: "MM",
     year: "YYYY",
   };
+  const refsByType = {
+    day: dayRef,
+    month: monthRef,
+    year: yearRef,
+  } as const;
 
   return (
-    <div className={cn("flex items-center gap-2 rounded-md border border-input bg-[hsl(var(--input))] px-3 py-2", className)}>
+    <div className={cn("flex items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2", className)}>
       {order.map((type, index) => (
-        <div key={type} className="flex min-w-0 items-center gap-2">
-          <Input
-            className={cn(
-              inputBaseClassName,
-              "h-auto border-0 bg-transparent p-0 text-center shadow-none focus-visible:ring-0",
-              type === "year" ? "w-16" : "w-10",
-            )}
-            inputMode="numeric"
-            placeholder={placeholders[type]}
-            value={draftSegments[type]}
-            onChange={(event) => updateSegment(type, event.target.value)}
-            onFocus={() => handleFocus(type)}
-            onBlur={handleBlur}
-          />
+        <div key={type} className="flex min-w-0 flex-1 items-center gap-2">
+          <button
+            type="button"
+            className="flex min-w-0 flex-1"
+            onClick={() => refsByType[type].current?.focus()}
+          >
+            <Input
+              ref={refsByType[type]}
+              className={cn(
+                inputBaseClassName,
+                "h-auto w-full border-0 bg-transparent p-0 text-center shadow-none focus-visible:ring-0",
+              )}
+              inputMode="numeric"
+              placeholder={placeholders[type]}
+              value={draftSegments[type]}
+              onChange={(event) => updateSegment(type, event.target.value)}
+              onFocus={() => handleFocus(type)}
+              onBlur={handleBlur}
+            />
+          </button>
           {index < order.length - 1 ? <span className="text-muted-foreground">/</span> : null}
         </div>
       ))}

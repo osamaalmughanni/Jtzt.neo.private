@@ -10,7 +10,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
       autoCapitalize="none"
       spellCheck={false}
       className={cn(
-        "flex min-h-[96px] w-full rounded-md border border-input bg-[hsl(var(--input))] px-3 py-2 text-sm placeholder:text-muted-foreground",
+        "flex min-h-[96px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground",
         "transition-[color,background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
         className
       )}

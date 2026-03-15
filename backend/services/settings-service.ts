@@ -15,6 +15,8 @@ function getDefaultSettingsRow() {
     first_day_of_week: 1,
     edit_days_limit: 30,
     insert_days_limit: 30,
+    allow_one_record_per_day: 0,
+    allow_intersecting_records: 0,
     country: "AT",
     tablet_idle_timeout_seconds: 10,
     auto_break_after_minutes: 300,
@@ -33,6 +35,8 @@ function ensureSettingsRow(db: ReturnType<typeof getCompanyDb>) {
       first_day_of_week,
       edit_days_limit,
       insert_days_limit,
+      allow_one_record_per_day,
+      allow_intersecting_records,
       country,
       tablet_idle_timeout_seconds,
       custom_fields_json
@@ -44,6 +48,8 @@ function ensureSettingsRow(db: ReturnType<typeof getCompanyDb>) {
       @first_day_of_week,
       @edit_days_limit,
       @insert_days_limit,
+      @allow_one_record_per_day,
+      @allow_intersecting_records,
       @country,
       @tablet_idle_timeout_seconds,
       @custom_fields_json
@@ -96,6 +102,8 @@ export const settingsService = {
         first_day_of_week = @firstDayOfWeek,
         edit_days_limit = @editDaysLimit,
         insert_days_limit = @insertDaysLimit,
+        allow_one_record_per_day = @allowOneRecordPerDay,
+        allow_intersecting_records = @allowIntersectingRecords,
         country = @country,
         tablet_idle_timeout_seconds = @tabletIdleTimeoutSeconds,
         auto_break_after_minutes = @autoBreakAfterMinutes,
@@ -104,6 +112,8 @@ export const settingsService = {
       WHERE id = 1`
     ).run({
       ...input,
+      allowOneRecordPerDay: input.allowOneRecordPerDay ? 1 : 0,
+      allowIntersectingRecords: input.allowIntersectingRecords ? 1 : 0,
       customFieldsJson: JSON.stringify(input.customFields)
     });
 

@@ -97,6 +97,31 @@ function toFilterDay(isoValue?: string) {
   return isoValue ? isoValue.slice(0, 10) : null;
 }
 
+function rangesOverlap(startDay: string, endDay: string, otherStartDay: string, otherEndDay: string) {
+  return startDay <= otherEndDay && otherStartDay <= endDay;
+}
+
+function timestampsOverlap(
+  startTime: string | null,
+  endTime: string | null,
+  otherStartTime: string | null,
+  otherEndTime: string | null,
+) {
+  const start = startTime ? new Date(startTime).getTime() : Number.NaN;
+  const end = endTime ? new Date(endTime).getTime() : Number.POSITIVE_INFINITY;
+  const otherStart = otherStartTime ? new Date(otherStartTime).getTime() : Number.NaN;
+  const otherEnd = otherEndTime ? new Date(otherEndTime).getTime() : Number.POSITIVE_INFINITY;
+
+  if (
+    Number.isNaN(start) ||
+    Number.isNaN(otherStart)
+  ) {
+    return false;
+  }
+
+  return start < otherEnd && otherStart < end;
+}
+
 export const timeService = {
   getActiveEntry(databasePath: string, userId: number) {
     const db = getCompanyDb(databasePath);
@@ -155,6 +180,85 @@ export const timeService = {
     return this.getEntryById(databasePath, Number(result.lastInsertRowid));
   },
 
+  hasEntryOnRange(databasePath: string, userId: number, startDay: string, endDay: string, excludeEntryId?: number) {
+    const rows = getCompanyDb(databasePath)
+      .prepare(
+        `SELECT id, entry_date, COALESCE(end_date, entry_date) AS range_end
+         FROM time_entries
+         WHERE user_id = @userId
+           AND (@excludeEntryId IS NULL OR id != @excludeEntryId)
+           AND entry_date <= @endDay
+           AND COALESCE(end_date, entry_date) >= @startDay
+         LIMIT 1`
+      )
+      .get({
+        userId,
+        startDay,
+        endDay,
+        excludeEntryId: excludeEntryId ?? null,
+      }) as
+      | {
+          id: number;
+          entry_date: string;
+          range_end: string;
+        }
+      | undefined;
+
+    return Boolean(rows);
+  },
+
+  hasIntersectingEntry(
+    databasePath: string,
+    userId: number,
+    candidate: {
+      entryType: TimeEntryType;
+      entryDate: string;
+      endDate: string | null;
+      startTime: string | null;
+      endTime: string | null;
+    },
+    excludeEntryId?: number,
+  ) {
+    const rows = getCompanyDb(databasePath)
+      .prepare(
+        `SELECT id, entry_type, entry_date, end_date, start_time, end_time
+         FROM time_entries
+         WHERE user_id = @userId
+           AND (@excludeEntryId IS NULL OR id != @excludeEntryId)
+           AND entry_date <= @endDay
+           AND COALESCE(end_date, entry_date) >= @startDay
+         ORDER BY entry_date ASC, start_time ASC`
+      )
+      .all({
+        userId,
+        startDay: candidate.entryDate,
+        endDay: candidate.endDate ?? candidate.entryDate,
+        excludeEntryId: excludeEntryId ?? null,
+      }) as Array<{
+        id: number;
+        entry_type: TimeEntryType;
+        entry_date: string;
+        end_date: string | null;
+        start_time: string | null;
+        end_time: string | null;
+      }>;
+
+    const candidateEndDay = candidate.endDate ?? candidate.entryDate;
+
+    return rows.some((row) => {
+      const rowEndDay = row.end_date ?? row.entry_date;
+      if (!rangesOverlap(candidate.entryDate, candidateEndDay, row.entry_date, rowEndDay)) {
+        return false;
+      }
+
+      if (candidate.entryType !== "work" || row.entry_type !== "work") {
+        return true;
+      }
+
+      return timestampsOverlap(candidate.startTime, candidate.endTime, row.start_time, row.end_time);
+    });
+  },
+
   startTimer(databasePath: string, userId: number, input: StartTimerInput) {
     const db = getCompanyDb(databasePath);
     const openEntry = getOpenEntry(db, userId);
@@ -171,6 +275,7 @@ export const timeService = {
           entry_date,
           start_time,
           notes,
+          custom_field_values_json,
           created_at
         ) VALUES (
           @userId,
@@ -178,6 +283,7 @@ export const timeService = {
           @entryDate,
           @startTime,
           @notes,
+          @customFieldValuesJson,
           @createdAt
         )`
       )
@@ -186,6 +292,7 @@ export const timeService = {
         entryDate: createdAt.slice(0, 10),
         startTime: createdAt,
         notes: input.notes?.trim() || null,
+        customFieldValuesJson: JSON.stringify(input.customFieldValues ?? {}),
         createdAt
       });
 

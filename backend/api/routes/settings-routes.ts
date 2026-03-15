@@ -12,6 +12,8 @@ const updateSettingsSchema = z.object({
   firstDayOfWeek: z.number().int().min(0).max(6),
   editDaysLimit: z.number().int().min(0).max(3650),
   insertDaysLimit: z.number().int().min(0).max(3650),
+  allowOneRecordPerDay: z.boolean(),
+  allowIntersectingRecords: z.boolean(),
   country: z.string().length(2),
   tabletIdleTimeoutSeconds: z.number().int().min(0).max(86400),
   autoBreakAfterMinutes: z.number().int().min(0).max(1440),

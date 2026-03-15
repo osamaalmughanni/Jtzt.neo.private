@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Backspace, X } from "phosphor-react";
+import { useTranslation } from "react-i18next";
 import { Logo } from "@/components/logo";
 import { TabletPinKey } from "@/components/ui/tablet-pin-key";
 import { api } from "@/lib/api";
@@ -14,15 +15,16 @@ const keypadRows = [
   ["clear", "0", "back"]
 ] as const;
 
-function getErrorMessage(error: unknown) {
-  if (!(error instanceof Error)) return "Access failed";
-  if (error.message === "Invalid PIN code") return "PIN not recognized";
-  if (error.message === "User is inactive") return "PIN inactive";
+function getErrorMessage(error: unknown, t: (key: string) => string) {
+  if (!(error instanceof Error)) return t("tabletPin.accessFailed");
+  if (error.message === "Invalid PIN code") return t("tabletPin.invalidPin");
+  if (error.message === "User is inactive") return t("tabletPin.inactivePin");
   return error.message;
 }
 
 export function TabletPinPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { companySession, loginCompany, lockTablet, tabletAccess } = useAuth();
   const [pinCode, setPinCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -49,17 +51,22 @@ export function TabletPinPage() {
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
+    const hadDarkClass = root.classList.contains("dark");
     const rootStyle = root.style.backgroundColor;
     const bodyStyle = body.style.backgroundColor;
     const bodyColor = body.style.color;
     const colorScheme = root.style.colorScheme;
 
-    root.style.backgroundColor = "#050505";
+    root.classList.add("dark");
+    root.style.backgroundColor = "hsl(var(--background))";
     root.style.colorScheme = "dark";
-    body.style.backgroundColor = "#050505";
-    body.style.color = "#ffffff";
+    body.style.backgroundColor = "hsl(var(--background))";
+    body.style.color = "hsl(var(--foreground))";
 
     return () => {
+      if (!hadDarkClass) {
+        root.classList.remove("dark");
+      }
       root.style.backgroundColor = rootStyle;
       root.style.colorScheme = colorScheme;
       body.style.backgroundColor = bodyStyle;
@@ -86,7 +93,7 @@ export function TabletPinPage() {
       navigate("/dashboard", { replace: true });
     } catch (error) {
       setPinCode("");
-      setErrorMessage(getErrorMessage(error));
+      setErrorMessage(getErrorMessage(error, t));
       setErrorState(true);
     } finally {
       setSubmitting(false);
@@ -120,7 +127,7 @@ export function TabletPinPage() {
   }
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-[#050505] text-white">
+    <div className="fixed inset-0 overflow-hidden bg-background text-foreground">
       <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-6">
         <div
           className="grid h-full w-full max-w-xl grid-rows-[auto_minmax(0,1fr)_auto] justify-items-center overflow-hidden"
@@ -140,8 +147,8 @@ export function TabletPinPage() {
         <div className="grid min-h-0 w-full place-items-center py-4 sm:py-4">
           <div className="grid h-full w-full min-h-0 max-w-[24rem] grid-rows-[auto_auto_minmax(0,1fr)] justify-items-center gap-5 sm:gap-5">
             <div className="flex flex-col items-center gap-2 text-center">
-              <p className="text-base text-[#b8b8b8] sm:text-lg">{tabletAccess.companyName}</p>
-              <p className="text-lg font-medium text-[#d6d6d6] sm:text-xl">Enter PIN</p>
+              <p className="text-base text-muted-foreground sm:text-lg">{tabletAccess.companyName}</p>
+              <p className="text-lg font-medium text-foreground sm:text-xl">{t("tabletPin.enterPin")}</p>
             </div>
 
             <div className="flex flex-col items-center gap-3">
@@ -151,13 +158,17 @@ export function TabletPinPage() {
                     key={index}
                     className="h-4 w-4 rounded-full transition-colors duration-150"
                     style={{
-                      backgroundColor: errorState ? "#dc2626" : index < pinCode.length ? "#ffffff" : "#3a3a3a"
+                      backgroundColor: errorState
+                        ? "hsl(var(--destructive))"
+                        : index < pinCode.length
+                          ? "hsl(var(--foreground))"
+                          : "hsl(var(--muted-foreground) / 0.28)"
                     }}
                   />
                 ))}
               </div>
-              <p className={cn("min-h-[1.25rem] text-sm", errorState ? "text-[#dc2626]" : "text-[#9a9a9a]")}>
-                {errorState ? errorMessage : submitting ? "Unlocking..." : "4 digits"}
+              <p className={cn("min-h-[1.25rem] text-sm", errorState ? "text-destructive" : "text-muted-foreground")}>
+                {errorState ? errorMessage : submitting ? t("tabletPin.unlocking") : t("tabletPin.digitsHint")}
               </p>
             </div>
 
@@ -201,7 +212,7 @@ export function TabletPinPage() {
           </div>
         </div>
 
-        <div className="flex w-full justify-center px-1 pt-3 pb-1 text-xs text-[#8d8d8d]">
+        <div className="flex w-full justify-center px-1 pt-3 pb-1 text-xs text-muted-foreground">
           <p className="whitespace-nowrap">jtzt.com</p>
         </div>
         </div>
