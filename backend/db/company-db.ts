@@ -150,6 +150,7 @@ const companyMigrations: Migration[] = [
           id INTEGER PRIMARY KEY CHECK (id = 1),
           currency TEXT NOT NULL DEFAULT 'EUR',
           locale TEXT NOT NULL DEFAULT 'en-GB',
+          time_zone TEXT NOT NULL DEFAULT 'Europe/Vienna',
           date_time_format TEXT NOT NULL DEFAULT 'g',
           first_day_of_week INTEGER NOT NULL DEFAULT 1,
           edit_days_limit INTEGER NOT NULL DEFAULT 30,
@@ -178,6 +179,7 @@ const companyMigrations: Migration[] = [
           id,
           currency,
           locale,
+          time_zone,
           date_time_format,
           first_day_of_week,
           edit_days_limit,
@@ -188,7 +190,7 @@ const companyMigrations: Migration[] = [
           auto_break_after_minutes,
           auto_break_duration_minutes,
           custom_fields_json
-        ) VALUES (1, 'EUR', 'en-GB', 'g', 1, 30, 30, 0, 0, 'AT', 300, 30, '[]')
+        ) VALUES (1, 'EUR', 'en-GB', 'Europe/Vienna', 'g', 1, 30, 30, 0, 0, 'AT', 300, 30, '[]')
         ON CONFLICT(id) DO NOTHING`
       ).run();
     }
@@ -318,6 +320,13 @@ const companyMigrations: Migration[] = [
     id: "016_company_allow_intersecting_records",
     up(db) {
       addColumnIfMissing(db, "company_settings", "allow_intersecting_records INTEGER NOT NULL DEFAULT 0", "allow_intersecting_records");
+    }
+  },
+  {
+    id: "017_company_time_zone",
+    up(db) {
+      addColumnIfMissing(db, "company_settings", "time_zone TEXT NOT NULL DEFAULT 'Europe/Vienna'", "time_zone");
+      db.exec("UPDATE company_settings SET time_zone = COALESCE(NULLIF(TRIM(time_zone), ''), 'Europe/Vienna')");
     }
   },
   {

@@ -1,7 +1,44 @@
+import { Temporal } from "@js-temporal/polyfill";
+
+const LOCAL_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const CLOCK_TIME_PATTERN = /^\d{2}:\d{2}$/;
+
+function resolveSystemTimeZone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function resolveTimeZoneId(timeZone?: string | null) {
+  return normalizeTimeZone(timeZone) ?? resolveSystemTimeZone();
+}
+
+function parsePlainDate(value: string) {
+  if (!LOCAL_DAY_PATTERN.test(value)) {
+    return null;
+  }
+
+  try {
+    return Temporal.PlainDate.from(value);
+  } catch {
+    return null;
+  }
+}
+
+function parseInstant(value: string) {
+  try {
+    return Temporal.Instant.from(value);
+  } catch {
+    return null;
+  }
+}
+
 export function diffMinutes(startIso: string, endIso: string | null): number {
-  const endTime = endIso ? new Date(endIso).getTime() : Date.now();
-  const startTime = new Date(startIso).getTime();
-  const diff = endTime - startTime;
+  const startInstant = parseInstant(startIso);
+  const endInstant = endIso ? parseInstant(endIso) : Temporal.Now.instant();
+  if (!startInstant || !endInstant) {
+    return 0;
+  }
+
+  const diff = endInstant.epochMilliseconds - startInstant.epochMilliseconds;
   if (diff <= 0) {
     return 0;
   }
@@ -16,65 +53,150 @@ export function formatMinutes(totalMinutes: number): string {
 }
 
 export function formatLocalDay(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return Temporal.PlainDate.from({
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+  }).toString();
+}
+
+export function isValidLocalDay(value: string): boolean {
+  return LOCAL_DAY_PATTERN.test(value) && parseLocalDay(value) !== null;
+}
+
+export function isValidClockTime(value: string): boolean {
+  if (!CLOCK_TIME_PATTERN.test(value)) {
+    return false;
+  }
+
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
+}
+
+export function normalizeTimeZone(value?: string | null) {
+  const candidate = value?.trim();
+  if (!candidate) {
+    return null;
+  }
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format(new Date());
+    return candidate;
+  } catch {
+    return null;
+  }
+}
+
+export function formatDayInTimeZone(date: Date, timeZone?: string | null) {
+  const instant = Temporal.Instant.from(date.toISOString());
+  return instant.toZonedDateTimeISO(resolveTimeZoneId(timeZone)).toPlainDate().toString();
+}
+
+export function getZonedDateTimeParts(date: Date, timeZone?: string | null) {
+  const parts = Temporal.Instant.from(date.toISOString()).toZonedDateTimeISO(resolveTimeZoneId(timeZone));
+  return {
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
+    hours: parts.hour,
+    minutes: parts.minute,
+    seconds: parts.second,
+  };
+}
+
+export function getLocalNowSnapshot(date = new Date(), timeZone?: string | null) {
+  const normalizedTimeZone = normalizeTimeZone(timeZone);
+  const zoneId = resolveTimeZoneId(normalizedTimeZone);
+  const zonedNow = Temporal.Instant.from(date.toISOString()).toZonedDateTimeISO(zoneId);
+  return {
+    instantIso: zonedNow.toInstant().toString(),
+    localDay: zonedNow.toPlainDate().toString(),
+    timeZone: normalizedTimeZone,
+  };
 }
 
 export function parseLocalDay(value: string): Date | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  const parsed = parsePlainDate(value);
+  return parsed ? new Date(parsed.year, parsed.month - 1, parsed.day) : null;
+}
+
+export function combineLocalDayAndTimeToIsoInTimeZone(day: string, timeValue: string, timeZone?: string | null): string | null {
+  if (!isValidLocalDay(day) || !isValidClockTime(timeValue)) {
     return null;
   }
 
-  const [year, month, day] = value.split("-").map(Number);
-  const candidate = new Date(year, month - 1, day);
-  if (
-    Number.isNaN(candidate.getTime()) ||
-    candidate.getFullYear() !== year ||
-    candidate.getMonth() !== month - 1 ||
-    candidate.getDate() !== day
-  ) {
+  const parsedDay = parsePlainDate(day);
+  if (!parsedDay) {
     return null;
   }
 
-  return candidate;
+  const [hours, minutes] = timeValue.split(":").map(Number);
+  const zoneId = resolveTimeZoneId(timeZone);
+  try {
+    const zonedDateTime = Temporal.ZonedDateTime.from(
+      {
+        timeZone: zoneId,
+        year: parsedDay.year,
+        month: parsedDay.month,
+        day: parsedDay.day,
+        hour: hours,
+        minute: minutes,
+        second: 0,
+        millisecond: 0,
+      },
+      { disambiguation: "reject" },
+    );
+    return zonedDateTime.toInstant().toString();
+  } catch {
+    return null;
+  }
+}
+
+export function toClockTimeValue(isoValue: string | null, timeZone?: string | null): string {
+  if (!isoValue) {
+    return "";
+  }
+
+  const instant = parseInstant(isoValue);
+  if (!instant) {
+    return "";
+  }
+
+  const parts = instant.toZonedDateTimeISO(resolveTimeZoneId(timeZone));
+  return `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
 }
 
 export function diffCalendarDays(leftDay: string, rightDay: string): number {
-  const left = parseLocalDay(leftDay);
-  const right = parseLocalDay(rightDay);
+  const left = parsePlainDate(leftDay);
+  const right = parsePlainDate(rightDay);
   if (!left || !right) {
     return 0;
   }
 
-  const leftUtc = Date.UTC(left.getFullYear(), left.getMonth(), left.getDate());
-  const rightUtc = Date.UTC(right.getFullYear(), right.getMonth(), right.getDate());
-  return Math.round((leftUtc - rightUtc) / 86400000);
+  return left.since(right, { largestUnit: "day" }).days;
 }
 
 export function enumerateLocalDays(startDay: string, endDay: string): string[] {
-  const start = parseLocalDay(startDay);
-  const end = parseLocalDay(endDay);
-  if (!start || !end || end < start) {
+  const start = parsePlainDate(startDay);
+  const end = parsePlainDate(endDay);
+  if (!start || !end || Temporal.PlainDate.compare(end, start) < 0) {
     return [];
   }
 
   const days: string[] = [];
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    days.push(formatLocalDay(cursor));
-    cursor.setDate(cursor.getDate() + 1);
+  let cursor = start;
+  while (Temporal.PlainDate.compare(cursor, end) <= 0) {
+    days.push(cursor.toString());
+    cursor = cursor.add({ days: 1 });
   }
 
   return days;
 }
 
 export function isWeekendDay(day: string): boolean {
-  const parsed = parseLocalDay(day);
+  const parsed = parsePlainDate(day);
   if (!parsed) return false;
-  const weekday = parsed.getDay();
-  return weekday === 0 || weekday === 6;
+  return parsed.dayOfWeek === 6 || parsed.dayOfWeek === 7;
 }
 
 export function countEffectiveLeaveDays(startDay: string, endDay: string, holidayDays: Set<string>): {
@@ -109,19 +231,4 @@ export function countEffectiveLeaveDays(startDay: string, endDay: string, holida
     excludedHolidayCount,
     excludedWeekendCount,
   };
-}
-
-export function startOfDayIso(date = new Date()): string {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value.toISOString();
-}
-
-export function startOfWeekIso(date = new Date()): string {
-  const value = new Date(date);
-  const weekday = value.getDay();
-  const offset = weekday === 0 ? -6 : 1 - weekday;
-  value.setDate(value.getDate() + offset);
-  value.setHours(0, 0, 0, 0);
-  return value.toISOString();
 }

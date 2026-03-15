@@ -42,7 +42,7 @@ function clampSegment(type: SegmentType, value: string) {
 
 function isValidDate(year: string, month: string, day: string) {
   if (year.length !== 4 || month.length !== 2 || day.length !== 2) return false;
-  const candidate = new Date(`${year}-${month}-${day}T00:00:00`);
+  const candidate = new Date(Number(year), Number(month) - 1, Number(day));
   return (
     !Number.isNaN(candidate.getTime()) &&
     candidate.getFullYear() === Number(year) &&

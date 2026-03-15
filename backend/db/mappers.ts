@@ -19,7 +19,6 @@ function normalizeEntryType(value: unknown) {
     return value;
   }
 
-  // Legacy unsupported entries are treated as vacation to keep them readable.
   return "vacation";
 }
 
@@ -142,7 +141,7 @@ export function mapTimeEntry(row: any): TimeEntryRecord {
     id: row.id,
     userId: row.user_id,
     entryType,
-    entryDate: row.entry_date ?? row.start_time?.slice(0, 10),
+    entryDate: row.entry_date,
     endDate: row.end_date ?? null,
     startTime: entryType === "work" ? row.start_time : null,
     endTime: row.end_time,
@@ -162,7 +161,7 @@ export function mapTimeEntry(row: any): TimeEntryRecord {
 
 export function mapTimeEntryView(row: any): TimeEntryView {
   const entryType = normalizeEntryType(row.entry_type);
-  const entryDate = row.entry_date ?? row.start_time?.slice(0, 10);
+  const entryDate = row.entry_date;
   const endDate = row.end_date ?? null;
   const totalDayCount = endDate ? Math.max(1, diffCalendarDays(endDate, entryDate) + 1) : 1;
   return {
@@ -206,6 +205,7 @@ export function mapCompanySettings(row: any): CompanySettings {
   return {
     currency: row.currency,
     locale: row.locale,
+    timeZone: row.time_zone ?? "Europe/Vienna",
     dateTimeFormat: row.date_time_format ?? "g",
     firstDayOfWeek: row.first_day_of_week,
     editDaysLimit: row.edit_days_limit,

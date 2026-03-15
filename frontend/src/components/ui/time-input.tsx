@@ -1,12 +1,12 @@
 import { Clock } from "phosphor-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toClockTimeValue } from "@shared/utils/time";
 import { Button } from "@/components/ui/button";
 import { Input, inputBaseClassName } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-function getCurrentTimeValue() {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+function getCurrentTimeValue(timeZone?: string) {
+  return toClockTimeValue(new Date().toISOString(), timeZone);
 }
 
 function parseTime(value: string) {
@@ -47,6 +47,7 @@ interface TimeInputProps {
   onChange: (value: string) => void;
   onNowClick?: (value: string) => void;
   nowDisabled?: boolean;
+  timeZone?: string;
   className?: string;
 }
 
@@ -55,6 +56,7 @@ export function TimeInput({
   onChange,
   onNowClick,
   nowDisabled,
+  timeZone,
   className,
 }: TimeInputProps) {
   const hoursRef = useRef<HTMLInputElement | null>(null);
@@ -138,7 +140,7 @@ export function TimeInput({
         aria-label="Use current time"
         disabled={nowDisabled}
         onClick={() => {
-          const nowValue = getCurrentTimeValue();
+          const nowValue = getCurrentTimeValue(timeZone);
           const nextSegments = parseTime(nowValue);
           setSegments(nextSegments);
           setDraftSegments(nextSegments);

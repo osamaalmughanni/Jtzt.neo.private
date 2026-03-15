@@ -46,12 +46,16 @@ export class ApiRequestError extends Error {
   }
 }
 
+function buildDefaultHeaders(init?: HeadersInit): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    ...(init ?? {}),
+  };
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    },
+    headers: buildDefaultHeaders(init?.headers),
     ...init
   });
 

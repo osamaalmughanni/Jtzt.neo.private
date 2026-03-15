@@ -213,6 +213,7 @@ export interface SettingsResponse {
 export interface UpdateSettingsInput {
   currency: string;
   locale: string;
+  timeZone: string;
   dateTimeFormat: string;
   firstDayOfWeek: number;
   editDaysLimit: number;
@@ -258,6 +259,7 @@ export interface ReportResponse {
       cost: number;
     };
     locale: string;
+    timeZone: string;
     dateTimeFormat: string;
     currency: string;
     grouped: boolean;

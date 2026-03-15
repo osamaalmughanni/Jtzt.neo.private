@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { PublicHolidayRecord } from "@shared/types/models";
-import { formatLocalDay, parseLocalDay } from "@shared/utils/time";
+import { enumerateLocalDays, formatLocalDay, parseLocalDay } from "@shared/utils/time";
 import { FormPage, FormPanel } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
@@ -26,14 +26,7 @@ function endOfMonth(date: Date) {
 }
 
 function enumerateDays(startDate: string, endDate: string) {
-  const days: string[] = [];
-  const cursor = new Date(`${startDate}T00:00:00`);
-  const finalDate = new Date(`${endDate}T00:00:00`);
-  while (cursor.getTime() <= finalDate.getTime()) {
-    days.push(formatLocalDay(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return days;
+  return enumerateLocalDays(startDate, endDate);
 }
 
 export function DashboardDayPickerPage() {

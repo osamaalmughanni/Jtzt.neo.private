@@ -1,16 +1,19 @@
 import { HTTPException } from "hono/http-exception";
 import type { UpdateSettingsInput } from "../../shared/types/api";
+import { getLocalNowSnapshot, normalizeTimeZone } from "../../shared/utils/time";
 import { getCompanyDb } from "../db/company-db";
 import { mapCompanySettings } from "../db/mappers";
 
 const HOLIDAY_CACHE_MAX_AGE_DAYS = 30;
 const CURRENT_YEAR_CACHE_MAX_AGE_DAYS = 7;
+export const DEFAULT_COMPANY_TIME_ZONE = "Europe/Vienna";
 
 function getDefaultSettingsRow() {
   return {
     id: 1,
     currency: "EUR",
     locale: "en-GB",
+    time_zone: DEFAULT_COMPANY_TIME_ZONE,
     date_time_format: "g",
     first_day_of_week: 1,
     edit_days_limit: 30,
@@ -31,6 +34,7 @@ function ensureSettingsRow(db: ReturnType<typeof getCompanyDb>) {
       id,
       currency,
       locale,
+      time_zone,
       date_time_format,
       first_day_of_week,
       edit_days_limit,
@@ -44,6 +48,7 @@ function ensureSettingsRow(db: ReturnType<typeof getCompanyDb>) {
       @id,
       @currency,
       @locale,
+      @time_zone,
       @date_time_format,
       @first_day_of_week,
       @edit_days_limit,
@@ -55,6 +60,15 @@ function ensureSettingsRow(db: ReturnType<typeof getCompanyDb>) {
       @custom_fields_json
     ) ON CONFLICT(id) DO NOTHING`
   ).run(getDefaultSettingsRow());
+}
+
+function normalizeSettingsTimeZone(value: string) {
+  const normalized = normalizeTimeZone(value);
+  if (!normalized) {
+    throw new HTTPException(400, { message: "Invalid time zone" });
+  }
+
+  return normalized;
 }
 
 function isFresh(isoDate: string) {
@@ -98,6 +112,7 @@ export const settingsService = {
       SET
         currency = @currency,
         locale = @locale,
+        time_zone = @timeZone,
         date_time_format = @dateTimeFormat,
         first_day_of_week = @firstDayOfWeek,
         edit_days_limit = @editDaysLimit,
@@ -112,6 +127,7 @@ export const settingsService = {
       WHERE id = 1`
     ).run({
       ...input,
+      timeZone: normalizeSettingsTimeZone(input.timeZone),
       allowOneRecordPerDay: input.allowOneRecordPerDay ? 1 : 0,
       allowIntersectingRecords: input.allowIntersectingRecords ? 1 : 0,
       customFieldsJson: JSON.stringify(input.customFields)
@@ -192,5 +208,10 @@ export const settingsService = {
     }
 
     return null;
+  },
+
+  getBusinessNowSnapshot(databasePath: string, now = new Date()) {
+    const settings = this.getSettings(databasePath);
+    return getLocalNowSnapshot(now, settings.timeZone);
   }
 };

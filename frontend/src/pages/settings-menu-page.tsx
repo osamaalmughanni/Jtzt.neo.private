@@ -14,6 +14,7 @@ import { toast } from "@/lib/toast";
 const defaultSettings: CompanySettings = {
   currency: "EUR",
   locale: "en-GB",
+  timeZone: "Europe/Vienna",
   dateTimeFormat: "g",
   firstDayOfWeek: 1,
   editDaysLimit: 30,
@@ -50,13 +51,13 @@ function getLocalePreview(locale: string) {
   }
 }
 
-function getDateTimeFormatPreview(locale: string, dateTimeFormat: string) {
+function getDateTimeFormatPreview(locale: string, dateTimeFormat: string, timeZone: string) {
   const sampleValue = "2026-03-15T13:21:00";
 
   try {
-    return formatCompanyDateTime(sampleValue, locale, dateTimeFormat);
+    return formatCompanyDateTime(sampleValue, locale, dateTimeFormat, timeZone);
   } catch {
-    return new Date(sampleValue).toLocaleString(locale || "en-GB");
+    return new Date(sampleValue).toLocaleString(locale || "en-GB", { timeZone });
   }
 }
 
@@ -69,7 +70,7 @@ export function SettingsMenuPage() {
   const [saving, setSaving] = useState(false);
   const [tabletSaving, setTabletSaving] = useState(false);
   const preview = useMemo(() => getLocalePreview(settings.locale), [settings.locale]);
-  const dateTimePreview = useMemo(() => getDateTimeFormatPreview(settings.locale, settings.dateTimeFormat), [settings.dateTimeFormat, settings.locale]);
+  const dateTimePreview = useMemo(() => getDateTimeFormatPreview(settings.locale, settings.dateTimeFormat, settings.timeZone), [settings.dateTimeFormat, settings.locale, settings.timeZone]);
   const firstDayOptions = [
     { value: "0", label: t("settings.sunday") },
     { value: "1", label: t("settings.monday") },
@@ -164,6 +165,13 @@ export function SettingsMenuPage() {
             </Field>
             <Field label={t("settings.locale")}>
               <Input placeholder="en-GB" value={settings.locale} onChange={(event) => setSettings((current) => ({ ...current, locale: event.target.value }))} />
+            </Field>
+            <Field label={t("settings.timeZone")}>
+              <Input
+                placeholder="Europe/Vienna"
+                value={settings.timeZone}
+                onChange={(event) => setSettings((current) => ({ ...current, timeZone: event.target.value }))}
+              />
             </Field>
             <Field label={t("settings.firstDayOfWeek")}>
               <FieldCombobox
@@ -313,7 +321,7 @@ export function SettingsMenuPage() {
                   {tabletCodeStatus.configured ? t("settings.tabletModeActive") : t("settings.noTabletCode")}
                 </span>
                 {tabletCodeStatus.updatedAt ? (
-                  <span className="text-muted-foreground">{formatCompanyDateTime(tabletCodeStatus.updatedAt, settings.locale, settings.dateTimeFormat)}</span>
+                  <span className="text-muted-foreground">{formatCompanyDateTime(tabletCodeStatus.updatedAt, settings.locale, settings.dateTimeFormat, settings.timeZone)}</span>
                 ) : null}
               </div>
               {tabletCodeStatus.code ? (

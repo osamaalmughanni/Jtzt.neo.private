@@ -116,6 +116,7 @@ function getCompanySession(session: AppVariables["session"]): CompanyTokenPayloa
 function enforceDayLimit(
   session: CompanyTokenPayload,
   limit: number,
+  todayDay: string,
   day: string,
   message: string
 ) {
@@ -123,7 +124,7 @@ function enforceDayLimit(
     return;
   }
 
-  if (diffCalendarDays(formatLocalDay(new Date()), day) > limit) {
+  if (diffCalendarDays(todayDay, day) > limit) {
     throw new Error(message);
   }
 }
@@ -253,7 +254,7 @@ async function getHolidaySetForRange(databasePath: string, country: string, star
 
 async function buildDashboardSummary(databasePath: string, userId: number) {
   const settings = settingsService.getSettings(databasePath);
-  const todayDay = formatLocalDay(new Date());
+  const todayDay = settingsService.getBusinessNowSnapshot(databasePath).localDay;
   const fullWeekRange = getWeekRange(todayDay, settings.firstDayOfWeek);
   const fullMonthRange = getMonthRange(todayDay);
   const weekRange = { startDay: fullWeekRange.startDay, endDay: todayDay };
@@ -350,13 +351,14 @@ timeRoutes.post("/start", async (c) => {
   const session = getCompanySession(rawSession);
   const body = startTimerSchema.parse(await c.req.json());
   const settings = settingsService.getSettings(session.databasePath);
+  const snapshot = settingsService.getBusinessNowSnapshot(session.databasePath);
   try {
-    enforceSingleRecordPerDay(session.databasePath, session.userId, settings, formatLocalDay(new Date()));
+    enforceSingleRecordPerDay(session.databasePath, session.userId, settings, snapshot.localDay);
     enforceIntersectingRecords(session.databasePath, session.userId, settings, {
       entryType: "work",
-      startDate: formatLocalDay(new Date()),
+      startDate: snapshot.localDay,
       endDate: null,
-      startTime: new Date().toISOString(),
+      startTime: snapshot.instantIso,
       endTime: null,
     });
   } catch (error) {
@@ -368,7 +370,7 @@ timeRoutes.post("/start", async (c) => {
     return c.json({ error: error instanceof Error ? error.message : "Invalid custom fields" }, 400);
   }
   return c.json({
-    entry: timeService.startTimer(session.databasePath, session.userId, body)
+    entry: timeService.startTimer(session.databasePath, session.userId, body, snapshot)
   });
 });
 
@@ -380,6 +382,7 @@ timeRoutes.post("/entry", async (c) => {
   const session = getCompanySession(rawSession);
 
   const body = createManualEntrySchema.parse(await c.req.json());
+  const todayDay = settingsService.getBusinessNowSnapshot(session.databasePath).localDay;
   let targetUserId: number;
   try {
     targetUserId = resolveTargetUserId(session, body.targetUserId);
@@ -388,7 +391,7 @@ timeRoutes.post("/entry", async (c) => {
   }
   const settings = settingsService.getSettings(session.databasePath);
   try {
-    enforceDayLimit(session, settings.insertDaysLimit, body.startDate, "Insert day limit reached");
+    enforceDayLimit(session, settings.insertDaysLimit, todayDay, body.startDate, "Insert day limit reached");
     enforceSingleRecordPerDay(session.databasePath, targetUserId, settings, body.startDate, body.endDate);
     enforceIntersectingRecords(session.databasePath, targetUserId, settings, {
       entryType: body.entryType,
@@ -480,6 +483,7 @@ timeRoutes.put("/entry", async (c) => {
   }
   const session = getCompanySession(rawSession);
   const body = updateEntrySchema.parse(await c.req.json());
+  const todayDay = settingsService.getBusinessNowSnapshot(session.databasePath).localDay;
   let targetUserId: number;
   try {
     targetUserId = resolveTargetUserId(session, body.targetUserId);
@@ -488,7 +492,7 @@ timeRoutes.put("/entry", async (c) => {
   }
   const settings = settingsService.getSettings(session.databasePath);
   try {
-    enforceDayLimit(session, settings.editDaysLimit, body.startDate, "Edit day limit reached");
+    enforceDayLimit(session, settings.editDaysLimit, todayDay, body.startDate, "Edit day limit reached");
     enforceSingleRecordPerDay(session.databasePath, targetUserId, settings, body.startDate, body.endDate, body.entryId);
     enforceIntersectingRecords(session.databasePath, targetUserId, settings, {
       entryType: body.entryType,

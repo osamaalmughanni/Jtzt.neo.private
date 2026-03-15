@@ -13,6 +13,7 @@ import { toast } from "@/lib/toast";
 const defaultSettings: CompanySettings = {
   currency: "EUR",
   locale: "en-GB",
+  timeZone: "Europe/Vienna",
   dateTimeFormat: "g",
   firstDayOfWeek: 1,
   editDaysLimit: 30,

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { formatLocalDay } from "@shared/utils/time";
+import { getLocalNowSnapshot } from "@shared/utils/time";
 import type { UserContractInput } from "@shared/types/api";
 import type { UserRole } from "@shared/types/models";
 import { FormActions, FormFields, FormPage, FormPanel, FormSection, Field, FieldCombobox } from "@/components/form-layout";
@@ -47,7 +47,7 @@ function createEmptyForm(): UserFormState {
   };
 }
 
-function validateContracts(contracts: UserContractInput[], t: (key: string) => string) {
+function validateContracts(contracts: UserContractInput[], t: (key: string) => string, timeZone: string) {
   if (contracts.length > 100) throw new Error(t("userEditor.contractMax"));
   const sorted = [...contracts].sort((left, right) => left.startDate.localeCompare(right.startDate));
   for (let index = 0; index < sorted.length; index += 1) {
@@ -58,13 +58,13 @@ function validateContracts(contracts: UserContractInput[], t: (key: string) => s
     if (previous && contract.startDate <= (previous.endDate ?? "9999-12-31")) throw new Error(t("userEditor.contractsOverlap"));
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalNowSnapshot(new Date(), timeZone).localDay;
   const hasCurrentContract = sorted.some((contract) => contract.startDate <= today && (contract.endDate === null || contract.endDate >= today));
   if (!hasCurrentContract) throw new Error(t("userEditor.currentContractRequired"));
 }
 
-function getContractStatus(contract: UserContractInput, t: (key: string) => string) {
-  const today = new Date().toISOString().slice(0, 10);
+function getContractStatus(contract: UserContractInput, t: (key: string) => string, timeZone: string) {
+  const today = getLocalNowSnapshot(new Date(), timeZone).localDay;
   if (!contract.startDate) return t("userEditor.draft");
   if (contract.startDate > today) return t("userEditor.upcoming");
   if (contract.endDate === null || contract.endDate >= today) return t("userEditor.current");
@@ -77,6 +77,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   const { t } = useTranslation();
   const { companySession, companyIdentity } = useAuth();
   const [settingsLocale, setSettingsLocale] = useState("en-GB");
+  const [settingsTimeZone, setSettingsTimeZone] = useState("Europe/Vienna");
   const [form, setForm] = useState<UserFormState>(createEmptyForm);
   const [loading, setLoading] = useState(mode === "edit");
   const [saving, setSaving] = useState(false);
@@ -93,7 +94,10 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
 
   useEffect(() => {
     if (!companySession) return;
-    void api.getSettings(companySession.token).then((response) => setSettingsLocale(response.settings.locale)).catch(() => undefined);
+    void api.getSettings(companySession.token).then((response) => {
+      setSettingsLocale(response.settings.locale);
+      setSettingsTimeZone(response.settings.timeZone);
+    }).catch(() => undefined);
   }, [companySession]);
 
   useEffect(() => {
@@ -132,7 +136,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  function setContractField(index: number, key: keyof UserContractInput, value: number | string) {
+  function setContractField(index: number, key: keyof UserContractInput, value: number | string | null) {
     setForm((current) => ({
       ...current,
       contracts: current.contracts.map((contract, contractIndex) =>
@@ -150,7 +154,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   }
 
   function addCurrentContract() {
-    const today = formatLocalDay(new Date());
+    const today = getLocalNowSnapshot(new Date(), settingsTimeZone).localDay;
     setForm((current) => ({
       ...current,
       contracts: [
@@ -179,7 +183,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
       if (form.password.trim().length > 0 && form.password.trim().length < 6) throw new Error(t("userEditor.passwordLength"));
       if (!/^\d{4}$/.test(form.pinCode.trim())) throw new Error(t("userEditor.pinInvalid"));
       if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) throw new Error(t("userEditor.emailInvalid"));
-      validateContracts(form.contracts, t);
+      validateContracts(form.contracts, t, settingsTimeZone);
 
       setSaving(true);
       const payload = {
@@ -329,7 +333,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium text-foreground">{t("userEditor.contract", { index: index + 1 })}</p>
                         <span className="rounded-full border border-border bg-muted px-2 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                          {getContractStatus(contract, t)}
+                          {getContractStatus(contract, t, settingsTimeZone)}
                         </span>
                       </div>
                         <Button variant="ghost" onClick={() => removeContract(index)} type="button">
@@ -348,7 +352,9 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
                           </div>
                           <Switch
                             checked={contract.endDate === null}
-                            onCheckedChange={(checked) => setContractField(index, "endDate", checked ? null : formatLocalDay(new Date()))}
+                            onCheckedChange={(checked) =>
+                              setContractField(index, "endDate", checked ? null : getLocalNowSnapshot(new Date(), settingsTimeZone).localDay)
+                            }
                           />
                         </div>
                       </Field>

@@ -1,4 +1,4 @@
-import { parseLocalDay } from "@shared/utils/time";
+import { getZonedDateTimeParts, normalizeTimeZone, parseLocalDay } from "@shared/utils/time";
 
 function normalizeLocale(locale: string) {
   return locale.trim() || "en-GB";
@@ -17,26 +17,27 @@ function parseDateTimeValue(value: string) {
   return parsed;
 }
 
-function formatWithPattern(date: Date, pattern: string, locale: string) {
+function formatWithPattern(date: Date, pattern: string, locale: string, timeZone?: string | null) {
   const normalized = pattern.trim();
+  const parts = getZonedDateTimeParts(date, timeZone);
   const tokenMap: Record<string, string> = {
-    yyyy: String(date.getFullYear()).padStart(4, "0"),
-    yy: String(date.getFullYear() % 100).padStart(2, "0"),
-    MMMM: new Intl.DateTimeFormat(locale, { month: "long" }).format(date),
-    MMM: new Intl.DateTimeFormat(locale, { month: "short" }).format(date),
-    MM: String(date.getMonth() + 1).padStart(2, "0"),
-    M: String(date.getMonth() + 1),
-    dd: String(date.getDate()).padStart(2, "0"),
-    d: String(date.getDate()),
-    HH: String(date.getHours()).padStart(2, "0"),
-    H: String(date.getHours()),
-    hh: String(((date.getHours() % 12) || 12)).padStart(2, "0"),
-    h: String((date.getHours() % 12) || 12),
-    mm: String(date.getMinutes()).padStart(2, "0"),
-    m: String(date.getMinutes()),
-    ss: String(date.getSeconds()).padStart(2, "0"),
-    s: String(date.getSeconds()),
-    tt: date.getHours() >= 12 ? "PM" : "AM",
+    yyyy: String(parts.year).padStart(4, "0"),
+    yy: String(parts.year % 100).padStart(2, "0"),
+    MMMM: new Intl.DateTimeFormat(locale, { month: "long", ...(normalizeTimeZone(timeZone) ? { timeZone: normalizeTimeZone(timeZone)! } : {}) }).format(date),
+    MMM: new Intl.DateTimeFormat(locale, { month: "short", ...(normalizeTimeZone(timeZone) ? { timeZone: normalizeTimeZone(timeZone)! } : {}) }).format(date),
+    MM: String(parts.month).padStart(2, "0"),
+    M: String(parts.month),
+    dd: String(parts.day).padStart(2, "0"),
+    d: String(parts.day),
+    HH: String(parts.hours).padStart(2, "0"),
+    H: String(parts.hours),
+    hh: String(((parts.hours % 12) || 12)).padStart(2, "0"),
+    h: String((parts.hours % 12) || 12),
+    mm: String(parts.minutes).padStart(2, "0"),
+    m: String(parts.minutes),
+    ss: String(parts.seconds).padStart(2, "0"),
+    s: String(parts.seconds),
+    tt: parts.hours >= 12 ? "PM" : "AM",
   };
 
   const tokens = Object.keys(tokenMap).sort((a, b) => b.length - a.length);
@@ -47,22 +48,23 @@ function formatWithPattern(date: Date, pattern: string, locale: string) {
   return output;
 }
 
-function formatStandard(date: Date, locale: string, formatString: string) {
+function formatStandard(date: Date, locale: string, formatString: string, timeZone?: string | null) {
   const key = formatString.trim() || "g";
+  const zonedOptions = normalizeTimeZone(timeZone) ? { timeZone: normalizeTimeZone(timeZone)! } : {};
 
-  if (key === "d") return date.toLocaleDateString(locale);
-  if (key === "D") return date.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  if (key === "t") return date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
-  if (key === "T") return date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  if (key === "g") return date.toLocaleString(locale, { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  if (key === "G") return date.toLocaleString(locale, { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  if (key === "f") return date.toLocaleString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  if (key === "F") return date.toLocaleString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  if (key === "M" || key === "m") return date.toLocaleDateString(locale, { day: "numeric", month: "long" });
-  if (key === "Y" || key === "y") return date.toLocaleDateString(locale, { month: "long", year: "numeric" });
-  if (key === "O" || key === "o" || key === "s" || key === "u") return date.toLocaleString(locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  if (key === "d") return date.toLocaleDateString(locale, zonedOptions);
+  if (key === "D") return date.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric", ...zonedOptions });
+  if (key === "t") return date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", ...zonedOptions });
+  if (key === "T") return date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", ...zonedOptions });
+  if (key === "g") return date.toLocaleString(locale, { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", ...zonedOptions });
+  if (key === "G") return date.toLocaleString(locale, { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", ...zonedOptions });
+  if (key === "f") return date.toLocaleString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", ...zonedOptions });
+  if (key === "F") return date.toLocaleString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", ...zonedOptions });
+  if (key === "M" || key === "m") return date.toLocaleDateString(locale, { day: "numeric", month: "long", ...zonedOptions });
+  if (key === "Y" || key === "y") return date.toLocaleDateString(locale, { month: "long", year: "numeric", ...zonedOptions });
+  if (key === "O" || key === "o" || key === "s" || key === "u") return date.toLocaleString(locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", ...zonedOptions });
 
-  return formatWithPattern(date, key, locale);
+  return formatWithPattern(date, key, locale, timeZone);
 }
 
 export function formatCompanyDate(day: string, locale: string, options?: Intl.DateTimeFormatOptions) {
@@ -85,14 +87,14 @@ export function formatCompanyDate(day: string, locale: string, options?: Intl.Da
   }
 }
 
-export function formatCompanyDateTime(value: string, locale: string, formatString: string) {
+export function formatCompanyDateTime(value: string, locale: string, formatString: string, timeZone?: string | null) {
   const parsed = parseDateTimeValue(value);
   if (!parsed) {
     return value;
   }
 
   try {
-    return formatStandard(parsed, normalizeLocale(locale), formatString);
+    return formatStandard(parsed, normalizeLocale(locale), formatString, timeZone);
   } catch {
     return value;
   }

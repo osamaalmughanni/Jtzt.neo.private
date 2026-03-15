@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { HTTPException } from "hono/http-exception";
 import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
+import { settingsService } from "../../services/settings-service";
 import { userService } from "../../services/user-service";
 import type { AppVariables } from "../context";
 
@@ -86,7 +87,7 @@ userRoutes.post("/", async (c) => {
   ensureAdmin(session);
 
   const body = createUserSchema.parse(await c.req.json());
-  const userId = userService.createUser(session.databasePath, body);
+  const userId = userService.createUser(session.databasePath, body, settingsService.getBusinessNowSnapshot(session.databasePath).localDay);
   return c.json({ success: true, userId });
 });
 
@@ -98,7 +99,7 @@ userRoutes.put("/", async (c) => {
   ensureAdmin(session);
 
   const body = updateUserSchema.parse(await c.req.json());
-  userService.updateUser(session.databasePath, body);
+  userService.updateUser(session.databasePath, body, settingsService.getBusinessNowSnapshot(session.databasePath).localDay);
   return c.json({ success: true });
 });
 

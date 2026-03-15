@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { CompanySettings, CompanyUserListItem } from "@shared/types/models";
 import type { ReportRequestInput } from "@shared/types/api";
-import { formatLocalDay } from "@shared/utils/time";
+import { formatLocalDay, getLocalNowSnapshot, parseLocalDay } from "@shared/utils/time";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { toast } from "@/lib/toast";
 const defaultSettings: CompanySettings = {
   currency: "EUR",
   locale: "en-GB",
+  timeZone: "Europe/Vienna",
   dateTimeFormat: "g",
   firstDayOfWeek: 1,
   editDaysLimit: 30,
@@ -137,43 +138,74 @@ function InlineMultiSelector({
   );
 }
 
-function getMonthRange(date: Date) {
+function addDays(day: string, amount: number) {
+  const parsed = parseLocalDay(day);
+  if (!parsed) {
+    return day;
+  }
+
+  parsed.setDate(parsed.getDate() + amount);
+  return formatLocalDay(parsed);
+}
+
+function getMonthRange(day: string) {
+  const date = parseLocalDay(day);
+  if (!date) {
+    return { startDate: day, endDate: day };
+  }
+
   return {
     startDate: formatLocalDay(new Date(date.getFullYear(), date.getMonth(), 1)),
     endDate: formatLocalDay(new Date(date.getFullYear(), date.getMonth() + 1, 0)),
   };
 }
 
-function getLastMonthRange(date: Date) {
-  return getMonthRange(new Date(date.getFullYear(), date.getMonth() - 1, 1));
+function getLastMonthRange(day: string) {
+  const date = parseLocalDay(day);
+  if (!date) {
+    return { startDate: day, endDate: day };
+  }
+
+  return getMonthRange(formatLocalDay(new Date(date.getFullYear(), date.getMonth() - 1, 1)));
 }
 
-function getYearRange(date: Date) {
+function getYearRange(day: string) {
+  const date = parseLocalDay(day);
+  if (!date) {
+    return { startDate: day, endDate: day };
+  }
+
   return {
     startDate: formatLocalDay(new Date(date.getFullYear(), 0, 1)),
     endDate: formatLocalDay(new Date(date.getFullYear(), 11, 31)),
   };
 }
 
-function getWeekRange(date: Date) {
-  const next = new Date(date);
-  const weekday = next.getDay();
-  const delta = weekday === 0 ? -6 : 1 - weekday;
-  next.setDate(next.getDate() + delta);
-  const end = new Date(next);
-  end.setDate(end.getDate() + 6);
-  return { startDate: formatLocalDay(next), endDate: formatLocalDay(end) };
+function getWeekRange(day: string, firstDayOfWeek: number) {
+  const date = parseLocalDay(day);
+  if (!date) {
+    return { startDate: day, endDate: day };
+  }
+
+  const normalizedFirstDayOfWeek =
+    Number.isInteger(firstDayOfWeek) && firstDayOfWeek >= 0 && firstDayOfWeek <= 6
+      ? firstDayOfWeek
+      : 1;
+  const weekday = date.getDay();
+  const delta = (weekday - normalizedFirstDayOfWeek + 7) % 7;
+  const startDate = addDays(day, -delta);
+  return { startDate, endDate: addDays(startDate, 6) };
 }
 
-function applyPeriodPreset(periodPreset: string) {
-  const today = new Date();
-  if (periodPreset === "this_week") return getWeekRange(today);
+function applyPeriodPreset(periodPreset: string, settings: Pick<CompanySettings, "timeZone" | "firstDayOfWeek">) {
+  const today = getLocalNowSnapshot(new Date(), settings.timeZone).localDay;
+  if (periodPreset === "this_week") return getWeekRange(today, settings.firstDayOfWeek);
   if (periodPreset === "this_month") return getMonthRange(today);
   if (periodPreset === "last_month") return getLastMonthRange(today);
   if (periodPreset === "this_year") return getYearRange(today);
   return {
-    startDate: formatLocalDay(today),
-    endDate: formatLocalDay(today),
+    startDate: today,
+    endDate: today,
   };
 }
 
@@ -193,7 +225,7 @@ export function ReportsPage() {
   const savedDraft = loadReportDraft(searchParams.get("draft"));
   const [draft, setDraft] = useState<ReportDraft>(() => savedDraft ?? {
     periodPreset: "this_month",
-    ...applyPeriodPreset("this_month"),
+    ...applyPeriodPreset("this_month", defaultSettings),
     userIds: [],
     columns: [],
     groupBy: [],
@@ -325,7 +357,10 @@ export function ReportsPage() {
                 label="time period"
                 value={draft.periodPreset}
                 onValueChange={(value) => {
-                  const nextRange = value === "custom" ? { startDate: draft.startDate, endDate: draft.endDate } : applyPeriodPreset(value);
+                  const nextRange =
+                    value === "custom"
+                      ? { startDate: draft.startDate, endDate: draft.endDate }
+                      : applyPeriodPreset(value, settings);
                   setDraft((current) => ({ ...current, periodPreset: value, ...nextRange }));
                 }}
                 items={periodOptions}

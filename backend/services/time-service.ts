@@ -1,9 +1,10 @@
 import { HTTPException } from "hono/http-exception";
 import type { CreateManualTimeEntryInput, StartTimerInput, StopTimerInput, UpdateTimeEntryInput } from "../../shared/types/api";
 import type { TimeEntryType } from "../../shared/types/models";
-import { startOfDayIso, startOfWeekIso } from "../../shared/utils/time";
+import { formatLocalDay, getLocalNowSnapshot, parseLocalDay } from "../../shared/utils/time";
 import { getCompanyDb } from "../db/company-db";
 import { mapTimeEntryView } from "../db/mappers";
+import { settingsService } from "./settings-service";
 
 function isWorkEntry(entryType: TimeEntryType) {
   return entryType === "work";
@@ -26,6 +27,11 @@ function buildWorkTimestamps(startDate: string, endDate: string | null | undefin
     throw new HTTPException(400, { message: "Start time and end time are required" });
   }
 
+  const usesExplicitOffset = (value: string) => /(?:Z|[+-]\d{2}:\d{2})$/i.test(value);
+  if (!usesExplicitOffset(startTime) || !usesExplicitOffset(endTime)) {
+    throw new HTTPException(400, { message: "Time values must include a timezone offset" });
+  }
+
   const startAt = new Date(startTime);
   const endAt = new Date(endTime);
   if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
@@ -40,8 +46,8 @@ function buildWorkTimestamps(startDate: string, endDate: string | null | undefin
   return {
     entryDate: startDate,
     endDate: resolvedEndDate === startDate ? null : resolvedEndDate,
-    startTime,
-    endTime
+    startTime: startAt.toISOString(),
+    endTime: endAt.toISOString()
   };
 }
 
@@ -259,14 +265,18 @@ export const timeService = {
     });
   },
 
-  startTimer(databasePath: string, userId: number, input: StartTimerInput) {
+  startTimer(
+    databasePath: string,
+    userId: number,
+    input: StartTimerInput,
+    snapshot = getLocalNowSnapshot(),
+  ) {
     const db = getCompanyDb(databasePath);
     const openEntry = getOpenEntry(db, userId);
     if (openEntry) {
       throw new HTTPException(400, { message: "A timer is already running" });
     }
 
-    const createdAt = new Date().toISOString();
     const result = db
       .prepare(
         `INSERT INTO time_entries (
@@ -289,11 +299,11 @@ export const timeService = {
       )
       .run({
         userId,
-        entryDate: createdAt.slice(0, 10),
-        startTime: createdAt,
+        entryDate: snapshot.localDay,
+        startTime: snapshot.instantIso,
         notes: input.notes?.trim() || null,
         customFieldValuesJson: JSON.stringify(input.customFieldValues ?? {}),
-        createdAt
+        createdAt: snapshot.instantIso
       });
 
     return this.getEntryById(databasePath, Number(result.lastInsertRowid));
@@ -398,8 +408,13 @@ export const timeService = {
   },
 
   getDashboard(databasePath: string, userId: number) {
-    const todayEntries = this.listEntries(databasePath, userId, { from: startOfDayIso(), to: startOfDayIso() });
-    const weekEntries = this.listEntries(databasePath, userId, { from: startOfWeekIso() });
+    const todayDay = settingsService.getBusinessNowSnapshot(databasePath).localDay;
+    const weekStart = parseLocalDay(todayDay) ?? new Date();
+    const weekday = weekStart.getDay();
+    const offset = weekday === 0 ? -6 : 1 - weekday;
+    weekStart.setDate(weekStart.getDate() + offset);
+    const weekEntries = this.listEntries(databasePath, userId, { from: formatLocalDay(weekStart) });
+    const todayEntries = this.listEntries(databasePath, userId, { from: todayDay, to: todayDay });
     const activeEntry = this.getActiveEntry(databasePath, userId);
 
     return {

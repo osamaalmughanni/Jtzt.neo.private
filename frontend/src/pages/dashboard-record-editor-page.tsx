@@ -9,7 +9,14 @@ import type {
   SickLeaveAttachment,
   TimeEntryType,
 } from "@shared/types/models";
-import { countEffectiveLeaveDays, diffCalendarDays, formatLocalDay } from "@shared/utils/time";
+import {
+  combineLocalDayAndTimeToIsoInTimeZone,
+  countEffectiveLeaveDays,
+  diffCalendarDays,
+  formatLocalDay,
+  getLocalNowSnapshot,
+  toClockTimeValue,
+} from "@shared/utils/time";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
@@ -26,6 +33,7 @@ import { toast } from "@/lib/toast";
 const defaultSettings: CompanySettings = {
   currency: "EUR",
   locale: "en-GB",
+  timeZone: "Europe/Vienna",
   dateTimeFormat: "g",
   firstDayOfWeek: 1,
   editDaysLimit: 30,
@@ -57,18 +65,6 @@ function getEntryTypeTabClassName(entryType: TimeEntryType) {
   return "rounded-xl border border-transparent px-3 py-2 transition-colors data-[state=active]:border-rose-500/30 data-[state=active]:bg-rose-500/15 data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:border-rose-400/30 dark:data-[state=active]:bg-rose-400/15";
 }
 
-function combineDateAndTime(day: string, timeValue: string) {
-  return `${day}T${timeValue}:00`;
-}
-
-function toTimeInputValue(isoValue: string | null) {
-  if (!isoValue) return "";
-  const date = new Date(isoValue);
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-}
-
 function canManageOtherUsers(role: string | undefined) {
   return role === "admin" || role === "manager";
 }
@@ -77,12 +73,14 @@ function canBypassDayLimits(role: string | undefined) {
   return role === "admin" || role === "manager";
 }
 
-function isDayWithinLimit(day: string, limit: number) {
-  return diffCalendarDays(formatLocalDay(new Date()), day) <= limit;
+function isDayWithinLimit(day: string, limit: number, timeZone?: string) {
+  return diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day) <= limit;
 }
 
 function parseDayParam(value: string | null) {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return formatLocalDay(new Date());
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return getLocalNowSnapshot(new Date(), defaultSettings.timeZone).localDay;
+  }
   return value;
 }
 
@@ -207,8 +205,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     () => countEffectiveLeaveDays(startDate, resolvedEndDate, holidaySet),
     [holidaySet, resolvedEndDate, startDate],
   );
-  const insertLocked = !bypassDayLimits && mode === "create" && !isDayWithinLimit(startDate, settings.insertDaysLimit);
-  const editLocked = !bypassDayLimits && mode === "edit" && !isDayWithinLimit(startDate, settings.editDaysLimit);
+  const insertLocked = !bypassDayLimits && mode === "create" && !isDayWithinLimit(startDate, settings.insertDaysLimit, settings.timeZone);
+  const editLocked = !bypassDayLimits && mode === "edit" && !isDayWithinLimit(startDate, settings.editDaysLimit, settings.timeZone);
   const dayLimitError = insertLocked
     ? t("recordEditor.employeesInsertLimit")
     : editLocked
@@ -242,8 +240,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
         setEntryType(response.entry.entryType);
         setStartDate(response.entry.entryDate);
         setEndDate(response.entry.endDate ?? response.entry.entryDate);
-        setStartTime(toTimeInputValue(response.entry.startTime));
-        setEndTime(toTimeInputValue(response.entry.endTime));
+        setStartTime(toClockTimeValue(response.entry.startTime, settings.timeZone));
+        setEndTime(toClockTimeValue(response.entry.endTime, settings.timeZone));
         setNotes(response.entry.notes);
         setSickLeaveAttachment(response.entry.sickLeaveAttachment);
         setCustomFieldValues(response.entry.customFieldValues);
@@ -255,7 +253,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
         }),
       )
       .finally(() => setLoading(false));
-  }, [canSwitchUser, companySession, effectiveUserId, entryId, mode]);
+  }, [canSwitchUser, companySession, effectiveUserId, entryId, mode, settings.timeZone]);
 
   useEffect(() => {
     if (entryType !== "work") {
@@ -286,14 +284,20 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
         }
       }
 
+      const workStartTime = entryType === "work" ? combineLocalDayAndTimeToIsoInTimeZone(startDate, startTime, settings.timeZone) : null;
+      const workEndTime = entryType === "work" ? combineLocalDayAndTimeToIsoInTimeZone(resolvedEndDate, endTime, settings.timeZone) : null;
+      if (entryType === "work" && (!workStartTime || !workEndTime)) {
+        throw new Error("Invalid time value");
+      }
+
       const payload =
         entryType === "work"
           ? {
               entryType,
               startDate,
               endDate: resolvedEndDate,
-              startTime: combineDateAndTime(startDate, startTime),
-              endTime: combineDateAndTime(resolvedEndDate, endTime),
+              startTime: workStartTime,
+              endTime: workEndTime,
               notes,
               sickLeaveAttachment: null,
               customFieldValues,
@@ -453,6 +457,7 @@ function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
                     value={startTime}
                     onChange={setStartTime}
                     onNowClick={setStartTime}
+                    timeZone={settings.timeZone}
                   />
                 </Field>
                 <Field label={t("recordEditor.endTime")}>
@@ -460,6 +465,7 @@ function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
                     value={endTime}
                     onChange={setEndTime}
                     onNowClick={setEndTime}
+                    timeZone={settings.timeZone}
                   />
                 </Field>
               </>

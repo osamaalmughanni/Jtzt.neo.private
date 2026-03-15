@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { normalizeTimeZone } from "../../../shared/utils/time";
 import { authMiddleware, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
 import { settingsService } from "../../services/settings-service";
 import { systemService } from "../../services/system-service";
@@ -8,6 +9,7 @@ import type { AppVariables } from "../context";
 const updateSettingsSchema = z.object({
   currency: z.string().min(3).max(3),
   locale: z.string().min(2).max(64),
+  timeZone: z.string().min(1).max(100).refine((value) => normalizeTimeZone(value) !== null, "Invalid time zone"),
   dateTimeFormat: z.string().min(1).max(32),
   firstDayOfWeek: z.number().int().min(0).max(6),
   editDaysLimit: z.number().int().min(0).max(3650),

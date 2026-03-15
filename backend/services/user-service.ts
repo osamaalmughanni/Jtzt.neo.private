@@ -36,12 +36,11 @@ function ensureUniquePin(db: ReturnType<typeof getCompanyDb>, pinCode: string, u
   }
 }
 
-function validateContracts(contracts: UserContractInput[]) {
+function validateContracts(contracts: UserContractInput[], todayDay: string) {
   if (contracts.length > 100) {
     throw new HTTPException(400, { message: "A user can have at most 100 contracts" });
   }
 
-  const today = new Date().toISOString().slice(0, 10);
   const sorted = [...contracts].sort((a, b) => a.startDate.localeCompare(b.startDate));
 
   for (let index = 0; index < sorted.length; index += 1) {
@@ -62,7 +61,7 @@ function validateContracts(contracts: UserContractInput[]) {
   }
 
   const hasCurrentContract = sorted.some(
-    (contract) => contract.startDate <= today && (contract.endDate === null || contract.endDate >= today)
+    (contract) => contract.startDate <= todayDay && (contract.endDate === null || contract.endDate >= todayDay)
   );
 
   if (!hasCurrentContract) {
@@ -73,9 +72,10 @@ function validateContracts(contracts: UserContractInput[]) {
 function saveContracts(
   db: ReturnType<typeof getCompanyDb>,
   userId: number,
-  contracts: UserContractInput[]
+  contracts: UserContractInput[],
+  todayDay: string,
 ) {
-  validateContracts(contracts);
+  validateContracts(contracts, todayDay);
   db.prepare("DELETE FROM user_contracts WHERE user_id = ?").run(userId);
 
   const insertContract = db.prepare(
@@ -155,7 +155,7 @@ export const userService = {
       .map(mapUserContract);
   },
 
-  createUser(databasePath: string, input: CreateUserInput) {
+  createUser(databasePath: string, input: CreateUserInput, todayDay: string) {
     const db = getCompanyDb(databasePath);
     const existing = db.prepare("SELECT id FROM users WHERE username = ?").get(input.username.trim());
     if (existing) {
@@ -163,7 +163,7 @@ export const userService = {
     }
 
     ensureUniquePin(db, input.pinCode);
-    validateContracts(input.contracts);
+    validateContracts(input.contracts, todayDay);
 
     const result = db.prepare(
       `INSERT INTO users (
@@ -197,11 +197,11 @@ export const userService = {
     });
 
     const userId = Number(result.lastInsertRowid);
-    saveContracts(db, userId, input.contracts);
+    saveContracts(db, userId, input.contracts, todayDay);
     return userId;
   },
 
-  updateUser(databasePath: string, input: UpdateUserInput) {
+  updateUser(databasePath: string, input: UpdateUserInput, todayDay: string) {
     const db = getCompanyDb(databasePath);
     const existing = db.prepare("SELECT id FROM users WHERE id = ?").get(input.userId);
     if (!existing) {
@@ -217,7 +217,7 @@ export const userService = {
 
     ensureAdminRoleWillRemain(db, input.userId, input.role);
     ensureUniquePin(db, input.pinCode, input.userId);
-    validateContracts(input.contracts);
+    validateContracts(input.contracts, todayDay);
 
     const passwordHash =
       input.password && input.password.trim().length > 0
@@ -248,7 +248,7 @@ export const userService = {
       email: normalizeOptionalText(input.email)
     });
 
-    saveContracts(db, input.userId, input.contracts);
+    saveContracts(db, input.userId, input.contracts, todayDay);
   },
 
   deleteUser(databasePath: string, userId: number) {

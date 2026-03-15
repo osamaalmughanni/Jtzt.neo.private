@@ -13,7 +13,9 @@ import {
   diffCalendarDays,
   diffMinutes,
   formatLocalDay,
+  getLocalNowSnapshot,
   parseLocalDay,
+  toClockTimeValue,
 } from "@shared/utils/time";
 import { formatMinutes } from "@shared/utils/time";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
@@ -39,6 +41,7 @@ import { toast } from "@/lib/toast";
 const defaultSettings: CompanySettings = {
   currency: "EUR",
   locale: "en-GB",
+  timeZone: "Europe/Vienna",
   dateTimeFormat: "g",
   firstDayOfWeek: 1,
   editDaysLimit: 30,
@@ -79,20 +82,16 @@ function endOfDay(date: Date) {
   return value;
 }
 
-function toTimeInputValue(isoValue: string | null) {
-  if (!isoValue) return "";
-  const date = new Date(isoValue);
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
+function toTimeInputValue(isoValue: string | null, timeZone?: string) {
+  return toClockTimeValue(isoValue, timeZone);
 }
 
 function canManageOtherUsers(role: string | undefined) {
   return role === "admin" || role === "manager";
 }
 
-function isToday(date: Date) {
-  return date.toDateString() === new Date().toDateString();
+function isToday(date: Date, timeZone?: string) {
+  return formatLocalDay(date) === getLocalNowSnapshot(new Date(), timeZone).localDay;
 }
 
 function parseDayParam(value: string | null) {
@@ -104,13 +103,13 @@ function canBypassDayLimits(role: string | undefined) {
   return role === "admin" || role === "manager";
 }
 
-function isDayWithinLimit(day: string, limit: number) {
-  return diffCalendarDays(formatLocalDay(new Date()), day) <= limit;
+function isDayWithinLimit(day: string, limit: number, timeZone?: string) {
+  return diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day) <= limit;
 }
 
-function getEntryHeadline(entry: TimeEntryView, getLabel: (entryType: TimeEntryView["entryType"]) => string) {
+function getEntryHeadline(entry: TimeEntryView, getLabel: (entryType: TimeEntryView["entryType"]) => string, timeZone?: string) {
   if (entry.entryType === "work") {
-    return `${toTimeInputValue(entry.startTime)} - ${toTimeInputValue(entry.endTime)}`;
+    return `${toTimeInputValue(entry.startTime, timeZone)} - ${toTimeInputValue(entry.endTime, timeZone)}`;
   }
 
   return getLabel(entry.entryType);
@@ -243,8 +242,8 @@ export function DashboardPage() {
   const selectedDayKey = formatLocalDay(selectedDate);
   const canCreateRecord =
     bypassDayLimits ||
-    isDayWithinLimit(selectedDayKey, settings.insertDaysLimit);
-  const canUseTabletPunch = summary.activeEntry ? true : isToday(selectedDate) && canCreateRecord;
+    isDayWithinLimit(selectedDayKey, settings.insertDaysLimit, settings.timeZone);
+  const canUseTabletPunch = summary.activeEntry ? true : isToday(selectedDate, settings.timeZone) && canCreateRecord;
   const customFieldsById = useMemo(
     () =>
       new Map(settings.customFields.map((field) => [field.id, field])),
@@ -309,9 +308,9 @@ export function DashboardPage() {
 
     const params = new URLSearchParams(searchParams);
     if (needsUser) params.set("user", String(companyIdentity.user.id));
-    if (needsDay) params.set("day", formatLocalDay(new Date()));
+    if (needsDay) params.set("day", getLocalNowSnapshot(new Date(), settings.timeZone).localDay);
     setSearchParams(params, { replace: true });
-  }, [companyIdentity?.user.id, searchParams, setSearchParams]);
+  }, [companyIdentity?.user.id, searchParams, setSearchParams, settings.timeZone]);
 
   useEffect(() => {
     if (!companySession) return;
@@ -592,15 +591,16 @@ export function DashboardPage() {
             </div>
             <div className="flex flex-col items-end gap-2">
               <p className="w-[5.5rem] text-right text-sm text-muted-foreground">
-                {now.toLocaleTimeString(settings.locale, {
+                {new Intl.DateTimeFormat(settings.locale, {
                   hour: "2-digit",
                   minute: "2-digit",
                   second: "2-digit",
-                })}
+                  timeZone: settings.timeZone,
+                }).format(now)}
               </p>
               <Button
-                variant={isToday(selectedDate) ? "secondary" : "outline"}
-                onClick={() => updateContext({ day: new Date() })}
+                variant={isToday(selectedDate, settings.timeZone) ? "secondary" : "outline"}
+                onClick={() => updateContext({ day: parseLocalDay(getLocalNowSnapshot(new Date(), settings.timeZone).localDay) ?? new Date() })}
                 type="button"
               >
                 {t("dashboard.today")}
@@ -646,7 +646,7 @@ export function DashboardPage() {
             {entries.map((entry) => {
               const canEdit =
                 bypassDayLimits ||
-                isDayWithinLimit(entry.entryDate, settings.editDaysLimit);
+                isDayWithinLimit(entry.entryDate, settings.editDaysLimit, settings.timeZone);
               const canDelete = canEdit;
               const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
               const supportText = getEntrySupportText(
@@ -658,8 +658,8 @@ export function DashboardPage() {
                 summary.activeEntry?.id === entry.id &&
                 !entry.endTime;
               const entryHeadline = isActiveWorkEntry
-                ? `${toTimeInputValue(entry.startTime)} - ${toTimeInputValue(now.toISOString())}`
-                : getEntryHeadline(entry, getEntryLabel);
+                ? `${toTimeInputValue(entry.startTime, settings.timeZone)} - ${toTimeInputValue(now.toISOString(), settings.timeZone)}`
+                : getEntryHeadline(entry, getEntryLabel, settings.timeZone);
               const entryMeta =
                 entry.entryType === "work"
                   ? formatMinutes(

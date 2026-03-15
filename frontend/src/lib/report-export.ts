@@ -59,6 +59,7 @@ function formatCellValue(
   kind: ReportResponse["report"]["columns"][number]["kind"],
   locale: string,
   currency: string,
+  timeZone: string,
   dateTimeFormat: string,
   t: TranslateFn,
 ) {
@@ -76,7 +77,7 @@ function formatCellValue(
   if (kind === "datetime" && typeof value === "string" && isLocalDayValue(value)) {
     return formatCompanyDate(value, locale);
   }
-  if (kind === "datetime" && typeof value === "string") return formatCompanyDateTime(value, locale, dateTimeFormat);
+  if (kind === "datetime" && typeof value === "string") return formatCompanyDateTime(value, locale, dateTimeFormat, timeZone);
   if (kind === "number" && typeof value === "number") return new Intl.NumberFormat(locale).format(value);
   return String(value);
 }
@@ -113,6 +114,7 @@ function getExcelCell(
   kind: ReportResponse["report"]["columns"][number]["kind"],
   locale: string,
   currency: string,
+  timeZone: string,
   dateTimeFormat: string,
   t: TranslateFn,
 ) {
@@ -129,18 +131,18 @@ function getExcelCell(
   }
 
   if (kind === "currency" && typeof value === "number") {
-    return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, dateTimeFormat, t) };
+    return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, timeZone, dateTimeFormat, t) };
   }
 
   if (kind === "datetime" && typeof value === "string") {
-    return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, dateTimeFormat, t) };
+    return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, timeZone, dateTimeFormat, t) };
   }
 
   if (kind === "number" && typeof value === "number") {
     return { type: "Number", value: String(value) };
   }
 
-  return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, dateTimeFormat, t) };
+  return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, timeZone, dateTimeFormat, t) };
 }
 
 function buildSpreadsheetRow(cells: Array<{ type: string; value: string }>, styleId?: string) {
@@ -161,7 +163,7 @@ function buildExcelWorkbook(report: ReportResponse["report"], t: TranslateFn, cu
 
   const dataRows = report.rows.map((row) =>
     report.columns.map((column) =>
-      getExcelCell(row[column.key] ?? null, column.key, column.kind, report.locale, report.currency, report.dateTimeFormat, t),
+      getExcelCell(row[column.key] ?? null, column.key, column.kind, report.locale, report.currency, report.timeZone, report.dateTimeFormat, t),
     ),
   );
 
@@ -237,6 +239,7 @@ function formatPdfCellValue(
   kind: ReportResponse["report"]["columns"][number]["kind"],
   locale: string,
   currency: string,
+  timeZone: string,
   dateTimeFormat: string,
   t: TranslateFn,
 ) {
@@ -245,7 +248,7 @@ function formatPdfCellValue(
     return `${value.toFixed(2)} ${currency}`;
   }
 
-  return normalizePdfText(formatCellValue(value, columnKey, kind, locale, currency, dateTimeFormat, t));
+  return normalizePdfText(formatCellValue(value, columnKey, kind, locale, currency, timeZone, dateTimeFormat, t));
 }
 
 function buildPdf(report: ReportResponse["report"], t: TranslateFn, customFieldLabels?: CustomFieldLabels) {
@@ -271,6 +274,7 @@ function buildPdf(report: ReportResponse["report"], t: TranslateFn, customFieldL
           column.kind,
           report.locale,
           report.currency,
+          report.timeZone,
           report.dateTimeFormat,
           t,
         ),

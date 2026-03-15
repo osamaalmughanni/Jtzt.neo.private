@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { ReportResponse } from "@shared/types/api";
 import type { CompanySettings } from "@shared/types/models";
-import { diffCalendarDays, formatMinutes } from "@shared/utils/time";
+import { diffCalendarDays, enumerateLocalDays, formatMinutes, parseLocalDay } from "@shared/utils/time";
 import { FormPage, FormPanel } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
@@ -89,6 +89,7 @@ function formatCellValue(
   kind: ReportResponse["report"]["columns"][number]["kind"],
   locale: string,
   currency: string,
+  timeZone: string,
   dateTimeFormat: string,
   t: ReturnType<typeof useTranslation>["t"],
 ) {
@@ -104,47 +105,37 @@ function formatCellValue(
   }
   if (kind === "date" && typeof value === "string") return formatCompanyDate(value, locale);
   if (kind === "datetime" && typeof value === "string" && isLocalDayValue(value)) return formatCompanyDate(value, locale);
-  if (kind === "datetime" && typeof value === "string") return formatCompanyDateTime(value, locale, dateTimeFormat);
+  if (kind === "datetime" && typeof value === "string") return formatCompanyDateTime(value, locale, dateTimeFormat, timeZone);
   if (kind === "number" && typeof value === "number") return new Intl.NumberFormat(locale).format(value);
   return String(value);
 }
 
-function parseLocalDay(value: string) {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
 function listDays(startDate: string, endDate: string) {
-  const days: string[] = [];
-  const current = parseLocalDay(startDate);
-  const finalDay = parseLocalDay(endDate);
-  while (current <= finalDay) {
-    const year = current.getFullYear();
-    const month = `${current.getMonth() + 1}`.padStart(2, "0");
-    const day = `${current.getDate()}`.padStart(2, "0");
-    days.push(`${year}-${month}-${day}`);
-    current.setDate(current.getDate() + 1);
-  }
-  return days;
+  return enumerateLocalDays(startDate, endDate);
 }
 
 function getDayDiff(startDate: string, endDate: string) {
-  const start = parseLocalDay(startDate).getTime();
-  const end = parseLocalDay(endDate).getTime();
+  const start = parseLocalDay(startDate)?.getTime() ?? 0;
+  const end = parseLocalDay(endDate)?.getTime() ?? 0;
   return Math.max(0, Math.round((end - start) / 86_400_000));
 }
 
 function getMinuteOffset(timeValue: string | null) {
   if (!timeValue) return 0;
-  const match = timeValue.match(/T(\d{2}):(\d{2})|^(\d{2}):(\d{2})/);
-  if (!match) return 0;
-  const hour = Number(match[1] ?? match[3] ?? 0);
-  const minute = Number(match[2] ?? match[4] ?? 0);
-  return hour * 60 + minute;
+  const parsed = new Date(timeValue);
+  if (Number.isNaN(parsed.getTime())) {
+    const match = timeValue.match(/T(\d{2}):(\d{2})|^(\d{2}):(\d{2})/);
+    if (!match) return 0;
+    const hour = Number(match[1] ?? match[3] ?? 0);
+    const minute = Number(match[2] ?? match[4] ?? 0);
+    return hour * 60 + minute;
+  }
+
+  return parsed.getHours() * 60 + parsed.getMinutes();
 }
 
 function addDays(day: string, amount: number) {
-  const parsed = parseLocalDay(day);
+  const parsed = parseLocalDay(day) ?? new Date();
   parsed.setDate(parsed.getDate() + amount);
   const year = parsed.getFullYear();
   const month = `${parsed.getMonth() + 1}`.padStart(2, "0");
@@ -190,15 +181,16 @@ function aggregateTimelineItems(items: ReportResponse["report"]["timeline"]) {
   return grouped;
 }
 
-function formatTimelineTime(timeValue: string | null, locale: string, dateTimeFormat: string) {
+function formatTimelineTime(timeValue: string | null, locale: string, dateTimeFormat: string, timeZone: string) {
   if (!timeValue) return null;
   try {
     return new Intl.DateTimeFormat(locale || "en-GB", {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone,
     }).format(new Date(timeValue));
   } catch {
-    return formatCompanyDateTime(timeValue, locale, dateTimeFormat);
+    return formatCompanyDateTime(timeValue, locale, dateTimeFormat, timeZone);
   }
 }
 
@@ -208,6 +200,9 @@ function buildTimelineMonthSegments(days: string[], locale: string) {
   for (let index = 0; index < days.length; index += 1) {
     const day = days[index];
     const parsed = parseLocalDay(day);
+    if (!parsed) {
+      continue;
+    }
     const key = `${parsed.getFullYear()}-${parsed.getMonth()}`;
     const label = new Intl.DateTimeFormat(locale || "en-GB", {
       month: "short",
@@ -291,8 +286,8 @@ function buildTimelineLanes(
 
 function getTimelineItemLabel(item: ReportResponse["report"]["timeline"][number], report: ReportResponse["report"]) {
   if (item.entryType === "work" && item.startDate === item.endDate) {
-    const startLabel = formatTimelineTime(item.startTime, report.locale, report.dateTimeFormat);
-    const endLabel = formatTimelineTime(item.endTime, report.locale, report.dateTimeFormat);
+    const startLabel = formatTimelineTime(item.startTime, report.locale, report.dateTimeFormat, report.timeZone);
+    const endLabel = formatTimelineTime(item.endTime, report.locale, report.dateTimeFormat, report.timeZone);
     return [startLabel, endLabel].filter(Boolean).join(" - ");
   }
 
@@ -483,6 +478,7 @@ export function ReportsPreviewPage() {
                                   column.kind,
                                   report.locale,
                                   report.currency,
+                                  report.timeZone,
                                   report.dateTimeFormat,
                                   t,
                                 )}
