@@ -50,9 +50,9 @@ export function TabletCodePage() {
               </label>
               <Input
                 id="tablet-code"
-                placeholder="ABCD-EFGH-IJKL"
+                placeholder="Enter tablet code"
                 value={code}
-                onChange={(event) => setCode(event.target.value.toUpperCase())}
+                onChange={(event) => setCode(event.target.value)}
               />
             </div>
             <Button disabled={submitting || code.trim().length < 6} onClick={() => void handleContinue()} type="button">
