@@ -257,6 +257,18 @@ export interface ReportResponse {
     dateTimeFormat: string;
     currency: string;
     grouped: boolean;
+    timeline: Array<{
+      entryId: number;
+      userId: number;
+      userName: string;
+      role: string;
+      entryType: TimeEntryType;
+      startDate: string;
+      endDate: string;
+      startTime: string | null;
+      endTime: string | null;
+      notes: string | null;
+    }>;
   };
 }
 

@@ -318,7 +318,19 @@ export const reportService = {
         locale: settings.locale,
         dateTimeFormat: settings.dateTimeFormat,
         currency: settings.currency,
-        grouped: false
+        grouped: false,
+        timeline: rows.map((row) => ({
+          entryId: row.id,
+          userId: row.user_id,
+          userName: row.full_name,
+          role: normalizeRole(row.role),
+          entryType: row.entry_type,
+          startDate: row.entry_date,
+          endDate: row.end_date ?? row.entry_date,
+          startTime: row.start_time,
+          endTime: row.end_time,
+          notes: row.notes ?? null,
+        }))
       };
     }
 
@@ -384,7 +396,19 @@ export const reportService = {
       locale: settings.locale,
       dateTimeFormat: settings.dateTimeFormat,
       currency: settings.currency,
-      grouped: true
+      grouped: true,
+      timeline: rows.map((row) => ({
+        entryId: row.id,
+        userId: row.user_id,
+        userName: row.full_name,
+        role: normalizeRole(row.role),
+        entryType: row.entry_type,
+        startDate: row.entry_date,
+        endDate: row.end_date ?? row.entry_date,
+        startTime: row.start_time,
+        endTime: row.end_time,
+        notes: row.notes ?? null,
+      }))
     };
   }
 };
