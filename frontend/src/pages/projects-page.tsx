@@ -3,6 +3,8 @@ import type { ProjectRecord, TaskRecord } from "@shared/types/models";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
+import { FieldCombobox, FormPage } from "@/components/form-layout";
+import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,7 +37,7 @@ export function ProjectsPage() {
     void load();
   }, [companySession]);
 
-  const isAdmin = companyIdentity?.user.role === "company_admin";
+  const isAdmin = companyIdentity?.user.role === "admin";
   const taskGroups = useMemo(
     () =>
       projects.map((project) => ({
@@ -44,6 +46,7 @@ export function ProjectsPage() {
       })),
     [projects, tasks]
   );
+  const projectOptions = projects.map((project) => ({ value: String(project.id), label: project.name }));
 
   async function createProject() {
     if (!companySession || !projectName.trim()) return;
@@ -78,7 +81,8 @@ export function ProjectsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <FormPage className="gap-6">
+      <PageLabel title="Projects" description="Manage projects and tasks." />
       {isAdmin ? (
         <Card>
           <CardHeader>
@@ -93,18 +97,12 @@ export function ProjectsPage() {
             </div>
             <div className="space-y-2 border-t pt-4">
               <p className="text-sm font-medium">Create task</p>
-              <select
-                className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
+              <FieldCombobox
+                label="project"
                 value={taskProjectId}
-                onChange={(event) => setTaskProjectId(event.target.value)}
-              >
-                <option value="">Select project</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setTaskProjectId}
+                items={projectOptions}
+              />
               <Input placeholder="Task title" value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} />
               <Button variant="outline" onClick={() => void createTask()}>
                 Create task
@@ -151,6 +149,6 @@ export function ProjectsPage() {
           ))}
         </CardContent>
       </Card>
-    </div>
+    </FormPage>
   );
 }

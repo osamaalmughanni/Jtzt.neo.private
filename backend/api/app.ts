@@ -4,6 +4,7 @@ import { authRoutes } from "./routes/auth-routes";
 import { timeRoutes } from "./routes/time-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { projectRoutes } from "./routes/project-routes";
+import { settingsRoutes } from "./routes/settings-routes";
 import { userRoutes } from "./routes/user-routes";
 
 export const app = new Hono();
@@ -12,6 +13,7 @@ app.route("/api/auth", authRoutes);
 app.route("/api/time", timeRoutes);
 app.route("/api/projects", projectRoutes);
 app.route("/api/users", userRoutes);
+app.route("/api/settings", settingsRoutes);
 app.route("/api/admin", adminRoutes);
 
 app.get("/api/health", (c) => c.json({ ok: true }));

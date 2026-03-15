@@ -42,8 +42,8 @@ export const requireCompanyUser = createMiddleware(async (c: Context, next: Next
 
 export const requireCompanyAdmin = createMiddleware(async (c: Context, next: Next) => {
   const session = c.get("session") as SessionTokenPayload;
-  if (session.actorType !== "company_user" || session.role !== "company_admin") {
-    throw new HTTPException(403, { message: "Company admin access required" });
+  if (session.actorType !== "company_user" || session.role !== "admin") {
+    throw new HTTPException(403, { message: "Admin access required" });
   }
 
   await next();

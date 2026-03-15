@@ -5,7 +5,8 @@ import { AdminCompaniesPage } from "@/pages/admin-companies-page";
 import { AdminCompanyCreatePage } from "@/pages/admin-company-create-page";
 import { AdminLoginPage } from "@/pages/admin-login-page";
 import { AdminMenuPage } from "@/pages/admin-menu-page";
-import { CalendarPage } from "@/pages/calendar-page";
+import { DashboardDayPickerPage } from "@/pages/dashboard-day-picker-page";
+import { DashboardRecordEditorPage } from "@/pages/dashboard-record-editor-page";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { LearnPage } from "@/pages/learn-page";
 import { LoginPage } from "@/pages/login-page";
@@ -13,9 +14,8 @@ import { MenuPage } from "@/pages/menu-page";
 import { ProjectsPage } from "@/pages/projects-page";
 import { RegisterCompanyPage } from "@/pages/register-company-page";
 import { SettingsMenuPage } from "@/pages/settings-menu-page";
-import { TimePage } from "@/pages/time-page";
 import { UsersPage } from "@/pages/users-page";
-import { CreateUserPage } from "@/pages/create-user-page";
+import { UserEditorPage } from "@/pages/user-editor-page";
 
 export function App() {
   return (
@@ -29,13 +29,15 @@ export function App() {
         <Route element={<AppShell mode="company" />}>
           <Route path="/menu" element={<MenuPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/time" element={<TimePage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/dashboard/day" element={<DashboardDayPickerPage />} />
+          <Route path="/dashboard/records/create" element={<DashboardRecordEditorPage mode="create" />} />
+          <Route path="/dashboard/records/:entryId/edit" element={<DashboardRecordEditorPage mode="edit" />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route element={<CompanyAdminGuard />}>
+            <Route path="/users" element={<UsersPage />} />
+            <Route path="/users/create" element={<UserEditorPage mode="create" />} />
+            <Route path="/users/:userId/edit" element={<UserEditorPage mode="edit" />} />
             <Route path="/settings" element={<SettingsMenuPage />} />
-            <Route path="/settings/users" element={<UsersPage />} />
-            <Route path="/settings/users/create" element={<CreateUserPage />} />
           </Route>
         </Route>
       </Route>

@@ -1,9 +1,10 @@
 import type { Icon } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
-import { List } from "phosphor-react";
+import { ArrowLeft, List } from "phosphor-react";
 import { Logo } from "@/components/logo";
 import { PageLabel } from "@/components/page-label";
+import { useAppHeaderState } from "@/components/app-header-state";
 import { getHomePath, type NavigationScope } from "@/lib/navigation";
 import { getPageMeta } from "@/lib/page-meta";
 
@@ -11,6 +12,14 @@ export interface HeaderAction {
   to: string;
   label: string;
   icon: Icon;
+}
+
+function getRouteActions(pathname: string, menuTo?: string): HeaderAction[] {
+  if (pathname === "/users/create" || /^\/users\/[^/]+\/edit$/.test(pathname)) {
+    return [{ to: "/users", label: "Back to users", icon: ArrowLeft }];
+  }
+
+  return menuTo ? [{ to: menuTo, label: "Open menu", icon: List }] : [];
 }
 
 export function AppHeader({
@@ -28,20 +37,21 @@ export function AppHeader({
 }) {
   const location = useLocation();
   const { t } = useTranslation();
+  const { actions: pageActions } = useAppHeaderState();
   const meta = getPageMeta(location.pathname);
   const resolvedTitle = title ?? (meta?.titleKey ? t(meta.titleKey) : undefined);
   const resolvedDescription = description ?? (meta?.descriptionKey ? t(meta.descriptionKey) : undefined);
-  const resolvedActions = actions ?? (menuTo ? [{ to: menuTo, label: "Open menu", icon: List }] : []);
+  const resolvedActions = pageActions ?? actions ?? getRouteActions(location.pathname, menuTo);
 
   return (
-    <header className="mb-5 bg-background py-1">
+    <header className="bg-background">
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+        <div className="min-w-0 flex flex-col gap-0.5">
           <Link to={getHomePath(scope)} className="inline-flex flex-col items-start">
             <Logo size={88} />
           </Link>
           {resolvedTitle ? (
-            <PageLabel className="mt-0.5" title={resolvedTitle} description={resolvedDescription} />
+            <PageLabel title={resolvedTitle} description={resolvedDescription} />
           ) : null}
         </div>
         <div className="flex items-center gap-2">

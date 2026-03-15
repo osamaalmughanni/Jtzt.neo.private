@@ -61,7 +61,7 @@ export const authService = {
     });
 
     const userRow = getCompanyDb(company.databasePath)
-      .prepare("SELECT id, username, full_name, password_hash, role, created_at FROM users WHERE username = ?")
+      .prepare("SELECT id, username, full_name, password_hash, role, is_active, created_at FROM users WHERE username = ?")
       .get(input.adminUsername);
 
     const user = userRow ? mapCompanyUser(userRow) : null;
@@ -99,12 +99,15 @@ export const authService = {
     }
 
     const userRow = getCompanyDb(company.databasePath)
-      .prepare("SELECT id, username, full_name, password_hash, role, created_at FROM users WHERE username = ?")
+      .prepare("SELECT id, username, full_name, password_hash, role, is_active, created_at FROM users WHERE username = ?")
       .get(input.username);
 
     const user = userRow ? mapCompanyUser(userRow) : null;
     if (!user || !bcrypt.compareSync(input.password, user.passwordHash)) {
       throw new HTTPException(401, { message: "Invalid company credentials" });
+    }
+    if (!user.isActive) {
+      throw new HTTPException(403, { message: "User is inactive" });
     }
 
     return signSessionToken({

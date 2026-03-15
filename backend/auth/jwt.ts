@@ -13,7 +13,7 @@ export interface CompanyTokenPayload {
   companyName: string;
   databasePath: string;
   userId: number;
-  role: "employee" | "company_admin";
+  role: "employee" | "manager" | "admin";
 }
 
 export type SessionTokenPayload = AdminTokenPayload | CompanyTokenPayload;

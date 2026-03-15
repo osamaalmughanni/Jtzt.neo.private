@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { AppFooter } from "@/components/app-footer";
 import { AppHeader } from "@/components/app-header";
+import { AppHeaderStateProvider } from "@/components/app-header-state";
 import { AppFrame } from "@/components/app-frame";
 import { useAuth } from "@/lib/auth";
 
@@ -13,17 +14,21 @@ export function AppShell({ mode }: AppShellProps) {
   const menuTo =
     mode === "admin"
       ? "/admin/menu"
-      : companyIdentity?.user.role === "company_admin"
+      : companyIdentity?.user.role === "admin"
         ? "/menu"
         : "/menu";
 
   return (
     <AppFrame>
-      <AppHeader menuTo={menuTo} scope={mode} />
-      <main className="flex-1">
-        <Outlet />
-      </main>
-      <AppFooter context="app" />
+      <AppHeaderStateProvider>
+        <div className="flex flex-1 flex-col gap-4">
+          <AppHeader menuTo={menuTo} scope={mode} />
+          <main className="flex-1">
+            <Outlet />
+          </main>
+          <AppFooter context="app" />
+        </div>
+      </AppHeaderStateProvider>
     </AppFrame>
   );
 }

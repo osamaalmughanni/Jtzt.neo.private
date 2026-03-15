@@ -1,76 +1,419 @@
-import { useEffect, useState } from "react";
-import type { DashboardSummary } from "@shared/types/models";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { PencilSimple, Plus, Trash } from "phosphor-react";
+import type {
+  CompanySettings,
+  CompanyUserListItem,
+  TimeEntryView,
+} from "@shared/types/models";
 import { formatMinutes } from "@shared/utils/time";
+import { AppConfirmDialog } from "@/components/app-confirm-dialog";
+import {
+  Field,
+  FieldCombobox,
+  FormPage,
+  FormSection,
+} from "@/components/form-layout";
+import { PageLabel } from "@/components/page-label";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { entryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
+import { toast } from "@/lib/toast";
+
+const defaultSettings: CompanySettings = {
+  trackingMode: "time",
+  recordType: "start_finish",
+  currency: "EUR",
+  locale: "en-GB",
+  firstDayOfWeek: 1,
+  editDaysLimit: 30,
+  insertDaysLimit: 30,
+  country: "AT",
+};
+
+function startOfDay(date: Date) {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
+}
+
+function endOfDay(date: Date) {
+  const value = startOfDay(date);
+  value.setDate(value.getDate() + 1);
+  value.setMilliseconds(-1);
+  return value;
+}
+
+function toTimeInputValue(isoValue: string | null) {
+  if (!isoValue) return "";
+  const date = new Date(isoValue);
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function canManageOtherUsers(role: string | undefined) {
+  return role === "admin" || role === "manager";
+}
+
+function isToday(date: Date) {
+  return date.toDateString() === new Date().toDateString();
+}
+
+function formatDayParam(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDayParam(value: string | null) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date();
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
 
 export function DashboardPage() {
-  const { companySession } = useAuth();
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const { companySession, companyIdentity } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
+  const [users, setUsers] = useState<CompanyUserListItem[]>([]);
+  const [entries, setEntries] = useState<TimeEntryView[]>([]);
+  const [pendingDeleteEntry, setPendingDeleteEntry] =
+    useState<TimeEntryView | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+
+  const canSwitchUser = canManageOtherUsers(companyIdentity?.user.role);
+  const selectedDate = useMemo(
+    () => parseDayParam(searchParams.get("day")),
+    [searchParams],
+  );
+  const selectedUserId = useMemo(() => {
+    const rawValue = searchParams.get("user");
+    if (!rawValue) return companyIdentity?.user.id ?? null;
+    const parsed = Number(rawValue);
+    return Number.isNaN(parsed) ? (companyIdentity?.user.id ?? null) : parsed;
+  }, [companyIdentity?.user.id, searchParams]);
+
+  const effectiveUserId = selectedUserId ?? companyIdentity?.user.id ?? null;
+  const availableUsers = useMemo<CompanyUserListItem[]>(
+    () =>
+      users.length > 0
+        ? users
+        : companyIdentity
+          ? [
+              {
+                id: companyIdentity.user.id,
+                fullName: companyIdentity.user.fullName,
+                isActive: true,
+              },
+            ]
+          : [],
+    [companyIdentity, users],
+  );
+
+  const dayMinutes = useMemo(
+    () => entries.reduce((sum, entry) => sum + entry.durationMinutes, 0),
+    [entries],
+  );
+  const selectedUser = availableUsers.find(
+    (user) => user.id === effectiveUserId,
+  );
+  const selectedUserName =
+    selectedUser?.fullName ?? companyIdentity?.user.fullName ?? "User";
+  const showProjectField =
+    settings.trackingMode === "project" ||
+    settings.trackingMode === "project_and_tasks";
+  const showTaskField = settings.trackingMode === "project_and_tasks";
+
+  function updateContext(next: { userId?: number | null; day?: Date }) {
+    const params = new URLSearchParams(searchParams);
+    const userId = next.userId ?? effectiveUserId;
+    const day = next.day ?? selectedDate;
+
+    if (userId) params.set("user", String(userId));
+    else params.delete("user");
+
+    params.set("day", formatDayParam(day));
+    setSearchParams(params, { replace: true });
+  }
+
+  async function loadEntries() {
+    if (!companySession || !effectiveUserId) return;
+
+    try {
+      const response = await api.listTimeEntries(companySession.token, {
+        from: startOfDay(selectedDate).toISOString(),
+        to: endOfDay(selectedDate).toISOString(),
+        targetUserId: canSwitchUser ? effectiveUserId : undefined,
+      });
+      setEntries(response.entries);
+    } catch (error) {
+      toast({
+        title: "Could not load records",
+        description: error instanceof Error ? error.message : "Request failed",
+      });
+    }
+  }
+
+  useEffect(() => {
+    if (!companyIdentity?.user.id) return;
+    const needsUser = !searchParams.get("user");
+    const needsDay = !searchParams.get("day");
+    if (!needsUser && !needsDay) return;
+
+    const params = new URLSearchParams(searchParams);
+    if (needsUser) params.set("user", String(companyIdentity.user.id));
+    if (needsDay) params.set("day", formatDayParam(new Date()));
+    setSearchParams(params, { replace: true });
+  }, [companyIdentity?.user.id, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!companySession) return;
-    void api.getDashboard(companySession.token).then((response) => setSummary(response.summary));
-  }, [companySession]);
 
+    void api
+      .getSettings(companySession.token)
+      .then((response) => setSettings(response.settings))
+      .catch(() => undefined);
+
+    if (!canSwitchUser) {
+      setUsers([]);
+      return;
+    }
+
+    void api
+      .listUsers(companySession.token)
+      .then((response) => setUsers(response.users))
+      .catch((error) =>
+        toast({
+          title: "Could not load users",
+          description:
+            error instanceof Error ? error.message : "Request failed",
+        }),
+      );
+  }, [canSwitchUser, companySession]);
+
+  useEffect(() => {
+    void loadEntries();
+  }, [companySession, effectiveUserId, selectedDate]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  async function deleteEntry(entryId: number) {
+    if (!companySession || !effectiveUserId) return;
+
+    try {
+      setDeleteSubmitting(true);
+      await api.deleteTimeEntry(companySession.token, {
+        entryId,
+        targetUserId: canSwitchUser ? effectiveUserId : undefined,
+      });
+      setPendingDeleteEntry(null);
+      toast({ title: "Record deleted" });
+      await loadEntries();
+    } catch (error) {
+      toast({
+        title: "Could not delete record",
+        description: error instanceof Error ? error.message : "Request failed",
+      });
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  }
+
+  const createRecordHref = `/dashboard/records/create?user=${effectiveUserId ?? ""}&day=${formatDayParam(selectedDate)}`;
+  const dayPickerHref = `/dashboard/day?user=${effectiveUserId ?? ""}&day=${formatDayParam(selectedDate)}`;
+  const userOptions = availableUsers.map((user) => ({
+    value: String(user.id),
+    label: user.fullName,
+  }));
   return (
-    <div>
-      <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardDescription>Today</CardDescription>
-            <CardTitle>{summary ? formatMinutes(summary.todayMinutes) : "--"}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>This week</CardDescription>
-            <CardTitle>{summary ? formatMinutes(summary.weekMinutes) : "--"}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Active timer</CardDescription>
-            <CardTitle>{summary?.activeEntry ? "Running" : "Stopped"}</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            {summary?.activeEntry ? summary.activeEntry.notes || "Current session" : "No active session"}
-          </CardContent>
-        </Card>
+    <FormPage className="flex flex-col gap-5">
+      <AppConfirmDialog
+        open={pendingDeleteEntry !== null}
+        onOpenChange={(open) =>
+          !open && !deleteSubmitting && setPendingDeleteEntry(null)
+        }
+        title="Delete record"
+        description={
+          pendingDeleteEntry
+            ? pendingDeleteEntry.entryType === "work"
+              ? `${toTimeInputValue(pendingDeleteEntry.startTime)} - ${toTimeInputValue(pendingDeleteEntry.endTime)} will be removed.`
+              : `${getEntryTypeLabel(pendingDeleteEntry.entryType)} on ${pendingDeleteEntry.entryDate} will be removed.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        destructive
+        confirming={deleteSubmitting}
+        onConfirm={() =>
+          pendingDeleteEntry && void deleteEntry(pendingDeleteEntry.id)
+        }
+      />
+      <PageLabel
+        title="Overview"
+        description="Manage daily records and user context."
+      />
+      {canSwitchUser ? (
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <FormSection>
+            <Field label="Working as">
+              <FieldCombobox
+                label="user"
+                value={effectiveUserId ? String(effectiveUserId) : ""}
+                onValueChange={(value) =>
+                  updateContext({ userId: Number(value) })
+                }
+                items={userOptions}
+              />
+            </Field>
+          </FormSection>
+        </div>
+      ) : null}
+
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm text-muted-foreground">{selectedUserName}</p>
+            <Link
+              to={dayPickerHref}
+              className="text-left text-2xl font-semibold tracking-[-0.04em] text-foreground transition-opacity hover:opacity-70"
+            >
+              {selectedDate.toLocaleDateString(settings.locale, {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </Link>
+            <p className="text-sm text-muted-foreground">
+              {formatMinutes(dayMinutes)} recorded
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {now.toLocaleTimeString(settings.locale, {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+              })}
+            </p>
+          </div>
+          <Button
+            variant={isToday(selectedDate) ? "secondary" : "outline"}
+            onClick={() => updateContext({ day: new Date() })}
+            type="button"
+          >
+            Today
+          </Button>
+        </div>
       </div>
 
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Recent entries</CardTitle>
-          <CardDescription>Your latest tracked sessions.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Start</TableHead>
-                <TableHead>End</TableHead>
-                <TableHead>Project</TableHead>
-                <TableHead>Duration</TableHead>
-                <TableHead>Notes</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {summary?.recentEntries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell>{new Date(entry.startTime).toLocaleString()}</TableCell>
-                  <TableCell>{entry.endTime ? new Date(entry.endTime).toLocaleString() : "Running"}</TableCell>
-                  <TableCell>{entry.projectName ?? "Unassigned"}</TableCell>
-                  <TableCell>{formatMinutes(entry.durationMinutes)}</TableCell>
-                  <TableCell>{entry.notes || "-"}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
+      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5">
+        <div>
+          <p className="text-sm font-medium text-foreground">Records</p>
+        </div>
+
+        <div className="max-h-[22rem] overflow-y-auto">
+          <div className="flex flex-col gap-2">
+            {entries.map((entry) => {
+              const canEdit =
+                Date.now() - new Date((entry.startTime ?? `${entry.entryDate}T00:00:00`)).getTime() <=
+                settings.editDaysLimit * 24 * 60 * 60 * 1000;
+              const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatDayParam(selectedDate)}`;
+
+              return (
+                <div
+                  key={entry.id}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border/70 py-3 last:border-b-0 last:pb-0 first:pt-0"
+                >
+                  <div className="grid min-w-0 gap-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${entryStateUi[entry.entryType].dotClassName}`} />
+                      <div className="shrink-0 text-sm font-medium text-foreground">
+                        {entry.entryType === "work"
+                          ? `${toTimeInputValue(entry.startTime)} - ${toTimeInputValue(entry.endTime)}`
+                          : getEntryTypeLabel(entry.entryType)}
+                      </div>
+                      <span className="shrink-0 text-muted-foreground">/</span>
+                      <span className="shrink-0 text-sm font-medium text-foreground">
+                        {entry.entryType === "work"
+                          ? formatMinutes(entry.durationMinutes)
+                          : entry.endDate
+                            ? `${entry.entryDate} to ${entry.endDate}`
+                            : entry.entryDate}
+                      </span>
+                      {showProjectField ? (
+                        <>
+                          <span className="shrink-0 text-muted-foreground">/</span>
+                          <span className="min-w-0 truncate text-sm text-muted-foreground">
+                            {entry.entryType === "work"
+                              ? `${entry.projectName || "No project"}${showTaskField ? ` / ${entry.taskName || "No task"}` : ""}`
+                              : getEntryTypeLabel(entry.entryType)}
+                          </span>
+                        </>
+                      ) : null}
+                      <span className="shrink-0 text-muted-foreground">/</span>
+                      <span className="min-w-0 truncate text-sm text-muted-foreground">
+                        {entry.notes || entry.sickLeaveAttachment?.fileName || "No note"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setPendingDeleteEntry(entry)}
+                      type="button"
+                      aria-label="Delete record"
+                    >
+                      <Trash size={16} weight="bold" />
+                    </Button>
+                    {canEdit ? (
+                      <Button asChild size="icon" variant="ghost">
+                        <Link to={editHref} aria-label="Edit record">
+                          <PencilSimple size={16} weight="bold" />
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button
+                        disabled
+                        size="icon"
+                        variant="ghost"
+                        type="button"
+                        aria-label="Record locked"
+                      >
+                        <PencilSimple size={16} weight="bold" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {entries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No records for this day
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-center">
+        <Button
+          asChild
+          className="h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg hover:opacity-90"
+          size="icon"
+          type="button"
+        >
+          <Link to={createRecordHref} aria-label="Add record">
+            <Plus size={30} weight="bold" />
+          </Link>
+        </Button>
+      </div>
+    </FormPage>
   );
 }

@@ -17,5 +17,5 @@ export function CompanyAdminGuard() {
   const { loading, companySession, companyIdentity } = useAuth();
   if (loading) return null;
   if (!companySession) return <Navigate to="/login" replace />;
-  return companyIdentity?.user.role === "company_admin" ? <Outlet /> : <Navigate to="/dashboard" replace />;
+  return companyIdentity?.user.role === "admin" ? <Outlet /> : <Navigate to="/dashboard" replace />;
 }

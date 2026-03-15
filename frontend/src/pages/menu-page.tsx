@@ -1,4 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
+import { FormPage } from "@/components/form-layout";
+import { PageLabel } from "@/components/page-label";
 import { useAuth } from "@/lib/auth";
 
 export function MenuPage() {
@@ -7,14 +9,18 @@ export function MenuPage() {
 
   const items = [
     { to: "/dashboard", title: "Dashboard" },
-    { to: "/time", title: "Time" },
-    { to: "/calendar", title: "Calendar" },
     { to: "/projects", title: "Projects" },
-    ...(companyIdentity?.user.role === "company_admin" ? [{ to: "/settings", title: "Settings" }] : [])
+    ...(companyIdentity?.user.role === "admin"
+      ? [
+          { to: "/users", title: "Users" },
+          { to: "/settings", title: "Settings" }
+        ]
+      : [])
   ];
 
   return (
-    <div>
+    <FormPage>
+      <PageLabel title="Pages" description="Open the main areas of the workspace." />
       <nav className="flex flex-col">
         {items.map((item) => (
           <Link
@@ -39,6 +45,6 @@ export function MenuPage() {
       >
         Log out
       </button>
-    </div>
+    </FormPage>
   );
 }

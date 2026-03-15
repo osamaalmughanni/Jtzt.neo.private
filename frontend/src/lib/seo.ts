@@ -106,18 +106,22 @@ export function getSeoEntry(pathname: string): SeoEntry {
   const privateTitles = new Map<string, string>([
     ["/menu", pageTitle("Pages")],
     ["/dashboard", pageTitle("Overview")],
-    ["/time", pageTitle("Time")],
-    ["/calendar", pageTitle("Calendar")],
     ["/projects", pageTitle("Projects")],
+    ["/users", pageTitle("Users")],
     ["/settings", pageTitle("Settings")],
-    ["/settings/users", pageTitle("Users")],
-    ["/settings/users/create", pageTitle("Create")],
     ["/admin/menu", pageTitle("Pages")],
     ["/admin/companies", pageTitle("Companies")],
     ["/admin/company/create", pageTitle("Create")]
   ]);
 
-  if (pathname.startsWith("/admin") || pathname.startsWith("/settings") || pathname === "/menu" || pathname === "/dashboard" || pathname === "/time" || pathname === "/calendar" || pathname === "/projects") {
+  if (
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/settings") ||
+    pathname === "/menu" ||
+    pathname === "/dashboard" ||
+    pathname === "/projects" ||
+    pathname.startsWith("/users")
+  ) {
     return {
       title: privateTitles.get(pathname) ?? pageTitle("App"),
       description: "Private application area for authenticated Jtzt users.",

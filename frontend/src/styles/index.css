@@ -10,6 +10,8 @@
     --foreground: 0 0% 0%;
     --card: 0 0% 100%;
     --card-foreground: 0 0% 0%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 0%;
     --border: 0 0% 86%;
     --input: 0 0% 96%;
     --ring: 0 0% 0%;
@@ -32,6 +34,8 @@
     --foreground: 0 0% 96%;
     --card: 0 0% 9%;
     --card-foreground: 0 0% 96%;
+    --popover: 0 0% 9%;
+    --popover-foreground: 0 0% 96%;
     --border: 0 0% 20%;
     --input: 0 0% 13%;
     --ring: 0 0% 96%;

@@ -1,13 +1,18 @@
 import type {
+  CompanySettings,
   CompanyRecord,
+  CompanyUserDetail,
   CompanyUserListItem,
   CompanyUserProfile,
   DashboardSummary,
+  PublicHolidayRecord,
   ProjectRecord,
+  RecordType,
   SystemStats,
   TaskRecord,
   TimeEntryView
 } from "./models";
+import type { TimeEntryType, TrackingMode, UserRole, UserContract } from "./models";
 
 export interface CompanyLoginInput {
   companyName: string;
@@ -50,15 +55,48 @@ export interface StopTimerInput {
 
 export interface UpdateTimeEntryInput {
   entryId: number;
-  startTime: string;
+  targetUserId?: number | null;
+  entryType: TimeEntryType;
+  startDate: string;
+  endDate?: string | null;
+  startTime: string | null;
   endTime: string | null;
   notes: string;
   projectId: number | null;
+  taskId: number | null;
+  sickLeaveAttachment: {
+    fileName: string;
+    mimeType: string;
+    dataUrl: string;
+  } | null;
+}
+
+export interface DeleteTimeEntryInput {
+  entryId: number;
+  targetUserId?: number | null;
+}
+
+export interface CreateManualTimeEntryInput {
+  targetUserId?: number | null;
+  entryType: TimeEntryType;
+  startDate: string;
+  endDate?: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  notes: string;
+  projectId: number | null;
+  taskId: number | null;
+  sickLeaveAttachment: {
+    fileName: string;
+    mimeType: string;
+    dataUrl: string;
+  } | null;
 }
 
 export interface TimeListQuery {
   from?: string;
   to?: string;
+  targetUserId?: number;
 }
 
 export interface TimeListResponse {
@@ -78,11 +116,45 @@ export interface UserListResponse {
   users: CompanyUserListItem[];
 }
 
+export interface UserDetailResponse {
+  user: CompanyUserDetail;
+}
+
+export interface UserContractInput {
+  id?: number;
+  hoursPerWeek: number;
+  startDate: string;
+  endDate: string | null;
+  paymentPerHour: number;
+}
+
 export interface CreateUserInput {
   username: string;
   fullName: string;
   password: string;
-  role: "employee" | "company_admin";
+  role: UserRole;
+  isActive: boolean;
+  pinCode: string;
+  email: string | null;
+  pictureUrl: string | null;
+  contracts: UserContractInput[];
+}
+
+export interface UpdateUserInput {
+  userId: number;
+  username: string;
+  fullName: string;
+  password?: string;
+  role: UserRole;
+  isActive: boolean;
+  pinCode: string;
+  email: string | null;
+  pictureUrl: string | null;
+  contracts: UserContractInput[];
+}
+
+export interface DeleteUserInput {
+  userId: number;
 }
 
 export interface CreateProjectInput {
@@ -136,6 +208,26 @@ export interface CompanyListResponse {
 
 export interface SystemStatsResponse {
   stats: SystemStats;
+}
+
+export interface SettingsResponse {
+  settings: CompanySettings;
+}
+
+export interface UpdateSettingsInput {
+  trackingMode: TrackingMode;
+  recordType: RecordType;
+  currency: string;
+  locale: string;
+  firstDayOfWeek: number;
+  editDaysLimit: number;
+  insertDaysLimit: number;
+  country: string;
+}
+
+export interface HolidayResponse {
+  holidays: PublicHolidayRecord[];
+  cached: boolean;
 }
 
 export interface ApiErrorPayload {

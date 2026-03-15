@@ -104,7 +104,7 @@ export const adminService = {
 
     getCompanyDb(company.databasePath)
       .prepare(
-        "INSERT INTO users (username, full_name, password_hash, role, created_at) VALUES (@username, @fullName, @passwordHash, 'company_admin', @createdAt)"
+        "INSERT INTO users (username, full_name, password_hash, role, created_at) VALUES (@username, @fullName, @passwordHash, 'admin', @createdAt)"
       )
       .run({
         username: input.username.trim(),
