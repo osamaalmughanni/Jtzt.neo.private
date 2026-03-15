@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Info } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -405,11 +405,13 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                       <FormItem className="rounded-2xl border border-border bg-muted/20 p-4">
                         <div className="flex items-start justify-between gap-4">
                           <div className="space-y-1">
-                            <p className="text-sm font-semibold text-foreground">Secure mode</p>
+                            <p className="text-sm font-semibold text-foreground">
+                              {field.value ? "Secure mode on" : "Secure mode off"}
+                            </p>
                             <p className="text-xs leading-5 text-muted-foreground">
                               {field.value
-                                ? "Secure mode is enabled. Company sign-in will require the encryption key, and after registration this browser will download the recovery JSON files with the credentials and encrypted backup data."
-                                : "Require a client-derived encryption proof at login and prepare this company for stronger data protection workflows."}
+                                ? "This company will require an encryption key at sign in. Jtzt never stores it. Lose it, and access is gone. This browser will then download recovery JSON files with the admin credentials, key, and encrypted backup."
+                                : "This company will use standard mode. Sign in will require only the company name, username, and password."}
                             </p>
                           </div>
                           <Switch checked={field.value} onCheckedChange={field.onChange} />
@@ -491,15 +493,23 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
               </Form>
             </TabsContent>
 
-            <div className="mt-7 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
-              <Link className="transition-opacity hover:opacity-60" to="/learn">
-                Learn more
-              </Link>
+            <div className="mt-7 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1 rounded-full border-border/80 bg-card px-3 text-xs text-foreground hover:bg-muted"
+              >
+                <Link to="/learn">
+                  <Info className="h-3.5 w-3.5" />
+                  Learn more
+                </Link>
+              </Button>
               <div className="ml-auto flex items-center gap-1">
                 <ThemeToggle />
                 <Button asChild variant="ghost" size="sm" className="h-8 gap-1 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground">
-                  <Link to="/admin/login">
-                    Admin
+                  <Link to={mode === "admin" ? "/login" : "/admin/login"}>
+                    {mode === "admin" ? "Sign in" : "Admin"}
                     <ArrowUpRight className="h-3.5 w-3.5" />
                   </Link>
                 </Button>
