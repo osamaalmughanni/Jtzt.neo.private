@@ -1,23 +1,23 @@
 export interface PageMeta {
-  title: string;
-  description?: string;
+  titleKey: string;
+  descriptionKey?: string;
 }
 
 const pageMetaEntries: Array<[string, PageMeta]> = [
-  ["/", { title: "Sign in", description: "Sign in to your company workspace." }],
-  ["/login", { title: "Sign in", description: "Sign in to your company workspace." }],
-  ["/register", { title: "Register", description: "Create a company workspace and start using Jtzt." }],
-  ["/dashboard", { title: "Overview", description: "Today, this week, and recent activity." }],
-  ["/time", { title: "Time", description: "Track sessions, edit entries, and manage notes." }],
-  ["/calendar", { title: "Calendar", description: "Daily totals for the selected month." }],
-  ["/projects", { title: "Projects", description: "Projects and tasks for this company." }],
-  ["/menu", { title: "Pages" }],
-  ["/settings", { title: "Settings", description: "Users and project structure." }],
-  ["/settings/users", { title: "Users", description: "All users in this company." }],
-  ["/settings/users/create", { title: "Create", description: "Add an employee or company admin." }],
-  ["/admin/menu", { title: "Pages" }],
-  ["/admin/companies", { title: "Companies", description: "Manage tenant companies and system totals." }],
-  ["/admin/company/create", { title: "Create", description: "Create a company database and initial admin." }]
+  ["/", { titleKey: "page.signIn.title", descriptionKey: "page.signIn.description" }],
+  ["/login", { titleKey: "page.signIn.title", descriptionKey: "page.signIn.description" }],
+  ["/register", { titleKey: "page.register.title", descriptionKey: "page.register.description" }],
+  ["/dashboard", { titleKey: "page.overview.title", descriptionKey: "page.overview.description" }],
+  ["/time", { titleKey: "page.time.title", descriptionKey: "page.time.description" }],
+  ["/calendar", { titleKey: "page.calendar.title", descriptionKey: "page.calendar.description" }],
+  ["/projects", { titleKey: "page.projects.title", descriptionKey: "page.projects.description" }],
+  ["/menu", { titleKey: "page.pages.title" }],
+  ["/settings", { titleKey: "page.settings.title", descriptionKey: "page.settings.description" }],
+  ["/settings/users", { titleKey: "page.users.title", descriptionKey: "page.users.description" }],
+  ["/settings/users/create", { titleKey: "page.create.title", descriptionKey: "page.create.description" }],
+  ["/admin/menu", { titleKey: "page.pages.title" }],
+  ["/admin/companies", { titleKey: "page.companies.title", descriptionKey: "page.companies.description" }],
+  ["/admin/company/create", { titleKey: "page.create.title", descriptionKey: "page.create.description" }]
 ];
 
 export const pageMetaMap = new Map<string, PageMeta>(pageMetaEntries);

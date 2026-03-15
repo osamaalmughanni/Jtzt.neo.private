@@ -5,6 +5,7 @@ import { App } from "./app";
 import { GlobalFormBehavior } from "./components/global-form-behavior";
 import { SeoManager } from "./components/seo-manager";
 import { AuthProvider } from "./lib/auth";
+import "./lib/i18n";
 import { ThemeProvider } from "./lib/theme";
 import { Toaster } from "./components/ui/sonner";
 import "./styles/index.css";

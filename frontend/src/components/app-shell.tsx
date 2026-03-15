@@ -23,7 +23,7 @@ export function AppShell({ mode }: AppShellProps) {
       <main className="flex-1">
         <Outlet />
       </main>
-      <AppFooter />
+      <AppFooter context="app" />
     </AppFrame>
   );
 }

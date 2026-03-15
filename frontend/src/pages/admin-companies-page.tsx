@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { CompanyRecord, SystemStats } from "@shared/types/models";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -9,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 
 export function AdminCompaniesPage() {
+  const { t } = useTranslation();
   const { adminSession } = useAuth();
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [stats, setStats] = useState<SystemStats | null>(null);
@@ -18,10 +20,10 @@ export function AdminCompaniesPage() {
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const statItems = [
-    { label: "Companies", value: stats?.companyCount ?? 0 },
-    { label: "System admins", value: stats?.adminCount ?? 0 },
-    { label: "Company users", value: stats?.totalUsers ?? 0 },
-    { label: "Active timers", value: stats?.activeTimers ?? 0 }
+    { label: t("adminCompanies.stats.companies"), value: stats?.companyCount ?? 0 },
+    { label: t("adminCompanies.stats.admins"), value: stats?.adminCount ?? 0 },
+    { label: t("adminCompanies.stats.users"), value: stats?.totalUsers ?? 0 },
+    { label: t("adminCompanies.stats.activeTimers"), value: stats?.activeTimers ?? 0 }
   ];
 
   async function load() {
@@ -35,7 +37,7 @@ export function AdminCompaniesPage() {
       setStats(statsResponse.stats);
     } catch (error) {
       toast({
-        title: "Could not load companies",
+        title: t("adminCompanies.loadFailed"),
         description: error instanceof Error ? error.message : "Request failed"
       });
     }
@@ -51,11 +53,11 @@ export function AdminCompaniesPage() {
     try {
       await api.deleteCompany(adminSession.token, { companyId });
       setPendingDeleteCompany(null);
-      toast({ title: "Company deleted" });
+      toast({ title: t("adminCompanies.companyDeleted") });
       await load();
     } catch (error) {
       toast({
-        title: "Delete failed",
+        title: t("adminCompanies.companyDeleteFailed"),
         description: error instanceof Error ? error.message : "Request failed"
       });
     } finally {
@@ -69,11 +71,11 @@ export function AdminCompaniesPage() {
     try {
       await api.resetCompany(adminSession.token, { companyId });
       setPendingResetCompany(null);
-      toast({ title: "Company database reset" });
+      toast({ title: t("adminCompanies.companyReset") });
       await load();
     } catch (error) {
       toast({
-        title: "Reset failed",
+        title: t("adminCompanies.companyResetFailed"),
         description: error instanceof Error ? error.message : "Request failed"
       });
     } finally {
@@ -86,10 +88,10 @@ export function AdminCompaniesPage() {
     try {
       await api.createCompanyAdmin(adminSession.token, newAdmin);
       setNewAdmin({ companyId: 0, username: "", password: "", fullName: "" });
-      toast({ title: "Company admin created" });
+      toast({ title: t("adminCompanies.companyAdminCreated") });
     } catch (error) {
       toast({
-        title: "Could not create company admin",
+        title: t("adminCompanies.companyAdminCreateFailed"),
         description: error instanceof Error ? error.message : "Request failed"
       });
     }
@@ -100,23 +102,23 @@ export function AdminCompaniesPage() {
       <Dialog open={pendingResetCompany !== null} onOpenChange={(open) => !open && setPendingResetCompany(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reset company database</DialogTitle>
+            <DialogTitle>{t("adminCompanies.resetDialogTitle")}</DialogTitle>
             <DialogDescription>
               {pendingResetCompany
-                ? `Reset "${pendingResetCompany.name}" and remove all company data? This cannot be undone.`
-                : "Reset this company database?"}
+                ? t("adminCompanies.resetDialogDescription", { name: pendingResetCompany.name })
+                : t("adminCompanies.resetDialogTitle")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             <Button variant="outline" onClick={() => setPendingResetCompany(null)} disabled={resetSubmitting}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               variant="secondary"
               onClick={() => pendingResetCompany && void resetCompany(pendingResetCompany.id)}
               disabled={resetSubmitting}
             >
-              {resetSubmitting ? "Resetting..." : "Reset DB"}
+              {resetSubmitting ? t("adminCompanies.resetting") : t("common.resetDb")}
             </Button>
           </div>
         </DialogContent>
@@ -125,23 +127,23 @@ export function AdminCompaniesPage() {
       <Dialog open={pendingDeleteCompany !== null} onOpenChange={(open) => !open && setPendingDeleteCompany(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete company</DialogTitle>
+            <DialogTitle>{t("adminCompanies.deleteDialogTitle")}</DialogTitle>
             <DialogDescription>
               {pendingDeleteCompany
-                ? `Delete "${pendingDeleteCompany.name}" permanently? This cannot be undone.`
-                : "Delete this company?"}
+                ? t("adminCompanies.deleteDialogDescription", { name: pendingDeleteCompany.name })
+                : t("adminCompanies.deleteDialogTitle")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             <Button variant="outline" onClick={() => setPendingDeleteCompany(null)} disabled={deleteSubmitting}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={() => pendingDeleteCompany && void removeCompany(pendingDeleteCompany.id)}
               disabled={deleteSubmitting}
             >
-              {deleteSubmitting ? "Deleting..." : "Delete"}
+              {deleteSubmitting ? t("adminCompanies.deleting") : t("common.delete")}
             </Button>
           </div>
         </DialogContent>
@@ -149,8 +151,8 @@ export function AdminCompaniesPage() {
 
       <Card className="overflow-hidden">
         <CardHeader className="border-b border-border/80 bg-muted/30">
-          <CardTitle>System overview</CardTitle>
-          <CardDescription>All company totals in one place, without splitting the page into separate stat boxes.</CardDescription>
+          <CardTitle>{t("adminCompanies.overviewTitle")}</CardTitle>
+          <CardDescription>{t("adminCompanies.overviewDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="grid p-0 sm:grid-cols-2 xl:grid-cols-4">
           {statItems.map((item, index) => (
@@ -169,13 +171,13 @@ export function AdminCompaniesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Companies management</CardTitle>
-          <CardDescription>Simple vertical cards with actions grouped under each company for easier scanning on desktop and mobile.</CardDescription>
+          <CardTitle>{t("adminCompanies.managementTitle")}</CardTitle>
+          <CardDescription>{t("adminCompanies.managementDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {companies.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-5 py-10 text-center text-sm text-muted-foreground">
-              No companies available yet.
+              {t("adminCompanies.noCompanies")}
             </div>
           ) : (
             companies.map((company) => (
@@ -186,11 +188,11 @@ export function AdminCompaniesPage() {
                 <div className="space-y-3">
                   <div className="flex flex-col gap-1">
                     <h3 className="text-sm font-semibold tracking-[-0.02em] sm:text-base">{company.name}</h3>
-                    <p className="text-[11px] text-muted-foreground">Created {new Date(company.createdAt).toLocaleString()}</p>
+                    <p className="text-[11px] text-muted-foreground">{t("adminCompanies.createdAt", { value: new Date(company.createdAt).toLocaleString() })}</p>
                   </div>
 
                   <div className="rounded-lg border border-border/80 bg-background px-3 py-2">
-                    <p className="text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Database path</p>
+                    <p className="text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{t("adminCompanies.databasePath")}</p>
                     <p className="mt-1 break-all text-[11px] leading-5 text-foreground sm:text-xs">{company.databasePath}</p>
                   </div>
 
@@ -203,20 +205,20 @@ export function AdminCompaniesPage() {
                           className="h-8 w-full justify-center rounded-lg px-3 text-[11px] sm:text-xs"
                           onClick={() => setNewAdmin((current) => ({ ...current, companyId: company.id }))}
                         >
-                          Add admin
+                          {t("adminCompanies.addAdmin")}
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Create company admin</DialogTitle>
-                          <DialogDescription>Add another company-level administrator for this tenant.</DialogDescription>
+                          <DialogTitle>{t("adminCompanies.createCompanyAdmin")}</DialogTitle>
+                          <DialogDescription>{t("adminCompanies.createCompanyAdminDescription")}</DialogDescription>
                         </DialogHeader>
                         <div className="space-y-3">
-                          <Input placeholder="Full name" value={newAdmin.fullName} onChange={(event) => setNewAdmin((current) => ({ ...current, fullName: event.target.value }))} />
-                          <Input placeholder="Username" value={newAdmin.username} onChange={(event) => setNewAdmin((current) => ({ ...current, username: event.target.value }))} />
-                          <Input type="password" placeholder="Password" value={newAdmin.password} onChange={(event) => setNewAdmin((current) => ({ ...current, password: event.target.value }))} />
+                          <Input placeholder={t("common.fullName")} value={newAdmin.fullName} onChange={(event) => setNewAdmin((current) => ({ ...current, fullName: event.target.value }))} />
+                          <Input placeholder={t("common.username")} value={newAdmin.username} onChange={(event) => setNewAdmin((current) => ({ ...current, username: event.target.value }))} />
+                          <Input type="password" placeholder={t("common.password")} value={newAdmin.password} onChange={(event) => setNewAdmin((current) => ({ ...current, password: event.target.value }))} />
                           <Button className="w-full" onClick={() => void createAdmin()}>
-                            Create admin
+                            {t("adminCompanies.createAdmin")}
                           </Button>
                         </div>
                       </DialogContent>
@@ -227,7 +229,7 @@ export function AdminCompaniesPage() {
                       className="h-8 w-full justify-center rounded-lg px-3 text-[11px] sm:text-xs"
                       onClick={() => setPendingResetCompany(company)}
                     >
-                      Reset DB
+                      {t("common.resetDb")}
                     </Button>
                     <Button
                       size="sm"
@@ -235,7 +237,7 @@ export function AdminCompaniesPage() {
                       className="h-8 w-full justify-center rounded-lg px-3 text-[11px] sm:text-xs"
                       onClick={() => setPendingDeleteCompany(company)}
                     >
-                      Delete
+                      {t("common.delete")}
                     </Button>
                   </div>
                 </div>

@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { ArrowUpRight, Info } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { CompanySecurityResponse } from "@shared/types/api";
+import { AppFooter } from "@/components/app-footer";
 import { AuthMark } from "@/components/auth-mark";
 import { AppFrame } from "@/components/app-frame";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { deriveEncryptionProof, generateKdfSalt } from "@/lib/crypto";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -62,27 +62,6 @@ type CompanyLoginValues = z.infer<typeof companyLoginSchema>;
 type RegisterValues = z.infer<typeof registerSchema>;
 type AdminLoginValues = z.infer<typeof adminLoginSchema>;
 
-const modeConfig: Record<AuthMode, { label: string; route: string; title: string; description: string }> = {
-  "sign-in": {
-    label: "Sign in",
-    route: "/login",
-    title: "Company sign in",
-    description: "Access an existing company workspace."
-  },
-  register: {
-    label: "Register",
-    route: "/register",
-    title: "Register company",
-    description: "Create a new company workspace and initial admin."
-  },
-  admin: {
-    label: "Admin",
-    route: "/admin/login",
-    title: "Admin sign in",
-    description: "System-level access for platform administration."
-  }
-};
-
 async function buildRecoverySnapshot(token: string) {
   const [meResult, dashboardResult, projectsResult, usersResult] = await Promise.allSettled([
     api.getCompanyMe(token),
@@ -108,9 +87,27 @@ async function buildRecoverySnapshot(token: string) {
 
 export function AuthAccessPage({ mode }: { mode: AuthMode }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { loginCompany, loginAdmin } = useAuth();
   const [companySecurity, setCompanySecurity] = useState<CompanySecurityResponse | null>(null);
   const [registerSubmitting, setRegisterSubmitting] = useState(false);
+  const modeConfig: Record<AuthMode, { route: string; title: string; description: string }> = {
+    "sign-in": {
+      route: "/login",
+      title: t("auth.companySignInTitle"),
+      description: t("auth.companySignInDescription")
+    },
+    register: {
+      route: "/register",
+      title: t("auth.registerTitle"),
+      description: t("auth.registerDescription")
+    },
+    admin: {
+      route: "/admin/login",
+      title: t("auth.adminTitle"),
+      description: t("auth.adminDescription")
+    }
+  };
 
   const companyForm = useForm<CompanyLoginValues>({
     resolver: zodResolver(companyLoginSchema),
@@ -161,8 +158,8 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
       if (companySecurity?.encryptionEnabled) {
         if (!values.encryptionKey || !companySecurity.kdfSalt || !companySecurity.kdfIterations) {
           toast({
-            title: "Encryption key required",
-            description: "This company uses Secure Mode. Enter the encryption key to continue."
+            title: t("auth.encryptionRequiredTitle"),
+            description: t("auth.encryptionRequiredDescription")
           });
           return;
         }
@@ -180,7 +177,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
       navigate("/dashboard");
     } catch (error) {
       toast({
-        title: "Sign in failed",
+        title: t("auth.signInFailed"),
         description: error instanceof Error ? error.message : "Login failed"
       });
     }
@@ -242,7 +239,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
       navigate("/dashboard");
     } catch (error) {
       toast({
-        title: "Company registration failed",
+        title: t("auth.companyRegistrationFailed"),
         description: error instanceof Error ? error.message : "Request failed"
       });
     } finally {
@@ -257,7 +254,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
       navigate("/admin/companies");
     } catch (error) {
       toast({
-        title: "Admin sign in failed",
+        title: t("auth.signInFailed"),
         description: error instanceof Error ? error.message : "Login failed"
       });
     }
@@ -265,28 +262,29 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
 
   return (
     <AppFrame centered className="items-center">
-      <Card className="relative w-full border-border/90 shadow-[0_18px_60px_rgba(0,0,0,0.04)]">
-        <Tabs
-          value={mode}
-          className="w-full"
-          onValueChange={(value) => navigate(modeConfig[value as AuthMode].route)}
-        >
-          <CardHeader className="flex flex-col gap-3 pb-4">
-            <AuthMark label={modeConfig[mode].title} />
-            {mode !== "admin" ? (
-              <div className="max-w-full overflow-x-auto">
-                <TabsList className="w-max min-w-0">
-                  <TabsTrigger value="sign-in">
-                    Sign in
-                  </TabsTrigger>
-                  <TabsTrigger value="register">
-                    Register
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-            ) : null}
-          </CardHeader>
-          <CardContent className="pt-0">
+      <div className="w-full space-y-3">
+        <Card className="relative w-full border-border/90 shadow-[0_18px_60px_rgba(0,0,0,0.04)]">
+          <Tabs
+            value={mode}
+            className="w-full"
+            onValueChange={(value) => navigate(modeConfig[value as AuthMode].route)}
+          >
+            <CardHeader className="flex flex-col gap-3 pb-4">
+              <AuthMark label={modeConfig[mode].title} />
+              {mode !== "admin" ? (
+                <div className="max-w-full overflow-x-auto">
+                  <TabsList className="w-max min-w-0">
+                    <TabsTrigger value="sign-in">
+                      {t("common.signIn")}
+                    </TabsTrigger>
+                    <TabsTrigger value="register">
+                      {t("common.register")}
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+              ) : null}
+            </CardHeader>
+            <CardContent className="pt-0">
             <div className="mb-4 rounded-2xl border border-border/70 bg-muted/15 px-4 py-3">
               <p className="text-sm font-semibold text-foreground">{modeConfig[mode].title}</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{modeConfig[mode].description}</p>
@@ -300,7 +298,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                     name="companyName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Company</FormLabel>
+                        <FormLabel>{t("auth.companyLabel")}</FormLabel>
                         <FormControl>
                           <Input placeholder="Acme" {...field} />
                         </FormControl>
@@ -313,7 +311,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                     name="username"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Username</FormLabel>
+                        <FormLabel>{t("common.username")}</FormLabel>
                         <FormControl>
                           <Input placeholder="jane" {...field} />
                         </FormControl>
@@ -326,7 +324,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                     name="password"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Password</FormLabel>
+                        <FormLabel>{t("common.password")}</FormLabel>
                         <FormControl>
                           <Input type="password" placeholder="********" {...field} />
                         </FormControl>
@@ -340,9 +338,9 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                       name="encryptionKey"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Encryption key</FormLabel>
+                          <FormLabel>{t("auth.encryptionKeyLabel")}</FormLabel>
                           <FormControl>
-                            <Input type="password" placeholder="Secure mode passphrase" {...field} />
+                            <Input type="password" placeholder={t("auth.secureModeLoginPlaceholder")} {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -350,7 +348,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                     />
                   ) : null}
                   <Button className="w-full" type="submit" disabled={companyForm.formState.isSubmitting}>
-                    Sign in
+                    {t("common.signIn")}
                   </Button>
                 </form>
               </Form>
@@ -364,7 +362,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Company name</FormLabel>
+                        <FormLabel>{t("auth.companyNameLabel")}</FormLabel>
                         <FormControl>
                           <Input placeholder="Acme" {...field} />
                         </FormControl>
@@ -377,7 +375,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                     name="adminUsername"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Admin username</FormLabel>
+                        <FormLabel>{t("auth.adminUsernameLabel")}</FormLabel>
                         <FormControl>
                           <Input placeholder="jane" {...field} />
                         </FormControl>
@@ -390,7 +388,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                     name="adminPassword"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Admin password</FormLabel>
+                        <FormLabel>{t("auth.adminPasswordLabel")}</FormLabel>
                         <FormControl>
                           <Input type="password" placeholder="********" {...field} />
                         </FormControl>
@@ -406,12 +404,12 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                         <div className="flex items-start justify-between gap-4">
                           <div className="space-y-1">
                             <p className="text-sm font-semibold text-foreground">
-                              {field.value ? "Secure mode on" : "Secure mode off"}
+                              {field.value ? t("auth.secureModeOn") : t("auth.secureModeOff")}
                             </p>
                             <p className="text-xs leading-5 text-muted-foreground">
                               {field.value
-                                ? "This company will require an encryption key at sign in. Jtzt never stores it. Lose it, and access is gone. This browser will then download recovery JSON files with the admin credentials, key, and encrypted backup."
-                                : "This company will use standard mode. Sign in will require only the company name, username, and password."}
+                                ? t("auth.secureModeOnDescription")
+                                : t("auth.secureModeOffDescription")}
                             </p>
                           </div>
                           <Switch checked={field.value} onCheckedChange={field.onChange} />
@@ -427,9 +425,9 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                         name="encryptionKey"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Encryption key</FormLabel>
+                            <FormLabel>{t("auth.encryptionKeyLabel")}</FormLabel>
                             <FormControl>
-                              <Input type="password" placeholder="Choose a strong passphrase" {...field} />
+                              <Input type="password" placeholder={t("auth.secureModePlaceholder")} {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -440,9 +438,9 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                         name="confirmEncryptionKey"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Confirm encryption key</FormLabel>
+                            <FormLabel>{t("auth.confirmEncryptionKeyLabel")}</FormLabel>
                             <FormControl>
-                              <Input type="password" placeholder="Repeat the passphrase" {...field} />
+                              <Input type="password" placeholder={t("auth.secureModeConfirmPlaceholder")} {...field} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -451,7 +449,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                     </>
                   ) : null}
                   <Button className="w-full" type="submit" disabled={registerSubmitting}>
-                    {registerSubmitting ? "Creating company..." : "Create company"}
+                    {registerSubmitting ? t("auth.creatingCompany") : t("auth.createCompany")}
                   </Button>
                 </form>
               </Form>
@@ -465,7 +463,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                     name="username"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Username</FormLabel>
+                        <FormLabel>{t("common.username")}</FormLabel>
                         <FormControl>
                           <Input {...field} />
                         </FormControl>
@@ -478,7 +476,7 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                     name="password"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Password</FormLabel>
+                        <FormLabel>{t("common.password")}</FormLabel>
                         <FormControl>
                           <Input type="password" {...field} />
                         </FormControl>
@@ -487,37 +485,17 @@ export function AuthAccessPage({ mode }: { mode: AuthMode }) {
                     )}
                   />
                   <Button className="w-full" type="submit" disabled={adminForm.formState.isSubmitting}>
-                    Sign in as admin
+                    {t("auth.signInAsAdmin")}
                   </Button>
                 </form>
               </Form>
             </TabsContent>
 
-            <div className="mt-7 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1 rounded-full border-border/80 bg-card px-3 text-xs text-foreground hover:bg-muted"
-              >
-                <Link to="/learn">
-                  <Info className="h-3.5 w-3.5" />
-                  Learn more
-                </Link>
-              </Button>
-              <div className="ml-auto flex items-center gap-1">
-                <ThemeToggle />
-                <Button asChild variant="ghost" size="sm" className="h-8 gap-1 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground">
-                  <Link to={mode === "admin" ? "/login" : "/admin/login"}>
-                    {mode === "admin" ? "Sign in" : "Admin"}
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Tabs>
-      </Card>
+            </CardContent>
+          </Tabs>
+        </Card>
+        <AppFooter context="public" publicMode="auth" authMode={mode} />
+      </div>
     </AppFrame>
   );
 }

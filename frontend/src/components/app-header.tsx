@@ -1,4 +1,5 @@
 import type { Icon } from "phosphor-react";
+import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { List } from "phosphor-react";
 import { Logo } from "@/components/logo";
@@ -26,9 +27,10 @@ export function AppHeader({
   actions?: HeaderAction[];
 }) {
   const location = useLocation();
+  const { t } = useTranslation();
   const meta = getPageMeta(location.pathname);
-  const resolvedTitle = title ?? meta?.title;
-  const resolvedDescription = description ?? meta?.description;
+  const resolvedTitle = title ?? (meta?.titleKey ? t(meta.titleKey) : undefined);
+  const resolvedDescription = description ?? (meta?.descriptionKey ? t(meta.descriptionKey) : undefined);
   const resolvedActions = actions ?? (menuTo ? [{ to: menuTo, label: "Open menu", icon: List }] : []);
 
   return (
