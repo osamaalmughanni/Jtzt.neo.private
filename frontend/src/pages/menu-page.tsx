@@ -15,6 +15,7 @@ export function MenuPage() {
     ...(companyIdentity?.user.role === "admin"
       ? [
           { to: "/users", title: "Users" },
+          { to: "/fields", title: "Fields" },
           { to: "/settings", title: "Settings" }
         ]
       : [])

@@ -210,6 +210,8 @@ export interface UpdateSettingsInput {
   editDaysLimit: number;
   insertDaysLimit: number;
   country: string;
+  autoBreakAfterMinutes: number;
+  autoBreakDurationMinutes: number;
   customFields: CompanyCustomField[];
 }
 

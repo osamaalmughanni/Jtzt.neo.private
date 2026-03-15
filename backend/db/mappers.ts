@@ -1,4 +1,5 @@
 import type {
+  CompanyCustomField,
   CompanySettings,
   CompanyRecord,
   CompanyUser,
@@ -29,6 +30,14 @@ function parseJsonValue<T>(value: unknown, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function normalizeCustomFields(value: unknown): CompanyCustomField[] {
+  const parsed = parseJsonValue<CompanyCustomField[]>(value, []);
+  return parsed.map((field) => ({
+    ...field,
+    options: Array.isArray(field.options) ? field.options : [],
+  }));
 }
 
 export function mapCompanyRecord(row: any): CompanyRecord {
@@ -183,7 +192,9 @@ export function mapCompanySettings(row: any): CompanySettings {
     editDaysLimit: row.edit_days_limit,
     insertDaysLimit: row.insert_days_limit,
     country: row.country ?? row.holiday_country,
-    customFields: parseJsonValue(row.custom_fields_json, [])
+    autoBreakAfterMinutes: row.auto_break_after_minutes ?? 300,
+    autoBreakDurationMinutes: row.auto_break_duration_minutes ?? 30,
+    customFields: normalizeCustomFields(row.custom_fields_json)
   };
 }
 

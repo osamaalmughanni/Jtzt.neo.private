@@ -15,6 +15,7 @@ import { RegisterCompanyPage } from "@/pages/register-company-page";
 import { ReportsPage } from "@/pages/reports-page";
 import { ReportsPreviewPage } from "@/pages/reports-preview-page";
 import { SettingsMenuPage } from "@/pages/settings-menu-page";
+import { FieldsPage } from "@/pages/fields-page";
 import { UsersPage } from "@/pages/users-page";
 import { UserEditorPage } from "@/pages/user-editor-page";
 
@@ -39,6 +40,7 @@ export function App() {
             <Route path="/users" element={<UsersPage />} />
             <Route path="/users/create" element={<UserEditorPage mode="create" />} />
             <Route path="/users/:userId/edit" element={<UserEditorPage mode="edit" />} />
+            <Route path="/fields" element={<FieldsPage />} />
             <Route path="/settings" element={<SettingsMenuPage />} />
           </Route>
         </Route>

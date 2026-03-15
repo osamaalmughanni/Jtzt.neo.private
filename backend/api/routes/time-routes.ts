@@ -4,7 +4,9 @@ import { countEffectiveLeaveDays, diffCalendarDays, formatLocalDay } from "../..
 import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
 import type { CompanyTokenPayload } from "../../auth/jwt";
 import { timeService } from "../../services/time-service";
+import { userService } from "../../services/user-service";
 import { settingsService } from "../../services/settings-service";
+import { calculateLeaveCompensation, calculateWorkDurationMinutes, enumerateDayRange, getExpectedContractMinutesForDay, getWeekRange, getMonthRange } from "../../services/time-entry-metrics-service";
 import type { AppVariables } from "../context";
 
 const startTimerSchema = z.object({
@@ -119,10 +121,12 @@ async function enrichEntryWithDayMetrics(
   databasePath: string,
   entry: Awaited<ReturnType<typeof timeService.getEntryById>>
 ) {
+  const settings = settingsService.getSettings(databasePath);
   if (entry.entryType === "work") {
     const totalDayCount = entry.endDate ? Math.max(1, diffCalendarDays(entry.endDate, entry.entryDate) + 1) : 1;
     return {
       ...entry,
+      durationMinutes: calculateWorkDurationMinutes(entry.startTime, entry.endTime, settings),
       totalDayCount,
       effectiveDayCount: totalDayCount,
       excludedHolidayCount: 0,
@@ -132,7 +136,6 @@ async function enrichEntryWithDayMetrics(
 
   const startDay = entry.entryDate;
   const endDay = entry.endDate ?? entry.entryDate;
-  const settings = settingsService.getSettings(databasePath);
   const holidayYears = new Set<number>();
   let year = Number(startDay.slice(0, 4));
   const lastYear = Number(endDay.slice(0, 4));
@@ -162,6 +165,116 @@ async function enrichEntriesWithDayMetrics(
   entries: ReturnType<typeof timeService.listEntries>
 ) {
   return Promise.all(entries.map((entry) => enrichEntryWithDayMetrics(databasePath, entry)));
+}
+
+async function getHolidaySetForRange(databasePath: string, country: string, startDay: string, endDay: string) {
+  const years = new Set<number>();
+  let year = Number(startDay.slice(0, 4));
+  const finalYear = Number(endDay.slice(0, 4));
+
+  while (year <= finalYear) {
+    years.add(year);
+    year += 1;
+  }
+
+  const responses = await Promise.all(
+    Array.from(years).map((currentYear) => settingsService.getPublicHolidays(databasePath, country, currentYear)),
+  );
+
+  return new Set(
+    responses.flatMap((response) => response.holidays).map((holiday) => holiday.date),
+  );
+}
+
+async function buildDashboardSummary(databasePath: string, userId: number) {
+  const settings = settingsService.getSettings(databasePath);
+  const todayDay = formatLocalDay(new Date());
+  const fullWeekRange = getWeekRange(todayDay, settings.firstDayOfWeek);
+  const fullMonthRange = getMonthRange(todayDay);
+  const weekRange = { startDay: fullWeekRange.startDay, endDay: todayDay };
+  const monthRange = { startDay: fullMonthRange.startDay, endDay: todayDay };
+  const contracts = userService.listUserContracts(databasePath, userId);
+  const allEntries = timeService.listEntries(databasePath, userId, {});
+  const currentContract =
+    contracts.find((contract) => contract.startDate <= todayDay && (contract.endDate === null || contract.endDate >= todayDay)) ?? null;
+  const historyStartDay = [
+    ...contracts.map((contract) => contract.startDate),
+    ...allEntries.map((entry) => entry.entryDate),
+    todayDay,
+  ].sort((left, right) => left.localeCompare(right))[0];
+  const holidaySet = await getHolidaySetForRange(
+    databasePath,
+    settings.country,
+    historyStartDay,
+    todayDay,
+  );
+
+  const todayEntries = timeService.listEntries(databasePath, userId, { from: todayDay, to: todayDay });
+  const weekEntries = timeService.listEntries(databasePath, userId, { from: weekRange.startDay, to: weekRange.endDay });
+  const monthEntries = timeService.listEntries(databasePath, userId, { from: monthRange.startDay, to: monthRange.endDay });
+  const activeEntry = timeService.getActiveEntry(databasePath, userId);
+
+  function getRecordedMinutes(entries: ReturnType<typeof timeService.listEntries>, startDay: string, endDay: string) {
+    return entries.reduce((sum, entry) => {
+      if (entry.entryType === "work") {
+        return sum + calculateWorkDurationMinutes(entry.startTime, entry.endTime, settings);
+      }
+
+      const clampedStart = entry.entryDate < startDay ? startDay : entry.entryDate;
+      const entryEndDay = entry.endDate ?? entry.entryDate;
+      const clampedEnd = entryEndDay > endDay ? endDay : entryEndDay;
+      return sum + calculateLeaveCompensation(entry.entryType, clampedStart, clampedEnd, holidaySet, contracts).durationMinutes;
+    }, 0);
+  }
+
+  function getExpectedMinutes(startDay: string, endDay: string) {
+    return enumerateDayRange(startDay, endDay).reduce(
+      (sum, day) => sum + getExpectedContractMinutesForDay(day, holidaySet, contracts),
+      0,
+    );
+  }
+
+  const todayRecordedMinutes = getRecordedMinutes(todayEntries, todayDay, todayDay);
+  const weekRecordedMinutes = getRecordedMinutes(weekEntries, weekRange.startDay, weekRange.endDay);
+  const monthRecordedMinutes = getRecordedMinutes(monthEntries, monthRange.startDay, monthRange.endDay);
+  const todayExpectedMinutes = getExpectedMinutes(todayDay, todayDay);
+  const weekExpectedMinutes = getExpectedMinutes(weekRange.startDay, weekRange.endDay);
+  const monthExpectedMinutes = getExpectedMinutes(monthRange.startDay, monthRange.endDay);
+  const totalRecordedMinutes = getRecordedMinutes(allEntries, historyStartDay, todayDay);
+  const totalExpectedMinutes = getExpectedMinutes(historyStartDay, todayDay);
+
+  return {
+    todayMinutes: todayRecordedMinutes,
+    weekMinutes: weekRecordedMinutes,
+    activeEntry: activeEntry ? await enrichEntryWithDayMetrics(databasePath, activeEntry) : null,
+    recentEntries: await enrichEntriesWithDayMetrics(databasePath, allEntries.slice(0, 5)),
+    contractStats: {
+      currentContract: currentContract
+        ? {
+            hoursPerWeek: currentContract.hoursPerWeek,
+            paymentPerHour: currentContract.paymentPerHour,
+            startDate: currentContract.startDate,
+            endDate: currentContract.endDate,
+          }
+        : null,
+      totalBalanceMinutes: totalRecordedMinutes - totalExpectedMinutes,
+      today: {
+        expectedMinutes: todayExpectedMinutes,
+        recordedMinutes: todayRecordedMinutes,
+        balanceMinutes: todayRecordedMinutes - todayExpectedMinutes,
+      },
+      week: {
+        expectedMinutes: weekExpectedMinutes,
+        recordedMinutes: weekRecordedMinutes,
+        balanceMinutes: weekRecordedMinutes - weekExpectedMinutes,
+      },
+      month: {
+        expectedMinutes: monthExpectedMinutes,
+        recordedMinutes: monthRecordedMinutes,
+        balanceMinutes: monthRecordedMinutes - monthExpectedMinutes,
+      },
+    },
+  };
 }
 
 timeRoutes.post("/start", async (c) => {
@@ -328,11 +441,12 @@ timeRoutes.get("/dashboard", async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
   const session = getCompanySession(rawSession);
-  const summary = timeService.getDashboard(session.databasePath, session.userId);
-  return c.json({
-    summary: {
-      ...summary,
-      recentEntries: await enrichEntriesWithDayMetrics(session.databasePath, summary.recentEntries),
-    }
-  });
+  let targetUserId: number;
+  try {
+    const rawTargetUserId = c.req.query("targetUserId");
+    targetUserId = resolveTargetUserId(session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
+  } catch {
+    return c.json({ error: "Manager access required" }, 403);
+  }
+  return c.json({ summary: await buildDashboardSummary(session.databasePath, targetUserId) });
 });

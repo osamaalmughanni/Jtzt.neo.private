@@ -1,6 +1,12 @@
 export type UserRole = "employee" | "manager" | "admin";
 export type TimeEntryType = "work" | "vacation" | "sick_leave";
-export type CompanyCustomFieldType = "text" | "number" | "date" | "boolean";
+export type CompanyCustomFieldType = "text" | "number" | "date" | "boolean" | "select";
+
+export interface CompanyCustomFieldOption {
+  id: string;
+  label: string;
+  value: string;
+}
 
 export interface SickLeaveAttachment {
   fileName: string;
@@ -15,6 +21,7 @@ export interface CompanyCustomField {
   targets: TimeEntryType[];
   required: boolean;
   placeholder: string | null;
+  options: CompanyCustomFieldOption[];
 }
 
 export interface CompanyRecord {
@@ -111,6 +118,30 @@ export interface DashboardSummary {
   weekMinutes: number;
   activeEntry: TimeEntryView | null;
   recentEntries: TimeEntryView[];
+  contractStats: {
+    currentContract: {
+      hoursPerWeek: number;
+      paymentPerHour: number;
+      startDate: string;
+      endDate: string | null;
+    } | null;
+    totalBalanceMinutes: number;
+    today: {
+      expectedMinutes: number;
+      recordedMinutes: number;
+      balanceMinutes: number;
+    };
+    week: {
+      expectedMinutes: number;
+      recordedMinutes: number;
+      balanceMinutes: number;
+    };
+    month: {
+      expectedMinutes: number;
+      recordedMinutes: number;
+      balanceMinutes: number;
+    };
+  };
 }
 
 export interface TimeEntryView {
@@ -140,6 +171,8 @@ export interface CompanySettings {
   editDaysLimit: number;
   insertDaysLimit: number;
   country: string;
+  autoBreakAfterMinutes: number;
+  autoBreakDurationMinutes: number;
   customFields: CompanyCustomField[];
 }
 

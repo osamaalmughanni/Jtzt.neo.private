@@ -131,7 +131,13 @@ export const userService = {
       throw new HTTPException(404, { message: "User not found" });
     }
 
-    const contracts = db
+    const contracts = this.listUserContracts(databasePath, userId);
+
+    return mapCompanyUserDetail(row, contracts);
+  },
+
+  listUserContracts(databasePath: string, userId: number) {
+    return getCompanyDb(databasePath)
       .prepare(
         `SELECT
           id,
@@ -147,8 +153,6 @@ export const userService = {
       )
       .all(userId)
       .map(mapUserContract);
-
-    return mapCompanyUserDetail(row, contracts);
   },
 
   createUser(databasePath: string, input: CreateUserInput) {

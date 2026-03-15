@@ -23,6 +23,8 @@ const defaultSettings: CompanySettings = {
   editDaysLimit: 30,
   insertDaysLimit: 30,
   country: "AT",
+  autoBreakAfterMinutes: 300,
+  autoBreakDurationMinutes: 30,
   customFields: [],
 };
 

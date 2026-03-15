@@ -1,9 +1,8 @@
 import { HTTPException } from "hono/http-exception";
-import { diffMinutes } from "../../shared/utils/time";
 import type { ReportColumnDefinition, ReportRequestInput } from "../../shared/types/api";
 import type { CompanyCustomField, TimeEntryType, UserContract } from "../../shared/types/models";
 import { getCompanyDb } from "../db/company-db";
-import { calculateLeaveCompensation } from "./time-entry-metrics-service";
+import { calculateLeaveCompensation, calculateWorkCostAmount, calculateWorkDurationMinutes } from "./time-entry-metrics-service";
 import { settingsService } from "./settings-service";
 
 type ReportRow = {
@@ -129,14 +128,12 @@ function getEntryValue(entry: ReportRow, key: string, customFields: CompanyCusto
   if (key === "date") return entry.entry_date;
   if (key === "start") return entry.entry_type === "work" ? entry.start_time : entry.entry_date;
   if (key === "finish") return entry.entry_type === "work" ? entry.end_time : (entry.end_date ?? entry.entry_date);
-  if (key === "duration") return entry.entry_type === "work" ? diffMinutes(entry.start_time ?? "", entry.end_time) : 0;
+  if (key === "duration") return 0;
   if (key === "note") return entry.notes ?? "";
   if (key === "month") return getMonthKey(entry.entry_date);
   if (key === "cost") {
     if (entry.entry_type !== "work") return 0;
-    const durationMinutes = diffMinutes(entry.start_time ?? "", entry.end_time);
-    const rate = resolveContractRate(contractsByUser.get(entry.user_id) ?? [], entry.entry_date);
-    return Math.round((durationMinutes / 60) * rate * 100) / 100;
+    return 0;
   }
 
   return null;
@@ -246,6 +243,20 @@ export const reportService = {
         }
 
         return key === "duration" ? cached.durationMinutes : cached.costAmount;
+      }
+
+      if (key === "duration" && row.entry_type === "work") {
+        return calculateWorkDurationMinutes(row.start_time, row.end_time, settings);
+      }
+
+      if (key === "cost" && row.entry_type === "work") {
+        return calculateWorkCostAmount(
+          row.start_time,
+          row.end_time,
+          row.entry_date,
+          settings,
+          contractsByUser.get(row.user_id) ?? [],
+        );
       }
 
       return getEntryValue(row, key, settings.customFields, contractsByUser);

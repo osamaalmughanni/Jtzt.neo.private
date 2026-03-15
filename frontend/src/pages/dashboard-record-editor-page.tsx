@@ -10,7 +10,7 @@ import type {
 } from "@shared/types/models";
 import { countEffectiveLeaveDays, diffCalendarDays, formatLocalDay } from "@shared/utils/time";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
-import { Field, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
+import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,8 @@ const defaultSettings: CompanySettings = {
   editDaysLimit: 30,
   insertDaysLimit: 30,
   country: "AT",
+  autoBreakAfterMinutes: 300,
+  autoBreakDurationMinutes: 30,
   customFields: [],
 };
 
@@ -357,7 +359,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     }
   }
 
-  function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
+function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
     setCustomFieldValues((current) => ({
       ...current,
       [field.id]:
@@ -456,6 +458,16 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
                     <option value="true">Yes</option>
                     <option value="false">No</option>
                   </select>
+                ) : field.type === "select" ? (
+                  <FieldCombobox
+                    label={field.label}
+                    value={typeof customFieldValues[field.id] === "string" ? String(customFieldValues[field.id]) : ""}
+                    onValueChange={(value) => setCustomFieldValue(field, value)}
+                    items={field.options.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                    }))}
+                  />
                 ) : field.type === "date" ? (
                   <DateInput
                     value={typeof customFieldValues[field.id] === "string" ? String(customFieldValues[field.id]) : ""}

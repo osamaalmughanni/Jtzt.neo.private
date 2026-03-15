@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS company_settings (
   edit_days_limit INTEGER NOT NULL DEFAULT 30,
   insert_days_limit INTEGER NOT NULL DEFAULT 30,
   country TEXT NOT NULL DEFAULT 'AT',
+  auto_break_after_minutes INTEGER NOT NULL DEFAULT 300,
+  auto_break_duration_minutes INTEGER NOT NULL DEFAULT 30,
   custom_fields_json TEXT NOT NULL DEFAULT '[]'
 );
 

@@ -86,8 +86,11 @@ export const api = {
     });
   },
 
-  getDashboard(token: string) {
-    return request<DashboardResponse>("/api/time/dashboard", {
+  getDashboard(token: string, targetUserId?: number) {
+    const params = new URLSearchParams();
+    if (targetUserId) params.set("targetUserId", String(targetUserId));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<DashboardResponse>(`/api/time/dashboard${suffix}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
   },

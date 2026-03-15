@@ -4,6 +4,7 @@ import { PencilSimple, Plus, Trash } from "phosphor-react";
 import type {
   CompanySettings,
   CompanyUserListItem,
+  DashboardSummary,
   TimeEntryView,
 } from "@shared/types/models";
 import {
@@ -20,6 +21,7 @@ import {
   FormSection,
 } from "@/components/form-layout";
 import { PageLabel } from "@/components/page-label";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -35,7 +37,23 @@ const defaultSettings: CompanySettings = {
   editDaysLimit: 30,
   insertDaysLimit: 30,
   country: "AT",
+  autoBreakAfterMinutes: 300,
+  autoBreakDurationMinutes: 30,
   customFields: [],
+};
+
+const defaultSummary: DashboardSummary = {
+  todayMinutes: 0,
+  weekMinutes: 0,
+  activeEntry: null,
+  recentEntries: [],
+  contractStats: {
+    currentContract: null,
+    totalBalanceMinutes: 0,
+    today: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+    week: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+    month: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+  },
 };
 
 function startOfDay(date: Date) {
@@ -103,12 +121,19 @@ function getEntrySupportText(entry: TimeEntryView, labelMap: Map<string, string>
   return customFields;
 }
 
+function formatBalanceMinutes(totalMinutes: number) {
+  const prefix = totalMinutes > 0 ? "+" : totalMinutes < 0 ? "-" : "";
+  return `${prefix}${formatMinutes(Math.abs(totalMinutes))}`;
+}
+
 export function DashboardPage() {
   const { companySession, companyIdentity } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
   const [entries, setEntries] = useState<TimeEntryView[]>([]);
+  const [summary, setSummary] = useState<DashboardSummary>(defaultSummary);
+  const [statsRange, setStatsRange] = useState<"day" | "week" | "month">("month");
   const [pendingDeleteEntry, setPendingDeleteEntry] =
     useState<TimeEntryView | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
@@ -162,6 +187,19 @@ export function DashboardPage() {
       new Map(settings.customFields.map((field) => [field.id, field.label])),
     [settings.customFields],
   );
+  const activeContractStats =
+    statsRange === "day"
+      ? summary.contractStats.today
+      : statsRange === "week"
+        ? summary.contractStats.week
+        : summary.contractStats.month;
+
+  function cycleStatsRange() {
+    setStatsRange((current) =>
+      current === "month" ? "week" : current === "week" ? "day" : "month",
+    );
+  }
+
   function updateContext(next: { userId?: number | null; day?: Date }) {
     const params = new URLSearchParams(searchParams);
     const userId = next.userId ?? effectiveUserId;
@@ -178,12 +216,16 @@ export function DashboardPage() {
     if (!companySession || !effectiveUserId) return;
 
     try {
-      const response = await api.listTimeEntries(companySession.token, {
-        from: formatLocalDay(startOfDay(selectedDate)),
-        to: formatLocalDay(endOfDay(selectedDate)),
-        targetUserId: canSwitchUser ? effectiveUserId : undefined,
-      });
-      setEntries(response.entries);
+      const [entriesResponse, dashboardResponse] = await Promise.all([
+        api.listTimeEntries(companySession.token, {
+          from: formatLocalDay(startOfDay(selectedDate)),
+          to: formatLocalDay(endOfDay(selectedDate)),
+          targetUserId: canSwitchUser ? effectiveUserId : undefined,
+        }),
+        api.getDashboard(companySession.token, canSwitchUser ? effectiveUserId : undefined),
+      ]);
+      setEntries(entriesResponse.entries);
+      setSummary(dashboardResponse.summary);
     } catch (error) {
       toast({
         title: "Could not load records",
@@ -310,38 +352,71 @@ export function DashboardPage() {
       ) : null}
 
       <div className="rounded-2xl border border-border bg-card p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <p className="text-sm text-muted-foreground">{selectedUserName}</p>
-            <Link
-              to={dayPickerHref}
-              className="text-left text-2xl font-semibold tracking-[-0.04em] text-foreground transition-opacity hover:opacity-70"
-            >
-              {selectedDate.toLocaleDateString(settings.locale, {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
-            </Link>
-            <p className="text-sm text-muted-foreground">
-              {formatMinutes(dayMinutes)} recorded
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {now.toLocaleTimeString(settings.locale, {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}
-            </p>
+        <div className="flex flex-col gap-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <p className="text-sm text-muted-foreground">{selectedUserName}</p>
+              <Link
+                to={dayPickerHref}
+                className="text-left text-2xl font-semibold tracking-[-0.04em] text-foreground transition-opacity hover:opacity-70"
+              >
+                {selectedDate.toLocaleDateString(settings.locale, {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </Link>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                <span>{formatMinutes(dayMinutes)} recorded</span>
+                {summary.contractStats.currentContract ? (
+                  <span>{summary.contractStats.currentContract.hoursPerWeek.toFixed(2)} h/week</span>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <p className="w-[5.5rem] text-right text-sm text-muted-foreground">
+                {now.toLocaleTimeString(settings.locale, {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </p>
+              <Button
+                variant={isToday(selectedDate) ? "secondary" : "outline"}
+                onClick={() => updateContext({ day: new Date() })}
+                type="button"
+              >
+                Today
+              </Button>
+            </div>
           </div>
-          <Button
-            variant={isToday(selectedDate) ? "secondary" : "outline"}
-            onClick={() => updateContext({ day: new Date() })}
-            type="button"
-          >
-            Today
-          </Button>
+
+          <div className="flex flex-col gap-3 border-t border-border/70 pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <p className="text-sm font-medium text-foreground">Balance</p>
+                <p className="truncate text-sm text-muted-foreground">
+                  Total {formatBalanceMinutes(summary.contractStats.totalBalanceMinutes)}
+                </p>
+              </div>
+              <Button variant="ghost" onClick={cycleStatsRange} type="button" className="h-8 px-3 text-xs">
+                {statsRange === "month" ? "Month" : statsRange === "week" ? "Week" : "Day"}
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="h-7 rounded-full px-2.5 text-xs font-medium">
+                Expected {formatMinutes(activeContractStats.expectedMinutes)}
+              </Badge>
+              <Badge variant="outline" className="h-7 rounded-full px-2.5 text-xs font-medium">
+                Recorded {formatMinutes(activeContractStats.recordedMinutes)}
+              </Badge>
+              <Badge variant="outline" className="h-7 rounded-full px-2.5 text-xs font-medium">
+                Balance {formatBalanceMinutes(activeContractStats.balanceMinutes)}
+              </Badge>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -155,6 +155,8 @@ const companyMigrations: Migration[] = [
           edit_days_limit INTEGER NOT NULL DEFAULT 30,
           insert_days_limit INTEGER NOT NULL DEFAULT 30,
           country TEXT NOT NULL DEFAULT 'AT',
+          auto_break_after_minutes INTEGER NOT NULL DEFAULT 300,
+          auto_break_duration_minutes INTEGER NOT NULL DEFAULT 30,
           custom_fields_json TEXT NOT NULL DEFAULT '[]'
         );
 
@@ -178,8 +180,10 @@ const companyMigrations: Migration[] = [
           edit_days_limit,
           insert_days_limit,
           country,
+          auto_break_after_minutes,
+          auto_break_duration_minutes,
           custom_fields_json
-        ) VALUES (1, 'EUR', 'en-GB', 'g', 1, 30, 30, 'AT', '[]')
+        ) VALUES (1, 'EUR', 'en-GB', 'g', 1, 30, 30, 'AT', 300, 30, '[]')
         ON CONFLICT(id) DO NOTHING`
       ).run();
     }
@@ -284,6 +288,13 @@ const companyMigrations: Migration[] = [
     id: "012_company_date_time_format",
     up(db) {
       addColumnIfMissing(db, "company_settings", "date_time_format TEXT NOT NULL DEFAULT 'g'", "date_time_format");
+    }
+  },
+  {
+    id: "013_company_auto_break_settings",
+    up(db) {
+      addColumnIfMissing(db, "company_settings", "auto_break_after_minutes INTEGER NOT NULL DEFAULT 300", "auto_break_after_minutes");
+      addColumnIfMissing(db, "company_settings", "auto_break_duration_minutes INTEGER NOT NULL DEFAULT 30", "auto_break_duration_minutes");
     }
   },
   {

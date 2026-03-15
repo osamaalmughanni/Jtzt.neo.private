@@ -98,6 +98,12 @@ function toFilterDay(isoValue?: string) {
 }
 
 export const timeService = {
+  getActiveEntry(databasePath: string, userId: number) {
+    const db = getCompanyDb(databasePath);
+    const activeEntry = getOpenEntry(db, userId);
+    return activeEntry ? mapTimeEntryView(activeEntry) : null;
+  },
+
   createManualEntry(databasePath: string, userId: number, input: CreateManualTimeEntryInput) {
     const normalized = normalizeManualEntryInput(input);
     const createdAt = new Date().toISOString();
@@ -285,15 +291,14 @@ export const timeService = {
   },
 
   getDashboard(databasePath: string, userId: number) {
-    const db = getCompanyDb(databasePath);
     const todayEntries = this.listEntries(databasePath, userId, { from: startOfDayIso(), to: startOfDayIso() });
     const weekEntries = this.listEntries(databasePath, userId, { from: startOfWeekIso() });
-    const activeEntry = getOpenEntry(db, userId);
+    const activeEntry = this.getActiveEntry(databasePath, userId);
 
     return {
       todayMinutes: todayEntries.filter((entry) => entry.entryType === "work").reduce((sum, entry) => sum + entry.durationMinutes, 0),
       weekMinutes: weekEntries.filter((entry) => entry.entryType === "work").reduce((sum, entry) => sum + entry.durationMinutes, 0),
-      activeEntry: activeEntry ? mapTimeEntryView(activeEntry) : null,
+      activeEntry,
       recentEntries: this.listEntries(databasePath, userId, {}).slice(0, 5)
     };
   },

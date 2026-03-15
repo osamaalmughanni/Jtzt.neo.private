@@ -12,14 +12,23 @@ const updateSettingsSchema = z.object({
   editDaysLimit: z.number().int().min(0).max(3650),
   insertDaysLimit: z.number().int().min(0).max(3650),
   country: z.string().length(2),
+  autoBreakAfterMinutes: z.number().int().min(0).max(1440),
+  autoBreakDurationMinutes: z.number().int().min(0).max(1440),
   customFields: z.array(
     z.object({
       id: z.string().min(1).max(100),
       label: z.string().min(1).max(100),
-      type: z.enum(["text", "number", "date", "boolean"]),
+      type: z.enum(["text", "number", "date", "boolean", "select"]),
       targets: z.array(z.enum(["work", "vacation", "sick_leave"])).min(1),
       required: z.boolean(),
-      placeholder: z.string().max(120).nullable()
+      placeholder: z.string().max(120).nullable(),
+      options: z.array(
+        z.object({
+          id: z.string().min(1).max(100),
+          label: z.string().min(1).max(100),
+          value: z.string().min(1).max(100),
+        }),
+      ).max(100),
     })
   ).max(100)
 });

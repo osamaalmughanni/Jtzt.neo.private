@@ -16,6 +16,8 @@ function getDefaultSettingsRow() {
     edit_days_limit: 30,
     insert_days_limit: 30,
     country: "AT",
+    auto_break_after_minutes: 300,
+    auto_break_duration_minutes: 30,
     custom_fields_json: "[]"
   };
 }
@@ -92,6 +94,8 @@ export const settingsService = {
         edit_days_limit = @editDaysLimit,
         insert_days_limit = @insertDaysLimit,
         country = @country,
+        auto_break_after_minutes = @autoBreakAfterMinutes,
+        auto_break_duration_minutes = @autoBreakDurationMinutes,
         custom_fields_json = @customFieldsJson
       WHERE id = 1`
     ).run({
