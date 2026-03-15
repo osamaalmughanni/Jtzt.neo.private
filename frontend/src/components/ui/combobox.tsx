@@ -51,14 +51,14 @@ export function Combobox({
   useEffect(() => {
     if (!open) return;
 
-    function handlePointerDown(event: MouseEvent) {
+    function handlePointerDown(event: PointerEvent) {
       if (!rootRef.current?.contains(event.target as Node)) {
         setOpen(false);
       }
     }
 
-    window.addEventListener("mousedown", handlePointerDown);
-    return () => window.removeEventListener("mousedown", handlePointerDown);
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, [open]);
 
   useEffect(() => {
@@ -118,7 +118,9 @@ export function Combobox({
                 key={option.value}
                 type="button"
                 className="flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm hover:bg-muted"
-                onClick={() => {
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
                   onValueChange(option.value);
                   setOpen(false);
                 }}
