@@ -10,8 +10,8 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
       autoCapitalize="none"
       spellCheck={false}
       className={cn(
-        "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        "flex h-10 w-full rounded-md border border-input bg-[hsl(var(--input))] px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "flex h-10 w-full rounded-md border border-input bg-[hsl(var(--input))] px-3 py-2 text-sm placeholder:text-muted-foreground",
+        "transition-[color,background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
         className
       )}
       ref={ref}
