@@ -25,6 +25,7 @@ import { toast } from "@/lib/toast";
 const defaultSettings: CompanySettings = {
   currency: "EUR",
   locale: "en-GB",
+  dateTimeFormat: "g",
   firstDayOfWeek: 1,
   editDaysLimit: 30,
   insertDaysLimit: 30,
@@ -181,7 +182,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const selectedDay = parseDayParam(searchParams.get("day"));
   const effectiveUserId = Number(searchParams.get("user") ?? companyIdentity?.user.id ?? 0) || companyIdentity?.user.id || 0;
   const backTo = `/dashboard?user=${effectiveUserId}&day=${selectedDay}`;
-  const usesDateRange = entryType === "vacation" || entryType === "sick_leave";
+  const usesDateRange = true;
   const activeCustomFields = useMemo(
     () => settings.customFields.filter((field) => field.targets.includes(entryType)),
     [entryType, settings.customFields],
@@ -189,7 +190,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
 
   const selectedUserName =
     users.find((user) => user.id === effectiveUserId)?.fullName ?? companyIdentity?.user.fullName ?? "User";
-  const resolvedEndDate = usesDateRange ? endDate : startDate;
+  const resolvedEndDate = endDate;
   const rangeHoliday = findHolidayInRange(holidays, startDate, resolvedEndDate);
   const insertLocked = !bypassDayLimits && mode === "create" && !isDayWithinLimit(startDate, settings.insertDaysLimit);
   const editLocked = !bypassDayLimits && mode === "edit" && !isDayWithinLimit(startDate, settings.editDaysLimit);
@@ -251,10 +252,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       setSickLeaveAttachment(null);
     }
 
-    if (!usesDateRange) {
-      setEndDate(startDate);
-    }
-  }, [entryType, startDate, usesDateRange]);
+  }, [entryType]);
 
   async function handleSave() {
     if (!companySession || !effectiveUserId) return;
@@ -279,9 +277,9 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
           ? {
               entryType,
               startDate,
-              endDate: null,
+              endDate: resolvedEndDate,
               startTime: combineDateAndTime(startDate, startTime),
-              endTime: combineDateAndTime(startDate, endTime),
+              endTime: combineDateAndTime(resolvedEndDate, endTime),
               notes,
               sickLeaveAttachment: null,
               customFieldValues,
@@ -289,7 +287,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
           : {
               entryType,
               startDate,
-              endDate: usesDateRange ? resolvedEndDate : null,
+              endDate: resolvedEndDate,
               startTime: null,
               endTime: null,
               notes,

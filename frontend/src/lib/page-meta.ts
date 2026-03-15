@@ -8,6 +8,7 @@ const pageMetaEntries: Array<[string, PageMeta]> = [
   ["/login", { titleKey: "page.signIn.title", descriptionKey: "page.signIn.description" }],
   ["/register", { titleKey: "page.register.title", descriptionKey: "page.register.description" }],
   ["/dashboard", { titleKey: "page.overview.title", descriptionKey: "page.overview.description" }],
+  ["/reports", { titleKey: "page.overview.title", descriptionKey: "page.overview.description" }],
   ["/users", { titleKey: "page.users.title", descriptionKey: "page.users.description" }],
   ["/menu", { titleKey: "page.pages.title" }],
   ["/settings", { titleKey: "page.settings.title", descriptionKey: "page.settings.description" }],
@@ -22,6 +23,8 @@ export function getPageMeta(pathname: string): PageMeta | null {
   if (
     pathname === "/menu" ||
     pathname === "/dashboard" ||
+    pathname === "/reports" ||
+    pathname === "/reports/preview" ||
     pathname === "/dashboard/day" ||
     pathname === "/users" ||
     pathname === "/settings"

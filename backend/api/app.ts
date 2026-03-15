@@ -3,6 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { authRoutes } from "./routes/auth-routes";
 import { timeRoutes } from "./routes/time-routes";
 import { adminRoutes } from "./routes/admin-routes";
+import { reportRoutes } from "./routes/report-routes";
 import { settingsRoutes } from "./routes/settings-routes";
 import { userRoutes } from "./routes/user-routes";
 
@@ -12,6 +13,7 @@ app.route("/api/auth", authRoutes);
 app.route("/api/time", timeRoutes);
 app.route("/api/users", userRoutes);
 app.route("/api/settings", settingsRoutes);
+app.route("/api/reports", reportRoutes);
 app.route("/api/admin", adminRoutes);
 
 app.get("/api/health", (c) => c.json({ ok: true }));

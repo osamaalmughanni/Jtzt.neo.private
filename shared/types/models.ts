@@ -131,6 +131,7 @@ export interface TimeEntryView {
 export interface CompanySettings {
   currency: string;
   locale: string;
+  dateTimeFormat: string;
   firstDayOfWeek: number;
   editDaysLimit: number;
   insertDaysLimit: number;

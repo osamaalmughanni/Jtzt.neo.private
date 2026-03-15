@@ -147,7 +147,7 @@ timeRoutes.post("/entry", async (c) => {
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Insert day limit reached" }, 403);
   }
-  if (body.entryType !== "work" && body.endDate && body.endDate < body.startDate) {
+  if (body.endDate && body.endDate < body.startDate) {
     return c.json({ error: "End date must be on or after start date" }, 400);
   }
 
@@ -247,7 +247,7 @@ timeRoutes.put("/entry", async (c) => {
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Edit day limit reached" }, 403);
   }
-  if (body.entryType !== "work" && body.endDate && body.endDate < body.startDate) {
+  if (body.endDate && body.endDate < body.startDate) {
     return c.json({ error: "End date must be on or after start date" }, 400);
   }
   if (body.entryType !== "sick_leave" && body.sickLeaveAttachment !== null) {

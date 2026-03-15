@@ -30,6 +30,7 @@ import { toast } from "@/lib/toast";
 const defaultSettings: CompanySettings = {
   currency: "EUR",
   locale: "en-GB",
+  dateTimeFormat: "g",
   firstDayOfWeek: 1,
   editDaysLimit: 30,
   insertDaysLimit: 30,

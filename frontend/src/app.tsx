@@ -12,6 +12,8 @@ import { LearnPage } from "@/pages/learn-page";
 import { LoginPage } from "@/pages/login-page";
 import { MenuPage } from "@/pages/menu-page";
 import { RegisterCompanyPage } from "@/pages/register-company-page";
+import { ReportsPage } from "@/pages/reports-page";
+import { ReportsPreviewPage } from "@/pages/reports-preview-page";
 import { SettingsMenuPage } from "@/pages/settings-menu-page";
 import { UsersPage } from "@/pages/users-page";
 import { UserEditorPage } from "@/pages/user-editor-page";
@@ -31,6 +33,8 @@ export function App() {
           <Route path="/dashboard/day" element={<DashboardDayPickerPage />} />
           <Route path="/dashboard/records/create" element={<DashboardRecordEditorPage mode="create" />} />
           <Route path="/dashboard/records/:entryId/edit" element={<DashboardRecordEditorPage mode="edit" />} />
+          <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/reports/preview" element={<ReportsPreviewPage />} />
           <Route element={<CompanyAdminGuard />}>
             <Route path="/users" element={<UsersPage />} />
             <Route path="/users/create" element={<UserEditorPage mode="create" />} />

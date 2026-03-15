@@ -7,6 +7,7 @@ import type { AppVariables } from "../context";
 const updateSettingsSchema = z.object({
   currency: z.string().min(3).max(3),
   locale: z.string().min(2).max(64),
+  dateTimeFormat: z.string().min(1).max(32),
   firstDayOfWeek: z.number().int().min(0).max(6),
   editDaysLimit: z.number().int().min(0).max(3650),
   insertDaysLimit: z.number().int().min(0).max(3650),

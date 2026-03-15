@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS company_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   currency TEXT NOT NULL DEFAULT 'EUR',
   locale TEXT NOT NULL DEFAULT 'en-GB',
+  date_time_format TEXT NOT NULL DEFAULT 'g',
   first_day_of_week INTEGER NOT NULL DEFAULT 1,
   edit_days_limit INTEGER NOT NULL DEFAULT 30,
   insert_days_limit INTEGER NOT NULL DEFAULT 30,

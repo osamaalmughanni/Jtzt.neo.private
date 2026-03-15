@@ -150,6 +150,7 @@ const companyMigrations: Migration[] = [
           id INTEGER PRIMARY KEY CHECK (id = 1),
           currency TEXT NOT NULL DEFAULT 'EUR',
           locale TEXT NOT NULL DEFAULT 'en-GB',
+          date_time_format TEXT NOT NULL DEFAULT 'g',
           first_day_of_week INTEGER NOT NULL DEFAULT 1,
           edit_days_limit INTEGER NOT NULL DEFAULT 30,
           insert_days_limit INTEGER NOT NULL DEFAULT 30,
@@ -172,12 +173,13 @@ const companyMigrations: Migration[] = [
           id,
           currency,
           locale,
+          date_time_format,
           first_day_of_week,
           edit_days_limit,
           insert_days_limit,
           country,
           custom_fields_json
-        ) VALUES (1, 'EUR', 'en-GB', 1, 30, 30, 'AT', '[]')
+        ) VALUES (1, 'EUR', 'en-GB', 'g', 1, 30, 30, 'AT', '[]')
         ON CONFLICT(id) DO NOTHING`
       ).run();
     }
@@ -276,6 +278,12 @@ const companyMigrations: Migration[] = [
     up(db) {
       addColumnIfMissing(db, "company_settings", "custom_fields_json TEXT NOT NULL DEFAULT '[]'", "custom_fields_json");
       addColumnIfMissing(db, "time_entries", "custom_field_values_json TEXT NOT NULL DEFAULT '{}'", "custom_field_values_json");
+    }
+  },
+  {
+    id: "012_company_date_time_format",
+    up(db) {
+      addColumnIfMissing(db, "company_settings", "date_time_format TEXT NOT NULL DEFAULT 'g'", "date_time_format");
     }
   },
   {

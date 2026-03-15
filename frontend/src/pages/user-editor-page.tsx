@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { formatLocalDay } from "@shared/utils/time";
 import type { UserContractInput } from "@shared/types/api";
 import type { UserRole } from "@shared/types/models";
 import { FormActions, FormFields, FormPage, FormPanel, FormSection, Field, FieldCombobox } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
+import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
@@ -77,6 +79,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   const { userId } = useParams();
   const navigate = useNavigate();
   const { companySession, companyIdentity } = useAuth();
+  const [settingsLocale, setSettingsLocale] = useState("en-GB");
   const [form, setForm] = useState<UserFormState>(createEmptyForm);
   const [loading, setLoading] = useState(mode === "edit");
   const [saving, setSaving] = useState(false);
@@ -90,6 +93,11 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     { value: "manager", label: "Manager" },
     { value: "employee", label: "Employee" }
   ];
+
+  useEffect(() => {
+    if (!companySession) return;
+    void api.getSettings(companySession.token).then((response) => setSettingsLocale(response.settings.locale)).catch(() => undefined);
+  }, [companySession]);
 
   useEffect(() => {
     if (mode !== "edit" || !companySession || !userId) return;
@@ -145,7 +153,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   }
 
   function addCurrentContract() {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = formatLocalDay(new Date());
     setForm((current) => ({
       ...current,
       contracts: [
@@ -343,7 +351,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
                           </div>
                           <Switch
                             checked={contract.endDate === null}
-                            onCheckedChange={(checked) => setContractField(index, "endDate", checked ? null : new Date().toISOString().slice(0, 10))}
+                            onCheckedChange={(checked) => setContractField(index, "endDate", checked ? null : formatLocalDay(new Date()))}
                           />
                         </div>
                       </Field>
@@ -358,16 +366,11 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
                         />
                       </Field>
                       <Field label="Start date">
-                        <Input type="date" placeholder="Start date" value={contract.startDate} onChange={(event) => setContractField(index, "startDate", event.target.value)} />
+                        <DateInput value={contract.startDate} locale={settingsLocale} onChange={(value) => setContractField(index, "startDate", value)} />
                       </Field>
                       {contract.endDate === null ? null : (
                         <Field label="End date">
-                          <Input
-                            type="date"
-                            placeholder="Contract end date"
-                            value={contract.endDate ?? ""}
-                            onChange={(event) => setContractField(index, "endDate", event.target.value || null)}
-                          />
+                          <DateInput value={contract.endDate ?? ""} locale={settingsLocale} onChange={(value) => setContractField(index, "endDate", value || null)} />
                         </Field>
                       )}
                       <Field label="Payment per hour">

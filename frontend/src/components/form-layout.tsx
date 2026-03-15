@@ -7,15 +7,15 @@ export function FormPage({ children, className }: { children: ReactNode; classNa
 }
 
 export function FormPanel({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("space-y-6 rounded-2xl border border-border bg-card p-5", className)}>{children}</div>;
+  return <div className={cn("flex flex-col gap-6 rounded-2xl border border-border bg-card p-5", className)}>{children}</div>;
 }
 
 export function FormSection({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("space-y-4", className)}>{children}</div>;
+  return <div className={cn("flex flex-col gap-4", className)}>{children}</div>;
 }
 
 export function FormFields({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("space-y-4", className)}>{children}</div>;
+  return <div className={cn("flex flex-col gap-4", className)}>{children}</div>;
 }
 
 export function FieldLabel({ children }: { children: ReactNode }) {

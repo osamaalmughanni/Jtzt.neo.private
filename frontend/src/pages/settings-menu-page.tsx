@@ -7,11 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { formatCompanyDateTime } from "@/lib/locale-format";
 import { toast } from "@/lib/toast";
 
 const defaultSettings: CompanySettings = {
   currency: "EUR",
   locale: "en-GB",
+  dateTimeFormat: "g",
   firstDayOfWeek: 1,
   editDaysLimit: 30,
   insertDaysLimit: 30,
@@ -47,11 +49,22 @@ function getLocalePreview(locale: string) {
   }
 }
 
+function getDateTimeFormatPreview(locale: string, dateTimeFormat: string) {
+  const sampleValue = "2026-03-15T13:21:00";
+
+  try {
+    return formatCompanyDateTime(sampleValue, locale, dateTimeFormat);
+  } catch {
+    return new Date(sampleValue).toLocaleString(locale || "en-GB");
+  }
+}
+
 export function SettingsMenuPage() {
   const { companySession } = useAuth();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [saving, setSaving] = useState(false);
   const preview = useMemo(() => getLocalePreview(settings.locale), [settings.locale]);
+  const dateTimePreview = useMemo(() => getDateTimeFormatPreview(settings.locale, settings.dateTimeFormat), [settings.dateTimeFormat, settings.locale]);
   const firstDayOptions = [
     { value: "0", label: "Sunday" },
     { value: "1", label: "Monday" },
@@ -151,6 +164,13 @@ export function SettingsMenuPage() {
                 items={firstDayOptions}
               />
             </Field>
+            <Field label="Date and time format">
+              <Input
+                placeholder="g"
+                value={settings.dateTimeFormat}
+                onChange={(event) => setSettings((current) => ({ ...current, dateTimeFormat: event.target.value }))}
+              />
+            </Field>
             <Field label="Edit days limit">
               <Input placeholder="30" type="number" min="0" value={settings.editDaysLimit} onChange={(event) => setSettings((current) => ({ ...current, editDaysLimit: Number(event.target.value) }))} />
             </Field>
@@ -180,6 +200,10 @@ export function SettingsMenuPage() {
             <div className="flex justify-between gap-3">
               <span className="text-muted-foreground">Time format</span>
               <span>{preview.timeFormat}</span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-muted-foreground">Date-time preview</span>
+              <span>{dateTimePreview}</span>
             </div>
           </div>
         </FormSection>

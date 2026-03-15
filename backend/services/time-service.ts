@@ -21,7 +21,7 @@ function normalizeRangeEndDate(startDate: string, endDate?: string | null) {
   return endDate && endDate >= startDate ? endDate : startDate;
 }
 
-function buildWorkTimestamps(startDate: string, startTime: string | null, endTime: string | null) {
+function buildWorkTimestamps(startDate: string, endDate: string | null | undefined, startTime: string | null, endTime: string | null) {
   if (!startTime || !endTime) {
     throw new HTTPException(400, { message: "Start time and end time are required" });
   }
@@ -35,9 +35,11 @@ function buildWorkTimestamps(startDate: string, startTime: string | null, endTim
     throw new HTTPException(400, { message: "End time must be after start time" });
   }
 
+  const resolvedEndDate = normalizeRangeEndDate(startDate, endDate);
+
   return {
     entryDate: startDate,
-    endDate: null,
+    endDate: resolvedEndDate === startDate ? null : resolvedEndDate,
     startTime,
     endTime
   };
@@ -60,7 +62,7 @@ function normalizeManualEntryInput(input: CreateManualTimeEntryInput | UpdateTim
   if (isWorkEntry(entryType)) {
     return {
       entryType,
-      ...buildWorkTimestamps(input.startDate, input.startTime, input.endTime),
+      ...buildWorkTimestamps(input.startDate, input.endDate, input.startTime, input.endTime),
       customFieldValues: input.customFieldValues
     };
   }

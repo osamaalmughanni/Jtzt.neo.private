@@ -15,6 +15,8 @@ import type {
   HolidayResponse,
   LoginResponse,
   RegisterCompanyInput,
+  ReportRequestInput,
+  ReportResponse,
   SettingsResponse,
   StartTimerInput,
   StopTimerInput,
@@ -204,6 +206,14 @@ export const api = {
     const params = new URLSearchParams({ country, year: String(year) });
     return request<HolidayResponse>(`/api/settings/holidays?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  previewReport(token: string, input: ReportRequestInput) {
+    return request<ReportResponse>("/api/reports/preview", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
     });
   },
 

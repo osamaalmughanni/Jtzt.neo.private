@@ -205,6 +205,7 @@ export interface SettingsResponse {
 export interface UpdateSettingsInput {
   currency: string;
   locale: string;
+  dateTimeFormat: string;
   firstDayOfWeek: number;
   editDaysLimit: number;
   insertDaysLimit: number;
@@ -215,6 +216,39 @@ export interface UpdateSettingsInput {
 export interface HolidayResponse {
   holidays: PublicHolidayRecord[];
   cached: boolean;
+}
+
+export interface ReportRequestInput {
+  startDate: string;
+  endDate: string;
+  userIds: number[];
+  columns: string[];
+  groupBy: string[];
+  totalsOnly: boolean;
+}
+
+export interface ReportColumnDefinition {
+  key: string;
+  label: string;
+  kind: "text" | "date" | "datetime" | "duration" | "currency" | "number";
+}
+
+export interface ReportResponse {
+  report: {
+    startDate: string;
+    endDate: string;
+    columns: ReportColumnDefinition[];
+    rows: Array<Record<string, string | number | null>>;
+    totals: {
+      entryCount: number;
+      durationMinutes: number;
+      cost: number;
+    };
+    locale: string;
+    dateTimeFormat: string;
+    currency: string;
+    grouped: boolean;
+  };
 }
 
 export interface ApiErrorPayload {

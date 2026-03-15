@@ -171,6 +171,7 @@ export function mapCompanySettings(row: any): CompanySettings {
   return {
     currency: row.currency,
     locale: row.locale,
+    dateTimeFormat: row.date_time_format ?? "g",
     firstDayOfWeek: row.first_day_of_week,
     editDaysLimit: row.edit_days_limit,
     insertDaysLimit: row.insert_days_limit,
