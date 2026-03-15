@@ -9,6 +9,7 @@ import type {
   TimeEntryType,
 } from "@shared/types/models";
 import { diffCalendarDays, formatLocalDay } from "@shared/utils/time";
+import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import { Field, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
@@ -171,6 +172,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, string | number | boolean>>({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(mode === "edit");
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [holidays, setHolidays] = useState<PublicHolidayRecord[]>([]);
 
   const canSwitchUser = canManageOtherUsers(companyIdentity?.user.role);
@@ -335,6 +338,28 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     }
   }
 
+  async function handleDelete() {
+    if (!companySession || mode !== "edit" || !entryId || !effectiveUserId) return;
+
+    try {
+      setDeleting(true);
+      await api.deleteTimeEntry(companySession.token, {
+        entryId: Number(entryId),
+        targetUserId: canSwitchUser ? effectiveUserId : undefined,
+      });
+      setConfirmDeleteOpen(false);
+      toast({ title: "Record deleted" });
+      navigate(backTo);
+    } catch (error) {
+      toast({
+        title: "Could not delete record",
+        description: error instanceof Error ? error.message : "Request failed",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
     setCustomFieldValues((current) => ({
       ...current,
@@ -351,6 +376,16 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
 
   return (
     <FormPage>
+      <AppConfirmDialog
+        open={confirmDeleteOpen}
+        onOpenChange={(open) => !deleting && setConfirmDeleteOpen(open)}
+        title="Delete record"
+        description={mode === "edit" ? "This record will be removed." : undefined}
+        confirmLabel="Delete"
+        destructive
+        confirming={deleting}
+        onConfirm={() => void handleDelete()}
+      />
       <PageBackAction to={backTo} label="Back to overview" />
       <PageLabel title={mode === "create" ? "Add entry" : "Edit entry"} description={`${selectedUserName} in overview context`} />
       <FormPanel>
@@ -497,12 +532,21 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
         </FormSection>
 
         <FormActions>
-          <Button variant="ghost" onClick={() => navigate(backTo)} type="button">
-            Cancel
-          </Button>
-          <Button disabled={saving || loading || Boolean(dayLimitError)} onClick={() => void handleSave()} type="button">
-            {saving ? "Saving..." : mode === "create" ? "Add entry" : "Save"}
-          </Button>
+          <div className="flex flex-1 justify-start">
+            {mode === "edit" ? (
+              <Button variant="ghost" disabled={deleting || saving} onClick={() => setConfirmDeleteOpen(true)} type="button">
+                {deleting ? "Deleting..." : "Delete"}
+              </Button>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => navigate(backTo)} type="button">
+              Cancel
+            </Button>
+            <Button disabled={saving || loading || deleting || Boolean(dayLimitError)} onClick={() => void handleSave()} type="button">
+              {saving ? "Saving..." : mode === "create" ? "Add entry" : "Save"}
+            </Button>
+          </div>
         </FormActions>
       </FormPanel>
     </FormPage>

@@ -366,20 +366,20 @@ export function DashboardPage() {
                   key={entry.id}
                   className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-border/70 last:border-b-0"
                 >
-                  <div className="grid min-w-0 grid-cols-[minmax(0,9rem)_auto_minmax(0,1fr)] items-center gap-2 sm:grid-cols-[minmax(0,10rem)_auto_minmax(0,1fr)]">
+                  <div className="grid min-w-0 grid-cols-[minmax(0,max-content)_minmax(0,max-content)_minmax(0,1fr)] items-center gap-2">
                     <div className="flex min-w-0 items-center gap-2">
                       <span
                         className={`h-2.5 w-2.5 shrink-0 rounded-full ${entryStateUi[entry.entryType].dotClassName}`}
                       />
-                      <div className="min-w-0 truncate text-sm font-medium text-foreground">
+                      <div className="min-w-0 truncate whitespace-nowrap text-sm font-medium leading-none text-foreground">
                         {getEntryHeadline(entry)}
                       </div>
                     </div>
-                    <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs font-medium text-foreground">
+                    <span className="min-w-0 truncate whitespace-nowrap rounded-full bg-muted px-2 py-1 text-xs font-medium leading-none text-foreground">
                       {getEntryMeta(entry, settings.locale)}
                     </span>
                     {supportText ? (
-                      <div className="min-w-0 truncate text-sm text-muted-foreground">
+                      <div className="min-w-0 truncate whitespace-nowrap text-sm leading-none text-muted-foreground">
                         {supportText}
                       </div>
                     ) : (
