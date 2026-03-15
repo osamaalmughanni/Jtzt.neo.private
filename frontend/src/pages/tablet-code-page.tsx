@@ -55,7 +55,7 @@ export function TabletCodePage() {
                 onChange={(event) => setCode(event.target.value)}
               />
             </div>
-            <Button disabled={submitting || code.trim().length < 6} onClick={() => void handleContinue()} type="button">
+            <Button disabled={submitting || code.trim().length === 0} onClick={() => void handleContinue()} type="button">
               {submitting ? "Checking..." : "Continue"}
             </Button>
           </CardContent>

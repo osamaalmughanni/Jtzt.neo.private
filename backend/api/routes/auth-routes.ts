@@ -12,11 +12,11 @@ const companyLoginSchema = z.object({
 });
 
 const tabletAccessSchema = z.object({
-  code: z.string().min(6).max(32)
+  code: z.string().min(1).max(64)
 });
 
 const tabletLoginSchema = z.object({
-  code: z.string().min(6).max(32),
+  code: z.string().min(1).max(64),
   pinCode: z.string().min(1).max(12)
 });
 
