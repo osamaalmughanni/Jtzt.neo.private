@@ -19,10 +19,9 @@ import {
 } from "@shared/utils/time";
 import { formatMinutes } from "@shared/utils/time";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
+import { CustomFieldInput } from "@/components/custom-field-input";
 import {
   Field,
-  FieldCombobox,
-  FieldSelect,
   FormPage,
   FormSection,
 } from "@/components/form-layout";
@@ -30,7 +29,6 @@ import { PageLabel } from "@/components/page-label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DateInput } from "@/components/ui/date-input";
 import { Combobox } from "@/components/ui/combobox";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -387,17 +385,10 @@ export function DashboardPage() {
     }
   }
 
-  function setTabletPunchFieldValue(field: CompanyCustomField, nextValue: string) {
+  function setTabletPunchFieldValue(field: CompanyCustomField, nextValue: string | number | boolean | undefined) {
     setTabletPunchValues((current) => ({
       ...current,
-      [field.id]:
-        field.type === "number"
-          ? nextValue === ""
-            ? ""
-            : Number(nextValue)
-          : field.type === "boolean"
-            ? nextValue === "true"
-            : nextValue
+      [field.id]: nextValue ?? ""
     }));
   }
 
@@ -473,39 +464,13 @@ export function DashboardPage() {
           <div className="flex flex-col gap-4">
             {requiredTabletWorkFields.map((field) => (
               <Field key={field.id} label={field.label}>
-                {field.type === "boolean" ? (
-                  <select
-                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-                    value={String(tabletPunchValues[field.id] ?? "")}
-                    onChange={(event) => setTabletPunchFieldValue(field, event.target.value)}
-                  >
-                    <option value="">{t("recordEditor.selectYesOrNo")}</option>
-                    <option value="true">{t("recordEditor.yes")}</option>
-                    <option value="false">{t("recordEditor.no")}</option>
-                  </select>
-                ) : field.type === "select" ? (
-                  <FieldCombobox
-                    label={field.label}
-                    value={typeof tabletPunchValues[field.id] === "string" ? String(tabletPunchValues[field.id]) : ""}
-                    onValueChange={(value) => setTabletPunchFieldValue(field, value)}
-                    items={field.options.map((option) => ({ value: option.value, label: option.label }))}
-                    placeholder={field.placeholder ?? field.label}
-                  />
-                ) : field.type === "date" ? (
-                  <DateInput
-                    value={typeof tabletPunchValues[field.id] === "string" ? String(tabletPunchValues[field.id]) : ""}
-                    locale={settings.locale}
-                    onChange={(value) => setTabletPunchFieldValue(field, value)}
-                  />
-                ) : (
-                  <input
-                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-                    type={field.type === "number" ? "number" : "text"}
-                    placeholder={field.placeholder ?? field.label}
-                    value={String(tabletPunchValues[field.id] ?? "")}
-                    onChange={(event) => setTabletPunchFieldValue(field, event.target.value)}
-                  />
-                )}
+                <CustomFieldInput
+                  field={field}
+                  value={tabletPunchValues[field.id]}
+                  locale={settings.locale}
+                  onValueChange={(value) => setTabletPunchFieldValue(field, value)}
+                  booleanLabels={{ yes: t("recordEditor.yes"), no: t("recordEditor.no") }}
+                />
               </Field>
             ))}
             <div className="flex justify-end gap-2">

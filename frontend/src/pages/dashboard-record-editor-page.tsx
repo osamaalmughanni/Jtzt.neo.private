@@ -18,12 +18,14 @@ import {
   toClockTimeValue,
 } from "@shared/utils/time";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
-import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
+import { CustomFieldInput } from "@/components/custom-field-input";
+import { EntryTypeTabs } from "@/components/entry-type-tabs";
+import { Field, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import { TimeInput } from "@/components/ui/time-input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
@@ -46,24 +48,6 @@ const defaultSettings: CompanySettings = {
   autoBreakDurationMinutes: 30,
   customFields: [],
 };
-
-const entryTypeTabs: Array<{ value: TimeEntryType; label: string }> = [
-  { value: "work", label: "Working" },
-  { value: "vacation", label: "Vacation" },
-  { value: "sick_leave", label: "Sick leave" },
-];
-
-function getEntryTypeTabClassName(entryType: TimeEntryType) {
-  if (entryType === "work") {
-    return "rounded-xl border border-transparent px-3 py-2 transition-colors data-[state=active]:border-emerald-500/30 data-[state=active]:bg-emerald-500/15 data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:border-emerald-400/30 dark:data-[state=active]:bg-emerald-400/15";
-  }
-
-  if (entryType === "vacation") {
-    return "rounded-xl border border-transparent px-3 py-2 transition-colors data-[state=active]:border-sky-500/30 data-[state=active]:bg-sky-500/15 data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:border-sky-400/30 dark:data-[state=active]:bg-sky-400/15";
-  }
-
-  return "rounded-xl border border-transparent px-3 py-2 transition-colors data-[state=active]:border-rose-500/30 data-[state=active]:bg-rose-500/15 data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:border-rose-400/30 dark:data-[state=active]:bg-rose-400/15";
-}
 
 function canManageOtherUsers(role: string | undefined) {
   return role === "admin" || role === "manager";
@@ -154,6 +138,75 @@ async function prepareSickLeaveAttachment(file: File): Promise<SickLeaveAttachme
 
 interface DashboardRecordEditorPageProps {
   mode: "create" | "edit";
+}
+
+function EntryScheduleFields({
+  locale,
+  timeZone,
+  entryType,
+  startDate,
+  endDate,
+  startTime,
+  endTime,
+  onStartDateChange,
+  onEndDateChange,
+  onStartTimeChange,
+  onEndTimeChange,
+  fromDateLabel,
+  toDateLabel,
+  startTimeLabel,
+  endTimeLabel,
+}: {
+  locale: string;
+  timeZone: string;
+  entryType: TimeEntryType;
+  startDate: string;
+  endDate: string;
+  startTime: string;
+  endTime: string;
+  onStartDateChange: (value: string) => void;
+  onEndDateChange: (value: string) => void;
+  onStartTimeChange: (value: string) => void;
+  onEndTimeChange: (value: string) => void;
+  fromDateLabel: string;
+  toDateLabel: string;
+  startTimeLabel: string;
+  endTimeLabel: string;
+}) {
+  return (
+    <>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+        <Field className="flex-1" label={fromDateLabel}>
+          <DateInput value={startDate} locale={locale} onChange={onStartDateChange} />
+        </Field>
+        <Field className="flex-1" label={toDateLabel}>
+          <DateInput value={endDate} locale={locale} onChange={onEndDateChange} />
+        </Field>
+      </div>
+      {entryType === "work" ? (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <Field className="flex-1" label={startTimeLabel}>
+            <TimeInput
+              value={startTime}
+              onChange={onStartTimeChange}
+              onNowClick={onStartTimeChange}
+              timeZone={timeZone}
+              locale={locale}
+            />
+          </Field>
+          <Field className="flex-1" label={endTimeLabel}>
+            <TimeInput
+              value={endTime}
+              onChange={onEndTimeChange}
+              onNowClick={onEndTimeChange}
+              timeZone={timeZone}
+              locale={locale}
+            />
+          </Field>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPageProps) {
@@ -388,17 +441,10 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     }
   }
 
-function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
+  function setCustomFieldValue(field: CompanyCustomField, nextValue: string | number | boolean | undefined) {
     setCustomFieldValues((current) => ({
       ...current,
-      [field.id]:
-        field.type === "number"
-          ? nextValue === ""
-            ? ""
-            : Number(nextValue)
-          : field.type === "boolean"
-            ? nextValue === "true"
-            : nextValue,
+      [field.id]: nextValue ?? "",
     }));
   }
 
@@ -425,104 +471,53 @@ function setCustomFieldValue(field: CompanyCustomField, nextValue: string) {
         ) : null}
 
         <FormSection>
-          <Tabs value={entryType} onValueChange={(value) => setEntryType(value as TimeEntryType)}>
-            <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-2xl bg-muted p-1">
-              {entryTypeTabs.map((tab) => (
-                <TabsTrigger
-                  key={tab.value}
-                  value={tab.value}
-                  className={getEntryTypeTabClassName(tab.value)}
-                >
-                  {tab.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+          <EntryTypeTabs value={entryType} onValueChange={setEntryType} items={entryTypeTabs} />
         </FormSection>
 
         <FormSection>
           <FormFields>
-            <Field label={usesDateRange ? t("recordEditor.fromDate") : t("recordEditor.fromDate")}>
-              <DateInput value={startDate} locale={settings.locale} onChange={setStartDate} />
-            </Field>
-            {usesDateRange ? (
-              <Field label={t("recordEditor.toDate")}>
-                <DateInput value={endDate} locale={settings.locale} onChange={setEndDate} />
-              </Field>
-            ) : null}
-            {entryType === "work" ? (
-              <>
-                <Field label={t("recordEditor.startTime")}>
-                  <TimeInput
-                    value={startTime}
-                    onChange={setStartTime}
-                    onNowClick={setStartTime}
-                    timeZone={settings.timeZone}
-                  />
-                </Field>
-                <Field label={t("recordEditor.endTime")}>
-                  <TimeInput
-                    value={endTime}
-                    onChange={setEndTime}
-                    onNowClick={setEndTime}
-                    timeZone={settings.timeZone}
-                  />
-                </Field>
-              </>
-            ) : null}
+            <EntryScheduleFields
+              locale={settings.locale}
+              timeZone={settings.timeZone}
+              entryType={entryType}
+              startDate={startDate}
+              endDate={usesDateRange ? endDate : startDate}
+              startTime={startTime}
+              endTime={endTime}
+              onStartDateChange={setStartDate}
+              onEndDateChange={setEndDate}
+              onStartTimeChange={setStartTime}
+              onEndTimeChange={setEndTime}
+              fromDateLabel={t("recordEditor.fromDate")}
+              toDateLabel={t("recordEditor.toDate")}
+              startTimeLabel={t("recordEditor.startTime")}
+              endTimeLabel={t("recordEditor.endTime")}
+            />
             {activeCustomFields.map((field) => (
               <Field key={field.id} label={field.label}>
-                {field.type === "boolean" ? (
-                  <select
-                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-                    value={String(customFieldValues[field.id] ?? "")}
-                    onChange={(event) => setCustomFieldValue(field, event.target.value)}
-                  >
-                    <option value="">{field.required ? t("recordEditor.selectYesOrNo") : t("recordEditor.optional")}</option>
-                    <option value="true">{t("recordEditor.yes")}</option>
-                    <option value="false">{t("recordEditor.no")}</option>
-                  </select>
-                ) : field.type === "select" ? (
-                  <FieldCombobox
-                    label={field.label}
-                    value={typeof customFieldValues[field.id] === "string" ? String(customFieldValues[field.id]) : ""}
-                    onValueChange={(value) => setCustomFieldValue(field, value)}
-                    items={field.options.map((option) => ({
-                      value: option.value,
-                      label: option.label,
-                    }))}
-                  />
-                ) : field.type === "date" ? (
-                  <DateInput
-                    value={typeof customFieldValues[field.id] === "string" ? String(customFieldValues[field.id]) : ""}
-                    locale={settings.locale}
-                    onChange={(value) => setCustomFieldValue(field, value)}
-                  />
-                ) : (
-                  <input
-                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-                    type={field.type === "number" ? "number" : "text"}
-                    placeholder={field.placeholder ?? field.label}
-                    value={String(customFieldValues[field.id] ?? "")}
-                    onChange={(event) => setCustomFieldValue(field, event.target.value)}
-                  />
-                )}
+                <CustomFieldInput
+                  field={field}
+                  value={customFieldValues[field.id]}
+                  locale={settings.locale}
+                  onValueChange={(value) => setCustomFieldValue(field, value)}
+                  booleanLabels={{ yes: t("recordEditor.yes"), no: t("recordEditor.no") }}
+                />
               </Field>
             ))}
             {entryType === "sick_leave" ? (
               <Field label={t("recordEditor.document")}>
                 <div className="flex flex-col gap-2">
-                  <input
-                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm text-foreground file:mr-3 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
+                  <Input
                     type="file"
+                    className="file:mr-3 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
                     accept="application/pdf,image/*"
                     capture="environment"
                     onChange={(event) => void handleAttachmentChange(event.target.files?.[0] ?? null)}
                   />
                   {sickLeaveAttachment ? (
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2">
                       <div className="min-w-0">
-                        <p className="truncate text-sm text-foreground">{sickLeaveAttachment.fileName}</p>
+                        <p className="truncate text-sm font-medium text-foreground">{sickLeaveAttachment.fileName}</p>
                         <p className="text-xs text-muted-foreground">{sickLeaveAttachment.mimeType}</p>
                       </div>
                       <div className="flex items-center gap-2">
