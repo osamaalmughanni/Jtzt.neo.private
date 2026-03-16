@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { getCustomFieldOptionLabel, normalizeReportDraftFields } from "@/lib/report-fields";
 import { createReportDraftId, loadReportDraft, saveReportDraft } from "@/lib/report-draft-storage";
 import { toast } from "@/lib/toast";
 
@@ -34,26 +35,6 @@ const defaultSettings: CompanySettings = {
 };
 
 type ReportOption = { value: string; label: string };
-
-function getCustomFieldOptionLabel(field: CompanySettings["customFields"][number]) {
-  const cleaned = field.label.trim();
-  if (
-    cleaned.length > 0 &&
-    cleaned !== field.id &&
-    !/^field[-_:]/i.test(cleaned) &&
-    !/^custom:/i.test(cleaned)
-  ) {
-    return cleaned;
-  }
-
-  return field.id
-    .replace(/^field[-_:]*/i, "")
-    .replace(/^custom:/i, "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
 
 type ReportDraft = ReportRequestInput & {
   periodPreset: string;
@@ -245,11 +226,15 @@ export function ReportsPage() {
       const allFieldValues = getAllFieldValues(baseFieldOptions, nextCustomFieldOptions);
       setSettings(settingsResponse.settings);
       setUsers(usersResponse.users);
-      setDraft((current) => ({
-        ...current,
-        userIds: current.userIds.length > 0 ? current.userIds : usersResponse.users.map((user) => user.id),
-        columns: savedDraft ? current.columns : allFieldValues,
-      }));
+      setDraft((current) => {
+        const normalized = normalizeReportDraftFields(current, settingsResponse.settings);
+        return {
+          ...current,
+          userIds: current.userIds.length > 0 ? current.userIds : usersResponse.users.map((user) => user.id),
+          columns: savedDraft ? normalized.columns : allFieldValues,
+          groupBy: normalized.groupBy,
+        };
+      });
     }).catch((error) =>
       toast({
         title: t("reports.loadFailed"),
@@ -342,8 +327,11 @@ export function ReportsPage() {
     }
 
     const draftId = searchParams.get("draft") ?? createReportDraftId();
+    const normalized = normalizeReportDraftFields(draft, settings);
     saveReportDraft(draftId, {
       ...draft,
+      columns: normalized.columns,
+      groupBy: normalized.groupBy,
       version: 1,
       savedAt: new Date().toISOString(),
     });

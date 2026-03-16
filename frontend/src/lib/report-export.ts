@@ -2,6 +2,7 @@ import rawLogo from "@shared/img/logo.svg?raw";
 import type { ReportResponse } from "@shared/types/api";
 import { formatMinutes } from "@shared/utils/time";
 import { formatCompanyDate, formatCompanyDateTime } from "@/lib/locale-format";
+import { resolveCustomFieldLabel } from "@/lib/report-fields";
 
 type TranslateFn = (key: string) => string;
 type CustomFieldLabels = Map<string, string>;
@@ -16,14 +17,6 @@ function getReportColumnLabel(column: ReportResponse["report"]["columns"][number
   return translated === nativeKey ? column.label : translated;
 }
 
-function humanizeFieldKey(value: string) {
-  return value
-    .replace(/^custom:/, "")
-    .replace(/^field-/, "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
 function getResolvedReportColumnLabel(
   column: ReportResponse["report"]["columns"][number],
   t: TranslateFn,
@@ -31,9 +24,10 @@ function getResolvedReportColumnLabel(
 ) {
   const nativeLabel = getReportColumnLabel(column, t);
   if (nativeLabel !== column.label) return nativeLabel;
-  const customLabel = customFieldLabels?.get(column.key) ?? customFieldLabels?.get(column.label);
+  const customLabel =
+    (customFieldLabels ? resolveCustomFieldLabel(column.key, customFieldLabels) : null) ??
+    (customFieldLabels ? resolveCustomFieldLabel(column.label, customFieldLabels) : null);
   if (customLabel) return customLabel;
-  if (column.label.startsWith("field-") || column.label.startsWith("custom:")) return humanizeFieldKey(column.label);
   return column.label;
 }
 
@@ -99,13 +93,8 @@ function toExportColumnName(
   t: TranslateFn,
   customFieldLabels?: CustomFieldLabels,
 ) {
-  const normalized = getResolvedReportColumnLabel(column, t, customFieldLabels)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-
-  return normalized || column.key.replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase();
+  const resolved = getResolvedReportColumnLabel(column, t, customFieldLabels).trim();
+  return resolved || column.key;
 }
 
 function getExcelCell(

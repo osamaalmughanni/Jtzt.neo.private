@@ -35,27 +35,29 @@ const baseColumns: Record<string, ReportColumnDefinition> = {
   month: { key: "month", label: "Month", kind: "text" }
 };
 
+function normalizeLookupValue(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function buildCustomFieldCanonicalKey(fieldId: string) {
+  return `custom:${fieldId}`;
+}
+
 function getCustomFieldKeyMatches(field: CompanyCustomField, key: string) {
-  return key === `custom:${field.id}` || key === field.id || key === `field-${field.id}`;
+  const normalizedKey = normalizeLookupValue(key);
+  return normalizedKey === normalizeLookupValue(buildCustomFieldCanonicalKey(field.id))
+    || normalizedKey === normalizeLookupValue(field.id)
+    || normalizedKey === normalizeLookupValue(`field-${field.id}`)
+    || normalizedKey === normalizeLookupValue(getCustomFieldLabel(field));
 }
 
 function getCustomFieldLabel(field: CompanyCustomField) {
   const cleaned = field.label.trim();
-  if (
-    cleaned.length > 0 &&
-    cleaned !== field.id &&
-    !/^field[-_:]/i.test(cleaned) &&
-    !/^custom:/i.test(cleaned)
-  ) {
+  if (cleaned.length > 0) {
     return cleaned;
   }
 
-  return field.id
-    .replace(/^field[-_:]*/i, "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return field.id;
 }
 
 function parseJsonRecord(value: string) {
@@ -96,7 +98,7 @@ function getColumnDefinition(key: string, customFields: CompanyCustomField[]): R
     const field = customFields.find((item) => getCustomFieldKeyMatches(item, key));
     if (!field) return null;
     return {
-      key,
+      key: buildCustomFieldCanonicalKey(field.id),
       label: getCustomFieldLabel(field),
       kind: field.type === "date" ? "date" : field.type === "number" ? "number" : "text"
     };
@@ -167,8 +169,7 @@ function getEntryValue(entry: ReportRow, key: string, customFields: CompanyCusto
     key.startsWith("field-") ||
     customFields.some((item) => getCustomFieldKeyMatches(item, key))
   ) {
-    const normalizedKey = key.startsWith("custom:") ? key : key.startsWith("field-") ? key : key;
-    const field = customFields.find((item) => getCustomFieldKeyMatches(item, normalizedKey));
+    const field = customFields.find((item) => getCustomFieldKeyMatches(item, key));
     const valueKey = field?.id ?? (key.startsWith("custom:") ? key.slice("custom:".length) : key);
     return getCustomFieldDisplayValue(field, customValues[valueKey] ?? null);
   }

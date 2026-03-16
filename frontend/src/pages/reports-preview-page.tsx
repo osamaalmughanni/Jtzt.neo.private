@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { formatCompanyDate, formatCompanyDateTime } from "@/lib/locale-format";
+import { buildCustomFieldLabelLookup, normalizeReportDraftFields, resolveCustomFieldLabel } from "@/lib/report-fields";
 import { exportReportExcel, exportReportPdf } from "@/lib/report-export";
 import { loadReportDraft } from "@/lib/report-draft-storage";
 import { toast } from "@/lib/toast";
@@ -32,28 +33,6 @@ function getReportColumnLabel(
   return translated === nativeKey ? column.label : translated;
 }
 
-function humanizeFieldKey(value: string) {
-  return value
-    .replace(/^custom:/, "")
-    .replace(/^field[-_:]*/i, "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function buildCustomFieldLabelKeys(fieldId: string) {
-  const normalizedId = fieldId.trim();
-  const withoutFieldPrefix = normalizedId.replace(/^field[-_:]*/i, "");
-
-  return Array.from(new Set([
-    normalizedId,
-    `custom:${normalizedId}`,
-    `field-${normalizedId}`,
-    withoutFieldPrefix,
-    `custom:${withoutFieldPrefix}`,
-    `field-${withoutFieldPrefix}`,
-  ]));
-}
-
 function getResolvedReportColumnLabel(
   column: ReportResponse["report"]["columns"][number],
   t: ReturnType<typeof useTranslation>["t"],
@@ -61,10 +40,19 @@ function getResolvedReportColumnLabel(
 ) {
   const nativeLabel = getReportColumnLabel(column, t);
   if (nativeLabel !== column.label) return nativeLabel;
-  const customLabel = customFieldLabels.get(column.key) ?? customFieldLabels.get(column.label);
+  const customLabel = resolveCustomFieldLabel(column.key, customFieldLabels) ?? resolveCustomFieldLabel(column.label, customFieldLabels);
   if (customLabel) return customLabel;
-  if (column.label.startsWith("field-") || column.label.startsWith("custom:")) return humanizeFieldKey(column.label);
   return column.label;
+}
+
+function resolveReportColumnsWithSettings(
+  columns: ReportResponse["report"]["columns"],
+  customFieldLabels: Map<string, string>,
+) {
+  return columns.map((column) => ({
+    ...column,
+    label: resolveCustomFieldLabel(column.key, customFieldLabels) ?? resolveCustomFieldLabel(column.label, customFieldLabels) ?? column.label,
+  }));
 }
 
 function translateEntryType(value: string, t: ReturnType<typeof useTranslation>["t"]) {
@@ -319,13 +307,20 @@ export function ReportsPreviewPage() {
     }
 
     setLoading(true);
-    void Promise.all([
-      api.previewReport(companySession.token, draft),
-      api.getSettings(companySession.token),
-    ])
-      .then(([reportResponse, settingsResponse]) => {
-        setReport(reportResponse.report);
+    void api
+      .getSettings(companySession.token)
+      .then(async (settingsResponse) => {
+        const normalizedDraft = {
+          ...draft,
+          ...normalizeReportDraftFields(draft, settingsResponse.settings),
+        };
+        const reportResponse = await api.previewReport(companySession.token, normalizedDraft);
         setSettings(settingsResponse.settings);
+        const customFieldLabels = buildCustomFieldLabelLookup(settingsResponse.settings.customFields);
+        setReport({
+          ...reportResponse.report,
+          columns: resolveReportColumnsWithSettings(reportResponse.report.columns, customFieldLabels),
+        });
       })
       .catch((error) =>
         toast({
@@ -340,16 +335,7 @@ export function ReportsPreviewPage() {
   const timelineDays = useMemo(() => (report ? listDays(report.startDate, report.endDate) : []), [report]);
   const timelineMonths = useMemo(() => buildTimelineMonthSegments(timelineDays, report?.locale ?? "en-GB"), [report?.locale, timelineDays]);
   const timelineWidth = timelineDays.length * TIMELINE_DAY_WIDTH;
-  const customFieldLabels = useMemo(() => {
-    const labels = new Map<string, string>();
-    for (const field of settings?.customFields ?? []) {
-      const label = field.label.trim() || humanizeFieldKey(field.id);
-      for (const key of buildCustomFieldLabelKeys(field.id)) {
-        labels.set(key, label);
-      }
-    }
-    return labels;
-  }, [settings?.customFields]);
+  const customFieldLabels = useMemo(() => buildCustomFieldLabelLookup(settings?.customFields ?? []), [settings?.customFields]);
   const resolvedColumns = useMemo(
     () =>
       report?.columns.map((column) => ({

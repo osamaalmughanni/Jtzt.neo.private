@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { PencilSimple, Play, Stop, Plus, Trash } from "phosphor-react";
+import { Circle, PencilSimple, Play, Plus, Stop, Trash } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import type {
   CompanyCustomField,
@@ -674,14 +674,22 @@ export function DashboardPage() {
                   key={entry.id}
                   className="flex items-center gap-3"
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-                    <span
-                      className={
-                        isActiveWorkEntry
-                          ? "h-2.5 w-2.5 shrink-0 animate-[pulse_1.2s_ease-in-out_infinite] rounded-full bg-destructive"
-                          : `h-2.5 w-2.5 shrink-0 rounded-full ${entryStateUi[entry.entryType].dotClassName}`
-                      }
-                    />
+                  <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center self-center">
+                      <Circle
+                        size={12}
+                        weight="fill"
+                        className={
+                          isActiveWorkEntry
+                            ? "animate-[pulse_1.2s_ease-in-out_infinite] text-destructive"
+                            : entry.entryType === "work"
+                              ? "text-emerald-500 dark:text-emerald-400"
+                              : entry.entryType === "vacation"
+                                ? "text-sky-500 dark:text-sky-400"
+                                : "text-rose-500 dark:text-rose-400"
+                        }
+                      />
+                    </span>
                     <div className="min-w-0 truncate whitespace-nowrap text-sm font-medium leading-tight text-foreground">
                       {entryHeadline}
                     </div>
