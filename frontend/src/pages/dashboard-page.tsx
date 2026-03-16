@@ -125,18 +125,18 @@ function getEntryMeta(entry: TimeEntryView, locale: string) {
 
 function getRecordEntryCircleClass(entryType: TimeEntryView["entryType"], isActiveWorkEntry: boolean) {
   if (isActiveWorkEntry) {
-    return "h-3 w-3 text-destructive sm:h-3.5 sm:w-3.5";
+    return "text-destructive";
   }
 
   if (entryType === "work") {
-    return "h-3 w-3 text-emerald-500 dark:text-emerald-400 sm:h-3.5 sm:w-3.5";
+    return "text-emerald-500 dark:text-emerald-400";
   }
 
   if (entryType === "vacation") {
-    return "h-3 w-3 text-sky-500 dark:text-sky-400 sm:h-3.5 sm:w-3.5";
+    return "text-sky-500 dark:text-sky-400";
   }
 
-  return "h-3 w-3 text-rose-500 dark:text-rose-400 sm:h-3.5 sm:w-3.5";
+  return "text-rose-500 dark:text-rose-400";
 }
 
 function getCustomFieldDisplayValue(field: CompanyCustomField | undefined, rawValue: string | number | boolean) {
@@ -691,8 +691,9 @@ export function DashboardPage() {
                   className="flex items-center gap-3"
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center self-center sm:h-[1.125rem] sm:w-[1.125rem]">
+                    <span className="flex h-4 w-4 flex-none items-center justify-center self-center tablet:h-[1.125rem] tablet:w-[1.125rem]">
                       <Circle
+                        size={14}
                         weight="fill"
                         className={getRecordEntryCircleClass(entry.entryType, isActiveWorkEntry)}
                       />
