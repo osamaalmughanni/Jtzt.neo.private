@@ -123,6 +123,22 @@ function getEntryMeta(entry: TimeEntryView, locale: string) {
   return `${formatCompanyDateRange(entry.entryDate, entry.endDate, locale)} • ${entry.effectiveDayCount} day${entry.effectiveDayCount === 1 ? "" : "s"}`;
 }
 
+function getRecordEntryCircleClass(entryType: TimeEntryView["entryType"], isActiveWorkEntry: boolean) {
+  if (isActiveWorkEntry) {
+    return "h-3 w-3 text-destructive sm:h-3.5 sm:w-3.5";
+  }
+
+  if (entryType === "work") {
+    return "h-3 w-3 text-emerald-500 dark:text-emerald-400 sm:h-3.5 sm:w-3.5";
+  }
+
+  if (entryType === "vacation") {
+    return "h-3 w-3 text-sky-500 dark:text-sky-400 sm:h-3.5 sm:w-3.5";
+  }
+
+  return "h-3 w-3 text-rose-500 dark:text-rose-400 sm:h-3.5 sm:w-3.5";
+}
+
 function getCustomFieldDisplayValue(field: CompanyCustomField | undefined, rawValue: string | number | boolean) {
   if (!field) {
     return String(rawValue);
@@ -675,19 +691,10 @@ export function DashboardPage() {
                   className="flex items-center gap-3"
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center self-center">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center self-center sm:h-[1.125rem] sm:w-[1.125rem]">
                       <Circle
-                        size={12}
                         weight="fill"
-                        className={
-                          isActiveWorkEntry
-                            ? "animate-[pulse_1.2s_ease-in-out_infinite] text-destructive"
-                            : entry.entryType === "work"
-                              ? "text-emerald-500 dark:text-emerald-400"
-                              : entry.entryType === "vacation"
-                                ? "text-sky-500 dark:text-sky-400"
-                                : "text-rose-500 dark:text-rose-400"
-                        }
+                        className={getRecordEntryCircleClass(entry.entryType, isActiveWorkEntry)}
                       />
                     </span>
                     <div className="min-w-0 truncate whitespace-nowrap text-sm font-medium leading-tight text-foreground">
