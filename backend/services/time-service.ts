@@ -2,9 +2,9 @@ import { HTTPException } from "hono/http-exception";
 import type { CreateManualTimeEntryInput, StartTimerInput, StopTimerInput, UpdateTimeEntryInput } from "../../shared/types/api";
 import type { TimeEntryType } from "../../shared/types/models";
 import { combineLocalDayAndTimeToIsoInTimeZone, formatLocalDay, getLocalNowSnapshot, parseLocalDay } from "../../shared/utils/time";
-import { getCompanyDb } from "../db/company-db";
 import { mapTimeEntryView } from "../db/mappers";
 import { settingsService } from "./settings-service";
+import type { AppDatabase } from "../runtime/types";
 
 function isWorkEntry(entryType: TimeEntryType) {
   return entryType === "work";
@@ -69,7 +69,7 @@ function buildNonWorkTimestamps(entryType: TimeEntryType, startDate: string, end
   };
 }
 
-function normalizeManualEntryInput(companyId: string, input: CreateManualTimeEntryInput | UpdateTimeEntryInput) {
+async function normalizeManualEntryInput(db: AppDatabase, companyId: string, input: CreateManualTimeEntryInput | UpdateTimeEntryInput) {
   const entryType = input.entryType;
   if (isWorkEntry(entryType)) {
     return {
@@ -81,20 +81,19 @@ function normalizeManualEntryInput(companyId: string, input: CreateManualTimeEnt
 
   return {
     entryType,
-    ...buildNonWorkTimestamps(entryType, input.startDate, input.endDate, settingsService.getSettings(companyId).timeZone),
+    ...buildNonWorkTimestamps(entryType, input.startDate, input.endDate, (await settingsService.getSettings(db, companyId)).timeZone),
     customFieldValues: input.customFieldValues
   };
 }
 
-function getOpenEntry(companyId: string, userId: number) {
-  return getCompanyDb(companyId)
-    .prepare(
-      `SELECT te.*
-       FROM time_entries te
-       WHERE te.company_id = ? AND te.user_id = ? AND te.entry_type = 'work' AND te.end_time IS NULL
-       ORDER BY te.start_time DESC LIMIT 1`
-    )
-    .get(companyId, userId) as
+async function getOpenEntry(db: AppDatabase, companyId: string, userId: number) {
+  return await db.first(
+    `SELECT te.*
+     FROM time_entries te
+     WHERE te.company_id = ? AND te.user_id = ? AND te.entry_type = 'work' AND te.end_time IS NULL
+     ORDER BY te.start_time DESC LIMIT 1`,
+    [companyId, userId]
+  ) as
     | {
         id: number;
         user_id: number;
@@ -127,17 +126,16 @@ function timestampsOverlap(startTime: string | null, endTime: string | null, oth
 }
 
 export const timeService = {
-  getActiveEntry(companyId: string, userId: number) {
-    const activeEntry = getOpenEntry(companyId, userId);
+  async getActiveEntry(db: AppDatabase, companyId: string, userId: number) {
+    const activeEntry = await getOpenEntry(db, companyId, userId);
     return activeEntry ? mapTimeEntryView(activeEntry) : null;
   },
 
-  createManualEntry(companyId: string, userId: number, input: CreateManualTimeEntryInput) {
-    const normalized = normalizeManualEntryInput(companyId, input);
+  async createManualEntry(db: AppDatabase, companyId: string, userId: number, input: CreateManualTimeEntryInput) {
+    const normalized = await normalizeManualEntryInput(db, companyId, input);
     const createdAt = new Date().toISOString();
-    const result = getCompanyDb(companyId)
-      .prepare(
-        `INSERT INTO time_entries (
+    const result = await db.run(
+      `INSERT INTO time_entries (
           company_id,
           user_id,
           entry_type,
@@ -151,65 +149,45 @@ export const timeService = {
           sick_leave_attachment_data_url,
           custom_field_values_json,
           created_at
-        ) VALUES (
-          @companyId,
-          @userId,
-          @entryType,
-          @entryDate,
-          @endDate,
-          @startTime,
-          @endTime,
-          @notes,
-          @sickLeaveAttachmentName,
-          @sickLeaveAttachmentMimeType,
-          @sickLeaveAttachmentDataUrl,
-          @customFieldValuesJson,
-          @createdAt
-        )`
-      )
-      .run({
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
         companyId,
         userId,
-        entryType: normalized.entryType,
-        entryDate: normalized.entryDate,
-        endDate: normalized.endDate,
-        startTime: normalized.startTime,
-        endTime: normalized.endTime,
-        notes: input.notes.trim() || null,
-        sickLeaveAttachmentName: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.fileName ?? null : null,
-        sickLeaveAttachmentMimeType: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.mimeType ?? null : null,
-        sickLeaveAttachmentDataUrl: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.dataUrl ?? null : null,
-        customFieldValuesJson: JSON.stringify(normalized.customFieldValues),
+        normalized.entryType,
+        normalized.entryDate,
+        normalized.endDate,
+        normalized.startTime,
+        normalized.endTime,
+        input.notes.trim() || null,
+        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.fileName ?? null : null,
+        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.mimeType ?? null : null,
+        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.dataUrl ?? null : null,
+        JSON.stringify(normalized.customFieldValues),
         createdAt
-      });
+      ]
+    );
 
-    return this.getEntryById(companyId, Number(result.lastInsertRowid));
+    return this.getEntryById(db, companyId, Number(result.lastRowId));
   },
 
-  hasEntryOnRange(companyId: string, userId: number, startDay: string, endDay: string, excludeEntryId?: number) {
-    const row = getCompanyDb(companyId)
-      .prepare(
-        `SELECT id
+  async hasEntryOnRange(db: AppDatabase, companyId: string, userId: number, startDay: string, endDay: string, excludeEntryId?: number) {
+    const row = await db.first(
+      `SELECT id
          FROM time_entries
-         WHERE company_id = @companyId
-           AND user_id = @userId
-           AND (@excludeEntryId IS NULL OR id != @excludeEntryId)
-           AND entry_date <= @endDay
-           AND COALESCE(end_date, entry_date) >= @startDay
-         LIMIT 1`
-      )
-      .get({
-        companyId,
-        userId,
-        startDay,
-        endDay,
-        excludeEntryId: excludeEntryId ?? null
-      });
+         WHERE company_id = ?
+           AND user_id = ?
+           AND (? IS NULL OR id != ?)
+           AND entry_date <= ?
+           AND COALESCE(end_date, entry_date) >= ?
+         LIMIT 1`,
+      [companyId, userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
+    );
 
     return Boolean(row);
   },
 
-  hasIntersectingEntry(
+  async hasIntersectingEntry(
+    db: AppDatabase,
     companyId: string,
     userId: number,
     candidate: {
@@ -221,31 +199,17 @@ export const timeService = {
     },
     excludeEntryId?: number
   ) {
-    const rows = getCompanyDb(companyId)
-      .prepare(
-        `SELECT id, entry_type, entry_date, end_date, start_time, end_time
+    const rows = await db.all(
+      `SELECT id, entry_type, entry_date, end_date, start_time, end_time
          FROM time_entries
-         WHERE company_id = @companyId
-           AND user_id = @userId
-           AND (@excludeEntryId IS NULL OR id != @excludeEntryId)
-           AND entry_date <= @endDay
-           AND COALESCE(end_date, entry_date) >= @startDay
-         ORDER BY entry_date ASC, start_time ASC`
-      )
-      .all({
-        companyId,
-        userId,
-        startDay: candidate.entryDate,
-        endDay: candidate.endDate ?? candidate.entryDate,
-        excludeEntryId: excludeEntryId ?? null
-      }) as Array<{
-        id: number;
-        entry_type: TimeEntryType;
-        entry_date: string;
-        end_date: string | null;
-        start_time: string | null;
-        end_time: string | null;
-      }>;
+         WHERE company_id = ?
+           AND user_id = ?
+           AND (? IS NULL OR id != ?)
+           AND entry_date <= ?
+           AND COALESCE(end_date, entry_date) >= ?
+         ORDER BY entry_date ASC, start_time ASC`,
+      [companyId, userId, excludeEntryId ?? null, excludeEntryId ?? null, candidate.endDate ?? candidate.entryDate, candidate.entryDate]
+    ) as Array<{ id: number; entry_type: TimeEntryType; entry_date: string; end_date: string | null; start_time: string | null; end_time: string | null }>;
 
     const candidateEndDay = candidate.endDate ?? candidate.entryDate;
     return rows.some((row) => {
@@ -262,15 +226,14 @@ export const timeService = {
     });
   },
 
-  startTimer(companyId: string, userId: number, input: StartTimerInput, snapshot = getLocalNowSnapshot()) {
-    const openEntry = getOpenEntry(companyId, userId);
+  async startTimer(db: AppDatabase, companyId: string, userId: number, input: StartTimerInput, snapshot = getLocalNowSnapshot()) {
+    const openEntry = await getOpenEntry(db, companyId, userId);
     if (openEntry) {
       throw new HTTPException(400, { message: "A timer is already running" });
     }
 
-    const result = getCompanyDb(companyId)
-      .prepare(
-        `INSERT INTO time_entries (
+    const result = await db.run(
+      `INSERT INTO time_entries (
           company_id,
           user_id,
           entry_type,
@@ -279,55 +242,34 @@ export const timeService = {
           notes,
           custom_field_values_json,
           created_at
-        ) VALUES (
-          @companyId,
-          @userId,
-          'work',
-          @entryDate,
-          @startTime,
-          @notes,
-          @customFieldValuesJson,
-          @createdAt
-        )`
-      )
-      .run({
-        companyId,
-        userId,
-        entryDate: snapshot.localDay,
-        startTime: snapshot.instantIso,
-        notes: input.notes?.trim() || null,
-        customFieldValuesJson: JSON.stringify(input.customFieldValues ?? {}),
-        createdAt: snapshot.instantIso
-      });
+        ) VALUES (?, ?, 'work', ?, ?, ?, ?, ?)`,
+      [companyId, userId, snapshot.localDay, snapshot.instantIso, input.notes?.trim() || null, JSON.stringify(input.customFieldValues ?? {}), snapshot.instantIso]
+    );
 
-    return this.getEntryById(companyId, Number(result.lastInsertRowid));
+    return this.getEntryById(db, companyId, Number(result.lastRowId));
   },
 
-  stopTimer(companyId: string, userId: number, input: StopTimerInput) {
-    const db = getCompanyDb(companyId);
+  async stopTimer(db: AppDatabase, companyId: string, userId: number, input: StopTimerInput) {
     const target = (
       input.entryId
-        ? db.prepare("SELECT id, user_id, end_time, entry_type FROM time_entries WHERE company_id = ? AND id = ?").get(companyId, input.entryId)
-        : getOpenEntry(companyId, userId)
+        ? await db.first("SELECT id, user_id, end_time, entry_type FROM time_entries WHERE company_id = ? AND id = ?", [companyId, input.entryId])
+        : await getOpenEntry(db, companyId, userId)
     ) as { id: number; user_id: number; end_time: string | null; entry_type: TimeEntryType } | undefined;
 
     if (!target || target.user_id !== userId || target.entry_type !== "work" || target.end_time) {
       throw new HTTPException(404, { message: "Open time entry not found" });
     }
 
-    db.prepare("UPDATE time_entries SET end_time = @endTime, notes = COALESCE(@notes, notes) WHERE company_id = @companyId AND id = @id").run({
-      companyId,
-      id: target.id,
-      endTime: new Date().toISOString(),
-      notes: input.notes?.trim() || null
-    });
+    await db.run(
+      "UPDATE time_entries SET end_time = ?, notes = COALESCE(?, notes) WHERE company_id = ? AND id = ?",
+      [new Date().toISOString(), input.notes?.trim() || null, companyId, target.id]
+    );
 
-    return this.getEntryById(companyId, target.id);
+    return this.getEntryById(db, companyId, target.id);
   },
 
-  updateEntry(companyId: string, userId: number, input: UpdateTimeEntryInput) {
-    const db = getCompanyDb(companyId);
-    const existing = db.prepare("SELECT id, user_id FROM time_entries WHERE company_id = ? AND id = ?").get(companyId, input.entryId) as
+  async updateEntry(db: AppDatabase, companyId: string, userId: number, input: UpdateTimeEntryInput) {
+    const existing = await db.first("SELECT id, user_id FROM time_entries WHERE company_id = ? AND id = ?", [companyId, input.entryId]) as
       | { id: number; user_id: number }
       | undefined;
 
@@ -335,44 +277,44 @@ export const timeService = {
       throw new HTTPException(404, { message: "Time entry not found" });
     }
 
-    const normalized = normalizeManualEntryInput(companyId, input);
-    db.prepare(
+    const normalized = await normalizeManualEntryInput(db, companyId, input);
+    await db.run(
       `UPDATE time_entries
        SET
-         user_id = @userId,
-         entry_type = @entryType,
-         entry_date = @entryDate,
-         end_date = @endDate,
-         start_time = @startTime,
-         end_time = @endTime,
-         notes = @notes,
-         sick_leave_attachment_name = @sickLeaveAttachmentName,
-         sick_leave_attachment_mime_type = @sickLeaveAttachmentMimeType,
-         sick_leave_attachment_data_url = @sickLeaveAttachmentDataUrl,
-         custom_field_values_json = @customFieldValuesJson
-       WHERE company_id = @companyId AND id = @id`
-    ).run({
-      companyId,
-      id: input.entryId,
-      userId,
-      entryType: normalized.entryType,
-      entryDate: normalized.entryDate,
-      endDate: normalized.endDate,
-      startTime: normalized.startTime,
-      endTime: normalized.endTime,
-      notes: input.notes.trim(),
-      sickLeaveAttachmentName: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.fileName ?? null : null,
-      sickLeaveAttachmentMimeType: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.mimeType ?? null : null,
-      sickLeaveAttachmentDataUrl: input.entryType === "sick_leave" ? input.sickLeaveAttachment?.dataUrl ?? null : null,
-      customFieldValuesJson: JSON.stringify(normalized.customFieldValues)
-    });
+         user_id = ?,
+         entry_type = ?,
+         entry_date = ?,
+         end_date = ?,
+         start_time = ?,
+         end_time = ?,
+         notes = ?,
+         sick_leave_attachment_name = ?,
+         sick_leave_attachment_mime_type = ?,
+         sick_leave_attachment_data_url = ?,
+         custom_field_values_json = ?
+       WHERE company_id = ? AND id = ?`,
+      [
+        userId,
+        normalized.entryType,
+        normalized.entryDate,
+        normalized.endDate,
+        normalized.startTime,
+        normalized.endTime,
+        input.notes.trim(),
+        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.fileName ?? null : null,
+        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.mimeType ?? null : null,
+        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.dataUrl ?? null : null,
+        JSON.stringify(normalized.customFieldValues),
+        companyId,
+        input.entryId
+      ]
+    );
 
-    return this.getEntryById(companyId, input.entryId);
+    return this.getEntryById(db, companyId, input.entryId);
   },
 
-  deleteEntry(companyId: string, userId: number, entryId: number) {
-    const db = getCompanyDb(companyId);
-    const existing = db.prepare("SELECT id, user_id FROM time_entries WHERE company_id = ? AND id = ?").get(companyId, entryId) as
+  async deleteEntry(db: AppDatabase, companyId: string, userId: number, entryId: number) {
+    const existing = await db.first("SELECT id, user_id FROM time_entries WHERE company_id = ? AND id = ?", [companyId, entryId]) as
       | { id: number; user_id: number }
       | undefined;
 
@@ -380,54 +322,46 @@ export const timeService = {
       throw new HTTPException(404, { message: "Time entry not found" });
     }
 
-    db.prepare("DELETE FROM time_entries WHERE company_id = ? AND id = ?").run(companyId, entryId);
+    await db.run("DELETE FROM time_entries WHERE company_id = ? AND id = ?", [companyId, entryId]);
   },
 
-  listEntries(companyId: string, userId: number, filters: { from?: string; to?: string }) {
+  async listEntries(db: AppDatabase, companyId: string, userId: number, filters: { from?: string; to?: string }) {
     const fromDay = toFilterDay(filters.from);
     const toDay = toFilterDay(filters.to);
-    const rows = getCompanyDb(companyId)
-      .prepare(
-        `SELECT te.*
+    const rows = await db.all(
+      `SELECT te.*
          FROM time_entries te
-         WHERE te.company_id = @companyId
-           AND te.user_id = @userId
-           AND (@fromDay IS NULL OR COALESCE(te.end_date, te.entry_date) >= @fromDay)
-           AND (@toDay IS NULL OR te.entry_date <= @toDay)
-         ORDER BY te.entry_date DESC, te.start_time DESC, te.id DESC`
-      )
-      .all({
-        companyId,
-        userId,
-        fromDay,
-        toDay
-      });
+         WHERE te.company_id = ?
+           AND te.user_id = ?
+           AND (? IS NULL OR COALESCE(te.end_date, te.entry_date) >= ?)
+           AND (? IS NULL OR te.entry_date <= ?)
+         ORDER BY te.entry_date DESC, te.start_time DESC, te.id DESC`,
+      [companyId, userId, fromDay, fromDay, toDay, toDay]
+    );
 
     return rows.map(mapTimeEntryView);
   },
 
-  getDashboard(companyId: string, userId: number) {
-    const todayDay = settingsService.getBusinessNowSnapshot(companyId).localDay;
+  async getDashboard(db: AppDatabase, companyId: string, userId: number) {
+    const todayDay = (await settingsService.getBusinessNowSnapshot(db, companyId)).localDay;
     const weekStart = parseLocalDay(todayDay) ?? new Date();
     const weekday = weekStart.getDay();
     const offset = weekday === 0 ? -6 : 1 - weekday;
     weekStart.setDate(weekStart.getDate() + offset);
-    const weekEntries = this.listEntries(companyId, userId, { from: formatLocalDay(weekStart) });
-    const todayEntries = this.listEntries(companyId, userId, { from: todayDay, to: todayDay });
-    const activeEntry = this.getActiveEntry(companyId, userId);
+    const weekEntries = await this.listEntries(db, companyId, userId, { from: formatLocalDay(weekStart) });
+    const todayEntries = await this.listEntries(db, companyId, userId, { from: todayDay, to: todayDay });
+    const activeEntry = await this.getActiveEntry(db, companyId, userId);
 
     return {
       todayMinutes: todayEntries.filter((entry) => entry.entryType === "work").reduce((sum, entry) => sum + entry.durationMinutes, 0),
       weekMinutes: weekEntries.filter((entry) => entry.entryType === "work").reduce((sum, entry) => sum + entry.durationMinutes, 0),
       activeEntry,
-      recentEntries: this.listEntries(companyId, userId, {}).slice(0, 5)
+      recentEntries: (await this.listEntries(db, companyId, userId, {})).slice(0, 5)
     };
   },
 
-  getEntryById(companyId: string, entryId: number) {
-    const row = getCompanyDb(companyId)
-      .prepare("SELECT te.* FROM time_entries te WHERE te.company_id = ? AND te.id = ?")
-      .get(companyId, entryId);
+  async getEntryById(db: AppDatabase, companyId: string, entryId: number) {
+    const row = await db.first("SELECT te.* FROM time_entries te WHERE te.company_id = ? AND te.id = ?", [companyId, entryId]);
 
     if (!row) {
       throw new HTTPException(404, { message: "Time entry not found" });

@@ -18,7 +18,7 @@ export const authMiddleware = createMiddleware<{
   };
 }>(async (c: Context, next: Next) => {
   const token = extractBearerToken(c.req.header("Authorization"));
-  c.set("session", verifySessionToken(token));
+  c.set("session", verifySessionToken(c.get("config"), token));
   await next();
 });
 

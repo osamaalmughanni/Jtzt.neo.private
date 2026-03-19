@@ -11,7 +11,18 @@
     "build:frontend": "vite build --config frontend/vite.config.ts",
     "build:backend": "tsc -p tsconfig.backend.json",
     "typecheck": "tsc -p tsconfig.backend.json --noEmit && tsc -p frontend/tsconfig.json --noEmit",
-    "test:time": "tsx tests/time-system.test.ts"
+    "test:time": "tsx tests/time-system.test.ts",
+    "cf:wrangler:version": "wrangler --version",
+    "cf:doctor": "python .deploy.py doctor",
+    "cf:prepare-dev": "python .deploy.py prepare-dev",
+    "cf:dev": "python .deploy.py prepare-dev && wrangler dev --config cloudflare/wrangler.jsonc",
+    "cf:write-config": "python .deploy.py write-config",
+    "cf:d1:create": "python .deploy.py d1-create",
+    "cf:migrate:local": "python .deploy.py migrate-local",
+    "cf:migrate:remote": "python .deploy.py migrate-remote",
+    "cf:set-secret": "python .deploy.py set-secret",
+    "cf:deploy": "python .deploy.py deploy",
+    "cf:full": "python .deploy.py full"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
@@ -57,6 +68,7 @@
     "tailwindcss": "^3.4.14",
     "tsx": "^4.19.1",
     "typescript": "^5.6.3",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "wrangler": "^4.75.0"
   }
 }

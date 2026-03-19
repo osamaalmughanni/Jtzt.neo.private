@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
 import { authService } from "../../services/auth-service";
-import type { AppVariables } from "../context";
+import type { AppRouteConfig } from "../context";
 
 const companyLoginSchema = z.object({
   companyName: z.string().min(1),
@@ -48,44 +48,44 @@ const companyRegistrationSchema = z
     }
 });
 
-export const authRoutes = new Hono<{ Variables: AppVariables }>();
+export const authRoutes = new Hono<AppRouteConfig>();
 
 authRoutes.post("/login", async (c) => {
   const body = companyLoginSchema.parse(await c.req.json());
-  return c.json({ session: authService.loginCompanyUser(body) });
+  return c.json({ session: await authService.loginCompanyUser(c.get("db"), c.get("config"), body) });
 });
 
 authRoutes.post("/register-company", async (c) => {
   const body = companyRegistrationSchema.parse(await c.req.json());
-  return c.json({ session: authService.registerCompany(body) });
+  return c.json({ session: await authService.registerCompany(c.get("db"), c.get("config"), body) });
 });
 
 authRoutes.post("/tablet/access", async (c) => {
   const body = tabletAccessSchema.parse(await c.req.json());
-  return c.json(authService.getTabletAccess(body));
+  return c.json(await authService.getTabletAccess(c.get("db"), body));
 });
 
 authRoutes.post("/tablet/login", async (c) => {
   const body = tabletLoginSchema.parse(await c.req.json());
-  return c.json({ session: authService.loginTabletUser(body) });
+  return c.json({ session: await authService.loginTabletUser(c.get("db"), c.get("config"), body) });
 });
 
-authRoutes.get("/company-security", (c) => {
+authRoutes.get("/company-security", async (c) => {
   const companyName = c.req.query("companyName");
   if (!companyName) {
     return c.json({ error: "Company name is required" }, 400);
   }
 
-  return c.json(authService.getCompanySecurity(companyName));
+  return c.json(await authService.getCompanySecurity(c.get("db"), companyName));
 });
 
-authRoutes.get("/me", authMiddleware, requireCompanyUser, (c) => {
+authRoutes.get("/me", authMiddleware, requireCompanyUser, async (c) => {
   const session = c.get("session");
   if (session.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
   return c.json(
-    authService.getCompanySessionDetails({
+    await authService.getCompanySessionDetails(c.get("db"), {
       companyId: session.companyId,
       userId: session.userId,
       accessMode: session.accessMode

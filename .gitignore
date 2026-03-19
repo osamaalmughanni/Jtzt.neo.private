@@ -18,6 +18,8 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+cloudflare/.dev.vars
+cloudflare/.dev.vars.*
 
 # Databases and runtime data
 data/*.db
@@ -30,6 +32,7 @@ data/*.sqlite3
 # Caches and temp files
 .cache/
 .temp/
+__pycache__/
 tmp/
 temp/
 *.tmp

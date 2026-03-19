@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { HTTPException } from "hono/http-exception";
-import { getSystemDb } from "../db/system-db";
 import { mapCompanyRecord } from "../db/mappers";
+import type { AppDatabase } from "../runtime/types";
 
 function normalizeTabletCode(code: string) {
   return code.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
@@ -27,45 +27,39 @@ function generateTabletCodeValue() {
 }
 
 export const systemService = {
-  listCompanies() {
-    const rows = getSystemDb()
-      .prepare("SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies ORDER BY created_at DESC")
-      .all();
+  async listCompanies(db: AppDatabase) {
+    const rows = await db.all("SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies ORDER BY created_at DESC");
     return rows.map(mapCompanyRecord);
   },
 
-  getCompanyById(companyId: string) {
-    const row = getSystemDb()
-      .prepare("SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies WHERE id = ?")
-      .get(companyId);
+  async getCompanyById(db: AppDatabase, companyId: string) {
+    const row = await db.first("SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies WHERE id = ?", [companyId]);
     return row ? mapCompanyRecord(row) : null;
   },
 
-  getCompanyByName(companyName: string) {
-    const row = getSystemDb()
-      .prepare("SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies WHERE lower(name) = lower(?)")
-      .get(companyName);
+  async getCompanyByName(db: AppDatabase, companyName: string) {
+    const row = await db.first("SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies WHERE lower(name) = lower(?)", [companyName]);
     return row ? mapCompanyRecord(row) : null;
   },
 
-  getCompanyByTabletCode(code: string) {
+  async getCompanyByTabletCode(db: AppDatabase, code: string) {
     const normalized = normalizeTabletCode(code);
     if (normalized.length === 0) {
       return null;
     }
 
-    const row = getSystemDb()
-      .prepare("SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies WHERE tablet_code_value = ? OR tablet_code_hash = ?")
-      .get(normalized, hashTabletCode(normalized));
+    const row = await db.first(
+      "SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies WHERE tablet_code_value = ? OR tablet_code_hash = ?",
+      [normalized, hashTabletCode(normalized)]
+    );
     return row ? mapCompanyRecord(row) : null;
   },
 
-  getCompanySecurity(companyName: string) {
-    const row = getSystemDb()
-      .prepare(
-        "SELECT name, encryption_enabled, encryption_kdf_algorithm, encryption_kdf_iterations, encryption_kdf_salt FROM companies WHERE lower(name) = lower(?)"
-      )
-      .get(companyName) as
+  async getCompanySecurity(db: AppDatabase, companyName: string) {
+    const row = await db.first(
+      "SELECT name, encryption_enabled, encryption_kdf_algorithm, encryption_kdf_iterations, encryption_kdf_salt FROM companies WHERE lower(name) = lower(?)",
+      [companyName]
+    ) as
       | {
           name: string;
           encryption_enabled: number;
@@ -88,10 +82,10 @@ export const systemService = {
     };
   },
 
-  getTabletCodeStatus(companyId: string) {
-    const row = getSystemDb()
-      .prepare("SELECT tablet_code_value, tablet_code_hash, tablet_code_updated_at FROM companies WHERE id = ?")
-      .get(companyId) as { tablet_code_value: string | null; tablet_code_hash: string | null; tablet_code_updated_at: string | null } | undefined;
+  async getTabletCodeStatus(db: AppDatabase, companyId: string) {
+    const row = await db.first("SELECT tablet_code_value, tablet_code_hash, tablet_code_updated_at FROM companies WHERE id = ?", [companyId]) as
+      | { tablet_code_value: string | null; tablet_code_hash: string | null; tablet_code_updated_at: string | null }
+      | null;
 
     if (!row) {
       return null;
@@ -104,7 +98,7 @@ export const systemService = {
     };
   },
 
-  setTabletCode(companyId: string, code: string) {
+  async setTabletCode(db: AppDatabase, companyId: string, code: string) {
     const normalized = normalizeTabletCode(code);
     if (normalized.length === 0 || normalized.length > 24) {
       throw new HTTPException(400, { message: "Tablet code must contain at least 1 letter or number and at most 24" });
@@ -112,9 +106,12 @@ export const systemService = {
 
     const updatedAt = new Date().toISOString();
     try {
-      getSystemDb()
-        .prepare("UPDATE companies SET tablet_code_value = ?, tablet_code_hash = ?, tablet_code_updated_at = ? WHERE id = ?")
-        .run(normalized, hashTabletCode(normalized), updatedAt, companyId);
+      await db.run("UPDATE companies SET tablet_code_value = ?, tablet_code_hash = ?, tablet_code_updated_at = ? WHERE id = ?", [
+        normalized,
+        hashTabletCode(normalized),
+        updatedAt,
+        companyId
+      ]);
     } catch (error) {
       if (error instanceof Error && (error.message.includes("idx_companies_tablet_code_value") || error.message.includes("UNIQUE constraint failed: companies.tablet_code_value"))) {
         throw new HTTPException(409, { message: "Tablet code is already used by another company" });
@@ -132,7 +129,7 @@ export const systemService = {
     };
   },
 
-  regenerateTabletCode(companyId: string) {
-    return systemService.setTabletCode(companyId, generateTabletCodeValue());
+  async regenerateTabletCode(db: AppDatabase, companyId: string) {
+    return systemService.setTabletCode(db, companyId, generateTabletCodeValue());
   }
 };

@@ -1,0 +1,27 @@
+{
+  "name": "jtzt-app",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-03-19",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "directory": "../dist/frontend",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "jtzt-app",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "./d1/migrations"
+    }
+  ],
+  "vars": {
+    "APP_ENV": "production",
+    "APP_VERSION": "dev",
+    "SESSION_TTL_HOURS": "12",
+    "ADMIN_BOOTSTRAP_USERNAME": "admin",
+    "ADMIN_BOOTSTRAP_PASSWORD": "admin123"
+  }
+}

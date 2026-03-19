@@ -4,7 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
 import { settingsService } from "../../services/settings-service";
 import { userService } from "../../services/user-service";
-import type { AppVariables } from "../context";
+import type { AppRouteConfig, AppVariables } from "../context";
 
 const contractSchema = z.object({
   id: z.number().int().positive().optional(),
@@ -38,7 +38,7 @@ const userIdParamsSchema = z.object({
   userId: z.coerce.number().int().positive()
 });
 
-export const userRoutes = new Hono<{ Variables: AppVariables }>();
+export const userRoutes = new Hono<AppRouteConfig>();
 
 userRoutes.use("*", authMiddleware, requireCompanyUser);
 
@@ -58,17 +58,17 @@ function ensureManagerOrAdmin(session: AppVariables["session"]) {
   }
 }
 
-userRoutes.get("/", (c) => {
+userRoutes.get("/", async (c) => {
   const session = c.get("session");
   if (session.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
   ensureManagerOrAdmin(session);
 
-  return c.json({ users: userService.listUsers(session.companyId) });
+  return c.json({ users: await userService.listUsers(c.get("db"), session.companyId) });
 });
 
-userRoutes.get("/:userId", (c) => {
+userRoutes.get("/:userId", async (c) => {
   const session = c.get("session");
   if (session.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
@@ -76,7 +76,7 @@ userRoutes.get("/:userId", (c) => {
   ensureAdmin(session);
 
   const params = userIdParamsSchema.parse(c.req.param());
-  return c.json({ user: userService.getUser(session.companyId, params.userId) });
+  return c.json({ user: await userService.getUser(c.get("db"), session.companyId, params.userId) });
 });
 
 userRoutes.post("/", async (c) => {
@@ -87,7 +87,12 @@ userRoutes.post("/", async (c) => {
   ensureAdmin(session);
 
   const body = createUserSchema.parse(await c.req.json());
-  const userId = userService.createUser(session.companyId, body, settingsService.getBusinessNowSnapshot(session.companyId).localDay);
+  const userId = await userService.createUser(
+    c.get("db"),
+    session.companyId,
+    body,
+    (await settingsService.getBusinessNowSnapshot(c.get("db"), session.companyId)).localDay
+  );
   return c.json({ success: true, userId });
 });
 
@@ -99,7 +104,12 @@ userRoutes.put("/", async (c) => {
   ensureAdmin(session);
 
   const body = updateUserSchema.parse(await c.req.json());
-  userService.updateUser(session.companyId, body, settingsService.getBusinessNowSnapshot(session.companyId).localDay);
+  await userService.updateUser(
+    c.get("db"),
+    session.companyId,
+    body,
+    (await settingsService.getBusinessNowSnapshot(c.get("db"), session.companyId)).localDay
+  );
   return c.json({ success: true });
 });
 
@@ -115,6 +125,6 @@ userRoutes.delete("/", async (c) => {
     throw new HTTPException(400, { message: "You cannot delete the active user" });
   }
 
-  userService.deleteUser(session.companyId, body.userId);
+  await userService.deleteUser(c.get("db"), session.companyId, body.userId);
   return c.json({ success: true });
 });

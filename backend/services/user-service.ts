@@ -1,23 +1,23 @@
 import bcrypt from "bcryptjs";
 import { HTTPException } from "hono/http-exception";
 import type { CreateUserInput, UpdateUserInput, UserContractInput } from "../../shared/types/api";
-import { getCompanyDb } from "../db/company-db";
 import { mapCompanyUserDetail, mapCompanyUserListItem, mapUserContract } from "../db/mappers";
+import type { AppDatabase } from "../runtime/types";
 
 function normalizeOptionalText(value: string | null) {
   const normalized = value?.trim() ?? "";
   return normalized.length > 0 ? normalized : null;
 }
 
-function ensureAdminRoleWillRemain(
-  db: ReturnType<typeof getCompanyDb>,
+async function ensureAdminRoleWillRemainAsync(
+  db: AppDatabase,
   companyId: string,
   userId: number,
   nextRole?: "employee" | "manager" | "admin"
 ) {
-  const target = db.prepare("SELECT role FROM users WHERE company_id = ? AND id = ?").get(companyId, userId) as
+  const target = await db.first("SELECT role FROM users WHERE company_id = ? AND id = ?", [companyId, userId]) as
     | { role: "employee" | "manager" | "admin" }
-    | undefined;
+    | null;
   if (!target) {
     throw new HTTPException(404, { message: "User not found" });
   }
@@ -27,16 +27,16 @@ function ensureAdminRoleWillRemain(
     return;
   }
 
-  const adminCountRow = db.prepare("SELECT COUNT(*) AS count FROM users WHERE company_id = ? AND role = 'admin'").get(companyId) as { count: number };
-  if (adminCountRow.count <= 1) {
+  const adminCountRow = await db.first("SELECT COUNT(*) AS count FROM users WHERE company_id = ? AND role = 'admin'", [companyId]) as { count: number } | null;
+  if ((adminCountRow?.count ?? 0) <= 1) {
     throw new HTTPException(400, { message: "At least one admin is required" });
   }
 }
 
-function ensureUniquePin(db: ReturnType<typeof getCompanyDb>, companyId: string, pinCode: string, userId?: number) {
+async function ensureUniquePin(db: AppDatabase, companyId: string, pinCode: string, userId?: number) {
   const existing = userId
-    ? db.prepare("SELECT id FROM users WHERE company_id = ? AND pin_code = ? AND id != ?").get(companyId, pinCode, userId)
-    : db.prepare("SELECT id FROM users WHERE company_id = ? AND pin_code = ?").get(companyId, pinCode);
+    ? await db.first("SELECT id FROM users WHERE company_id = ? AND pin_code = ? AND id != ?", [companyId, pinCode, userId])
+    : await db.first("SELECT id FROM users WHERE company_id = ? AND pin_code = ?", [companyId, pinCode]);
 
   if (existing) {
     throw new HTTPException(409, { message: "PIN code already exists" });
@@ -76,100 +76,84 @@ function validateContracts(contracts: UserContractInput[], todayDay: string) {
   }
 }
 
-function saveContracts(db: ReturnType<typeof getCompanyDb>, companyId: string, userId: number, contracts: UserContractInput[], todayDay: string) {
+async function saveContracts(db: AppDatabase, companyId: string, userId: number, contracts: UserContractInput[], todayDay: string) {
   validateContracts(contracts, todayDay);
-  db.prepare("DELETE FROM user_contracts WHERE company_id = ? AND user_id = ?").run(companyId, userId);
-
-  const insertContract = db.prepare(
-    `INSERT INTO user_contracts (
-      company_id,
-      user_id,
-      hours_per_week,
-      start_date,
-      end_date,
-      payment_per_hour,
-      created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`
-  );
-
-  for (const contract of contracts) {
-    insertContract.run(
-      companyId,
-      userId,
-      contract.hoursPerWeek,
-      contract.startDate,
-      contract.endDate,
-      contract.paymentPerHour,
-      new Date().toISOString()
-    );
-  }
+  const statements = [
+    { sql: "DELETE FROM user_contracts WHERE company_id = ? AND user_id = ?", params: [companyId, userId] as const },
+    ...contracts.map((contract) => ({
+      sql: `INSERT INTO user_contracts (
+        company_id,
+        user_id,
+        hours_per_week,
+        start_date,
+        end_date,
+        payment_per_hour,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      params: [companyId, userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, new Date().toISOString()]
+    }))
+  ];
+  await db.batch(statements.map((statement) => ({ sql: statement.sql, params: [...statement.params] })));
 }
 
 export const userService = {
-  listUsers(companyId: string) {
-    const rows = getCompanyDb(companyId)
-      .prepare("SELECT id, full_name, is_active FROM users WHERE company_id = ? ORDER BY full_name COLLATE NOCASE ASC")
-      .all(companyId);
+  async listUsers(db: AppDatabase, companyId: string) {
+    const rows = await db.all("SELECT id, full_name, is_active FROM users WHERE company_id = ? ORDER BY full_name COLLATE NOCASE ASC", [companyId]);
     return rows.map(mapCompanyUserListItem);
   },
 
-  getUser(companyId: string, userId: number) {
-    const db = getCompanyDb(companyId);
-    const row = db
-      .prepare(
-        `SELECT
-          id,
-          username,
-          full_name,
-          is_active,
-          role,
-          pin_code,
-          email,
-          created_at
-        FROM users
-        WHERE company_id = ? AND id = ?`
-      )
-      .get(companyId, userId);
+  async getUser(db: AppDatabase, companyId: string, userId: number) {
+    const row = await db.first(
+      `SELECT
+        id,
+        username,
+        full_name,
+        is_active,
+        role,
+        pin_code,
+        email,
+        created_at
+      FROM users
+      WHERE company_id = ? AND id = ?`,
+      [companyId, userId]
+    );
 
     if (!row) {
       throw new HTTPException(404, { message: "User not found" });
     }
 
-    const contracts = this.listUserContracts(companyId, userId);
+    const contracts = await this.listUserContracts(db, companyId, userId);
 
     return mapCompanyUserDetail(row, contracts);
   },
 
-  listUserContracts(companyId: string, userId: number) {
-    return getCompanyDb(companyId)
-      .prepare(
-        `SELECT
-          id,
-          user_id,
-          hours_per_week,
-          start_date,
-          end_date,
-          payment_per_hour,
-          created_at
-        FROM user_contracts
-        WHERE company_id = ? AND user_id = ?
-        ORDER BY start_date ASC`
-      )
-      .all(companyId, userId)
-      .map(mapUserContract);
+  async listUserContracts(db: AppDatabase, companyId: string, userId: number) {
+    return (await db.all(
+      `SELECT
+        id,
+        user_id,
+        hours_per_week,
+        start_date,
+        end_date,
+        payment_per_hour,
+        created_at
+      FROM user_contracts
+      WHERE company_id = ? AND user_id = ?
+      ORDER BY start_date ASC`,
+      [companyId, userId]
+    )).map(mapUserContract);
   },
 
-  createUser(companyId: string, input: CreateUserInput, todayDay: string) {
-    const db = getCompanyDb(companyId);
-    const existing = db.prepare("SELECT id FROM users WHERE company_id = ? AND username = ?").get(companyId, input.username.trim());
+  async createUser(db: AppDatabase, companyId: string, input: CreateUserInput, todayDay: string) {
+    const existing = await db.first("SELECT id FROM users WHERE company_id = ? AND username = ?", [companyId, input.username.trim()]);
     if (existing) {
       throw new HTTPException(409, { message: "Username already exists" });
     }
 
-    ensureUniquePin(db, companyId, input.pinCode);
+    await ensureUniquePin(db, companyId, input.pinCode);
     validateContracts(input.contracts, todayDay);
 
-    const result = db.prepare(
+    const result = await db.run(
       `INSERT INTO users (
         company_id,
         username,
@@ -180,90 +164,82 @@ export const userService = {
         pin_code,
         email,
         created_at
-      ) VALUES (
-        @companyId,
-        @username,
-        @fullName,
-        @passwordHash,
-        @role,
-        @isActive,
-        @pinCode,
-        @email,
-        @createdAt
-      )`
-    ).run({
-      companyId,
-      username: input.username.trim(),
-      fullName: input.fullName.trim(),
-      passwordHash: bcrypt.hashSync(input.password, 10),
-      role: input.role,
-      isActive: input.isActive ? 1 : 0,
-      pinCode: input.pinCode,
-      email: normalizeOptionalText(input.email),
-      createdAt: new Date().toISOString()
-    });
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        companyId,
+        input.username.trim(),
+        input.fullName.trim(),
+        bcrypt.hashSync(input.password, 10),
+        input.role,
+        input.isActive ? 1 : 0,
+        input.pinCode,
+        normalizeOptionalText(input.email),
+        new Date().toISOString()
+      ]
+    );
 
-    const userId = Number(result.lastInsertRowid);
-    saveContracts(db, companyId, userId, input.contracts, todayDay);
+    const userId = Number(result.lastRowId);
+    await saveContracts(db, companyId, userId, input.contracts, todayDay);
     return userId;
   },
 
-  updateUser(companyId: string, input: UpdateUserInput, todayDay: string) {
-    const db = getCompanyDb(companyId);
-    const existing = db.prepare("SELECT id FROM users WHERE company_id = ? AND id = ?").get(companyId, input.userId);
+  async updateUser(db: AppDatabase, companyId: string, input: UpdateUserInput, todayDay: string) {
+    const existing = await db.first("SELECT id FROM users WHERE company_id = ? AND id = ?", [companyId, input.userId]);
     if (!existing) {
       throw new HTTPException(404, { message: "User not found" });
     }
 
-    const duplicateUsername = db
-      .prepare("SELECT id FROM users WHERE company_id = ? AND username = ? AND id != ?")
-      .get(companyId, input.username.trim(), input.userId);
+    const duplicateUsername = await db.first("SELECT id FROM users WHERE company_id = ? AND username = ? AND id != ?", [
+      companyId,
+      input.username.trim(),
+      input.userId
+    ]);
     if (duplicateUsername) {
       throw new HTTPException(409, { message: "Username already exists" });
     }
 
-    ensureAdminRoleWillRemain(db, companyId, input.userId, input.role);
-    ensureUniquePin(db, companyId, input.pinCode, input.userId);
+    await ensureAdminRoleWillRemainAsync(db, companyId, input.userId, input.role);
+    await ensureUniquePin(db, companyId, input.pinCode, input.userId);
     validateContracts(input.contracts, todayDay);
 
     const passwordHash =
       input.password && input.password.trim().length > 0
         ? bcrypt.hashSync(input.password, 10)
         : (
-            db.prepare("SELECT password_hash FROM users WHERE company_id = ? AND id = ?").get(companyId, input.userId) as { password_hash: string }
+            await db.first("SELECT password_hash FROM users WHERE company_id = ? AND id = ?", [companyId, input.userId]) as { password_hash: string }
           ).password_hash;
 
-    db.prepare(
+    await db.run(
       `UPDATE users
-      SET
-        username = @username,
-        full_name = @fullName,
-        password_hash = @passwordHash,
-        role = @role,
-        is_active = @isActive,
-        pin_code = @pinCode,
-        email = @email
-      WHERE company_id = @companyId AND id = @userId`
-    ).run({
-      companyId,
-      userId: input.userId,
-      username: input.username.trim(),
-      fullName: input.fullName.trim(),
-      passwordHash,
-      role: input.role,
-      isActive: input.isActive ? 1 : 0,
-      pinCode: input.pinCode,
-      email: normalizeOptionalText(input.email)
-    });
+       SET
+         username = ?,
+         full_name = ?,
+         password_hash = ?,
+         role = ?,
+         is_active = ?,
+         pin_code = ?,
+         email = ?
+       WHERE company_id = ? AND id = ?`,
+      [
+        input.username.trim(),
+        input.fullName.trim(),
+        passwordHash,
+        input.role,
+        input.isActive ? 1 : 0,
+        input.pinCode,
+        normalizeOptionalText(input.email),
+        companyId,
+        input.userId
+      ]
+    );
 
-    saveContracts(db, companyId, input.userId, input.contracts, todayDay);
+    await saveContracts(db, companyId, input.userId, input.contracts, todayDay);
   },
 
-  deleteUser(companyId: string, userId: number) {
-    const db = getCompanyDb(companyId);
-    ensureAdminRoleWillRemain(db, companyId, userId);
-    db.prepare("DELETE FROM user_contracts WHERE company_id = ? AND user_id = ?").run(companyId, userId);
-    const result = db.prepare("DELETE FROM users WHERE company_id = ? AND id = ?").run(companyId, userId);
+  async deleteUser(db: AppDatabase, companyId: string, userId: number) {
+    await ensureAdminRoleWillRemainAsync(db, companyId, userId);
+    await db.run("DELETE FROM user_contracts WHERE company_id = ? AND user_id = ?", [companyId, userId]);
+    const result = await db.run("DELETE FROM users WHERE company_id = ? AND id = ?", [companyId, userId]);
     if (result.changes === 0) {
       throw new HTTPException(404, { message: "User not found" });
     }

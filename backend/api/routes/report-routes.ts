@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
 import { reportService } from "../../services/report-service";
-import type { AppVariables } from "../context";
+import type { AppRouteConfig, AppVariables } from "../context";
 
 const reportSchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -14,7 +14,7 @@ const reportSchema = z.object({
   totalsOnly: z.boolean()
 });
 
-export const reportRoutes = new Hono<{ Variables: AppVariables }>();
+export const reportRoutes = new Hono<AppRouteConfig>();
 
 reportRoutes.use("*", authMiddleware, requireCompanyUser);
 
@@ -36,5 +36,5 @@ reportRoutes.post("/preview", async (c) => {
 
   ensureManagerOrAdmin(session);
   const body = reportSchema.parse(await c.req.json());
-  return c.json({ report: await reportService.generate(session.companyId, body) });
+  return c.json({ report: await reportService.generate(c.get("db"), session.companyId, body) });
 });

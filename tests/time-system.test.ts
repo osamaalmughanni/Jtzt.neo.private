@@ -11,14 +11,16 @@ import {
 } from "../shared/utils/time.js";
 import { getCompanyDb } from "../backend/db/company-db.js";
 import { getSystemDb, setSystemDbPathForTests, closeSystemDb } from "../backend/db/system-db.js";
+import { createNodeDatabase } from "../backend/db/app-database.js";
 import { timeService } from "../backend/services/time-service.js";
 
-function verify(name: string, run: () => void) {
-  run();
+async function verify(name: string, run: () => void | Promise<void>) {
+  await run();
   process.stdout.write(`PASS ${name}\n`);
 }
 
-verify("getLocalNowSnapshot resolves business day in company timezone across UTC day boundary", () => {
+(async () => {
+await verify("getLocalNowSnapshot resolves business day in company timezone across UTC day boundary", () => {
   const instant = new Date("2026-03-15T23:07:04.000Z");
   const snapshot = getLocalNowSnapshot(instant, "Europe/Vienna");
 
@@ -26,7 +28,7 @@ verify("getLocalNowSnapshot resolves business day in company timezone across UTC
   assert.equal(formatDayInTimeZone(instant, "Asia/Shanghai"), "2026-03-16");
 });
 
-verify("combineLocalDayAndTimeToIsoInTimeZone round-trips exact wall time for distant timezones", () => {
+await verify("combineLocalDayAndTimeToIsoInTimeZone round-trips exact wall time for distant timezones", () => {
   const instant = combineLocalDayAndTimeToIsoInTimeZone("2026-03-16", "12:07", "Asia/Shanghai");
 
   assert.ok(instant);
@@ -34,17 +36,17 @@ verify("combineLocalDayAndTimeToIsoInTimeZone round-trips exact wall time for di
   assert.equal(formatDayInTimeZone(new Date(instant!), "Asia/Shanghai"), "2026-03-16");
 });
 
-verify("combineLocalDayAndTimeToIsoInTimeZone rejects DST gap wall times", () => {
+await verify("combineLocalDayAndTimeToIsoInTimeZone rejects DST gap wall times", () => {
   const instant = combineLocalDayAndTimeToIsoInTimeZone("2026-03-29", "02:30", "Europe/Vienna");
   assert.equal(instant, null);
 });
 
-verify("combineLocalDayAndTimeToIsoInTimeZone rejects ambiguous DST overlap wall times", () => {
+await verify("combineLocalDayAndTimeToIsoInTimeZone rejects ambiguous DST overlap wall times", () => {
   const instant = combineLocalDayAndTimeToIsoInTimeZone("2026-10-25", "02:30", "Europe/Vienna");
   assert.equal(instant, null);
 });
 
-verify("calendar day helpers stay deterministic", () => {
+await verify("calendar day helpers stay deterministic", () => {
   assert.equal(diffCalendarDays("2026-03-16", "2026-03-15"), 1);
   assert.deepEqual(enumerateLocalDays("2026-03-29", "2026-04-02"), [
     "2026-03-29",
@@ -55,7 +57,7 @@ verify("calendar day helpers stay deterministic", () => {
   ]);
 });
 
-verify("manual non-work entries store canonical UTC anchors instead of naive local timestamps", () => {
+await verify("manual non-work entries store canonical UTC anchors instead of naive local timestamps", async () => {
   const tempDir = mkdtempSync(join(process.cwd(), ".tmp-time-test-"));
   const databasePath = join(tempDir, "app.db");
   const companyId = "11111111-1111-1111-1111-111111111111";
@@ -78,7 +80,7 @@ verify("manual non-work entries store canonical UTC anchors instead of naive loc
     getCompanyDb(companyId);
     db.prepare("UPDATE company_settings SET time_zone = ? WHERE company_id = ?").run("Europe/Vienna", companyId);
 
-    const created = timeService.createManualEntry(companyId, 1, {
+    const created = await timeService.createManualEntry(createNodeDatabase(databasePath), companyId, 1, {
       entryType: "vacation",
       startDate: "2026-03-16",
       endDate: "2026-03-18",
@@ -106,3 +108,7 @@ verify("manual non-work entries store canonical UTC anchors instead of naive loc
 });
 
 process.stdout.write("Time system verification complete.\n");
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

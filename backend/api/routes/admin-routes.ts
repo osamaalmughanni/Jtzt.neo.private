@@ -4,7 +4,7 @@ import { authMiddleware, requireAdmin } from "../../auth/middleware";
 import { adminService } from "../../services/admin-service";
 import { authService } from "../../services/auth-service";
 import { systemService } from "../../services/system-service";
-import type { AppVariables } from "../context";
+import type { AppRouteConfig } from "../context";
 
 const adminLoginSchema = z.object({
   username: z.string().min(1),
@@ -29,11 +29,11 @@ const createCompanyAdminSchema = z.object({
   fullName: z.string().min(2)
 });
 
-export const adminRoutes = new Hono<{ Variables: AppVariables }>();
+export const adminRoutes = new Hono<AppRouteConfig>();
 
 adminRoutes.post("/auth/login", async (c) => {
   const body = adminLoginSchema.parse(await c.req.json());
-  return c.json({ session: authService.loginAdmin(body) });
+  return c.json({ session: await authService.loginAdmin(c.get("db"), c.get("config"), body) });
 });
 
 adminRoutes.use("*", authMiddleware, requireAdmin);
@@ -46,15 +46,13 @@ adminRoutes.get("/me", (c) => {
   return c.json({ username: session.username });
 });
 
-adminRoutes.get("/companies", () => {
-  return new Response(JSON.stringify({ companies: systemService.listCompanies() }), {
-    headers: { "Content-Type": "application/json" }
-  });
+adminRoutes.get("/companies", async (c) => {
+  return c.json({ companies: await systemService.listCompanies(c.get("db")) });
 });
 
 adminRoutes.post("/companies/create", async (c) => {
   const body = createCompanySchema.parse(await c.req.json());
-  return c.json({ company: adminService.createCompany(body) });
+  return c.json({ company: await adminService.createCompany(c.get("db"), body) });
 });
 
 adminRoutes.post("/companies/create/import", async (c) => {
@@ -70,24 +68,24 @@ adminRoutes.post("/companies/create/import", async (c) => {
   }
 
   const snapshot = JSON.parse(await file.text());
-  return c.json({ company: adminService.createCompanyFromSnapshot({ name, snapshot }) });
+  return c.json({ company: await adminService.createCompanyFromSnapshot(c.get("db"), { name, snapshot }) });
 });
 
 adminRoutes.post("/companies/delete", async (c) => {
   const body = deleteCompanySchema.parse(await c.req.json());
-  adminService.deleteCompany(body);
+  await adminService.deleteCompany(c.get("db"), body);
   return c.json({ success: true });
 });
 
-adminRoutes.get("/companies/:companyId/export", (c) => {
+adminRoutes.get("/companies/:companyId/export", async (c) => {
   const companyId = c.req.param("companyId");
-  const company = systemService.getCompanyById(companyId);
+  const company = await systemService.getCompanyById(c.get("db"), companyId);
   if (!company) {
     return c.json({ error: "Company not found" }, 404);
   }
 
   const fileName = `${company.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "company"}.snapshot.json`;
-  return c.body(JSON.stringify(adminService.exportCompanySnapshot(companyId), null, 2), 200, {
+  return c.body(JSON.stringify(await adminService.exportCompanySnapshot(c.get("db"), companyId), null, 2), 200, {
     "Content-Type": "application/json",
     "Content-Disposition": `attachment; filename="${fileName}"`
   });
@@ -95,7 +93,7 @@ adminRoutes.get("/companies/:companyId/export", (c) => {
 
 adminRoutes.post("/companies/:companyId/import", async (c) => {
   const companyId = c.req.param("companyId");
-  const company = systemService.getCompanyById(companyId);
+  const company = await systemService.getCompanyById(c.get("db"), companyId);
   if (!company) {
     return c.json({ error: "Company not found" }, 404);
   }
@@ -107,15 +105,15 @@ adminRoutes.post("/companies/:companyId/import", async (c) => {
   }
 
   const snapshot = JSON.parse(await file.text());
-  return c.json({ company: adminService.replaceCompanySnapshot({ companyId, snapshot }) });
+  return c.json({ company: await adminService.replaceCompanySnapshot(c.get("db"), { companyId, snapshot }) });
 });
 
 adminRoutes.post("/companies/admins/create", async (c) => {
   const body = createCompanyAdminSchema.parse(await c.req.json());
-  adminService.createCompanyAdmin(body);
+  await adminService.createCompanyAdmin(c.get("db"), body);
   return c.json({ success: true });
 });
 
-adminRoutes.get("/stats", (c) => {
-  return c.json({ stats: adminService.getSystemStats() });
+adminRoutes.get("/stats", async (c) => {
+  return c.json({ stats: await adminService.getSystemStats(c.get("db")) });
 });

@@ -4,7 +4,7 @@ import { normalizeTimeZone } from "../../../shared/utils/time";
 import { authMiddleware, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
 import { settingsService } from "../../services/settings-service";
 import { systemService } from "../../services/system-service";
-import type { AppVariables } from "../context";
+import type { AppRouteConfig } from "../context";
 
 const updateSettingsSchema = z.object({
   currency: z.string().min(3).max(3),
@@ -48,17 +48,17 @@ const tabletCodeSchema = z.object({
   code: z.string().min(1).max(64)
 });
 
-export const settingsRoutes = new Hono<{ Variables: AppVariables }>();
+export const settingsRoutes = new Hono<AppRouteConfig>();
 
 settingsRoutes.use("*", authMiddleware, requireCompanyUser);
 
-settingsRoutes.get("/", (c) => {
+settingsRoutes.get("/", async (c) => {
   const session = c.get("session");
   if (session.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
 
-  return c.json({ settings: settingsService.getSettings(session.companyId) });
+  return c.json({ settings: await settingsService.getSettings(c.get("db"), session.companyId) });
 });
 
 settingsRoutes.put("/", requireCompanyAdmin, async (c) => {
@@ -68,7 +68,7 @@ settingsRoutes.put("/", requireCompanyAdmin, async (c) => {
   }
 
   const body = updateSettingsSchema.parse(await c.req.json());
-  return c.json({ settings: settingsService.updateSettings(session.companyId, body) });
+  return c.json({ settings: await settingsService.updateSettings(c.get("db"), session.companyId, body) });
 });
 
 settingsRoutes.get("/holidays", async (c) => {
@@ -82,16 +82,16 @@ settingsRoutes.get("/holidays", async (c) => {
     year: c.req.query("year")
   });
 
-  return c.json(await settingsService.getPublicHolidays(session.companyId, query.country, query.year));
+  return c.json(await settingsService.getPublicHolidays(c.get("db"), session.companyId, query.country, query.year));
 });
 
-settingsRoutes.get("/tablet-code", requireCompanyAdmin, (c) => {
+settingsRoutes.get("/tablet-code", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
   if (session.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
 
-  const tabletCode = systemService.getTabletCodeStatus(session.companyId);
+  const tabletCode = await systemService.getTabletCodeStatus(c.get("db"), session.companyId);
   if (!tabletCode) {
     return c.json({ error: "Company not found" }, 404);
   }
@@ -106,15 +106,15 @@ settingsRoutes.put("/tablet-code", requireCompanyAdmin, async (c) => {
   }
 
   const body = tabletCodeSchema.parse(await c.req.json());
-  const response = systemService.setTabletCode(session.companyId, body.code);
+  const response = await systemService.setTabletCode(c.get("db"), session.companyId, body.code);
   return c.json(response);
 });
 
-settingsRoutes.post("/tablet-code/regenerate", requireCompanyAdmin, (c) => {
+settingsRoutes.post("/tablet-code/regenerate", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
   if (session.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
 
-  return c.json(systemService.regenerateTabletCode(session.companyId));
+  return c.json(await systemService.regenerateTabletCode(c.get("db"), session.companyId));
 });

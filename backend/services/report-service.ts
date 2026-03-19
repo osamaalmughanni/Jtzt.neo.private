@@ -1,9 +1,9 @@
 import { HTTPException } from "hono/http-exception";
 import type { ReportColumnDefinition, ReportRequestInput } from "../../shared/types/api";
 import type { CompanyCustomField, TimeEntryType, UserContract } from "../../shared/types/models";
-import { getCompanyDb } from "../db/company-db";
 import { calculateLeaveCompensation, calculateWorkCostAmount, calculateWorkDurationMinutes } from "./time-entry-metrics-service";
 import { settingsService } from "./settings-service";
+import type { AppDatabase } from "../runtime/types";
 
 type ReportRow = {
   id: number;
@@ -99,12 +99,12 @@ function getColumnDefinition(key: string, customFields: CompanyCustomField[]): R
   return baseColumns[key] ?? null;
 }
 
-async function getHolidaySet(companyId: string, country: string, startDate: string, endDate: string) {
+async function getHolidaySet(db: AppDatabase, companyId: string, country: string, startDate: string, endDate: string) {
   const holidaySet = new Set<string>();
   let year = Number(startDate.slice(0, 4));
   const finalYear = Number(endDate.slice(0, 4));
   while (year <= finalYear) {
-    const response = await settingsService.getPublicHolidays(companyId, country, year);
+    const response = await settingsService.getPublicHolidays(db, companyId, country, year);
     for (const holiday of response.holidays) {
       holidaySet.add(holiday.date);
     }
@@ -158,16 +158,15 @@ function normalizeReportValue(value: string | number | boolean | null) {
 }
 
 export const reportService = {
-  async generate(companyId: string, input: ReportRequestInput) {
+  async generate(db: AppDatabase, companyId: string, input: ReportRequestInput) {
     if (input.userIds.length === 0) throw new HTTPException(400, { message: "Select at least one user" });
     if (input.columns.length === 0) throw new HTTPException(400, { message: "Select at least one field" });
     if (input.endDate < input.startDate) throw new HTTPException(400, { message: "End date must be on or after start date" });
 
-    const settings = settingsService.getSettings(companyId);
-    const holidaySet = await getHolidaySet(companyId, settings.country, input.startDate, input.endDate);
-    const db = getCompanyDb(companyId);
+    const settings = await settingsService.getSettings(db, companyId);
+    const holidaySet = await getHolidaySet(db, companyId, settings.country, input.startDate, input.endDate);
     const placeholders = buildInClause(input.userIds);
-    const rows = db.prepare(
+    const rows = await db.all(
       `SELECT
         te.id,
         te.user_id,
@@ -187,9 +186,9 @@ export const reportService = {
          AND te.entry_date <= ?
          AND COALESCE(te.end_date, te.entry_date) >= ?
        ORDER BY u.full_name COLLATE NOCASE ASC, te.entry_date ASC, te.start_time ASC, te.id ASC`
-    ).all(companyId, ...input.userIds, input.endDate, input.startDate) as ReportRow[];
+    , [companyId, ...input.userIds, input.endDate, input.startDate]) as ReportRow[];
 
-    const contractRows = db.prepare(
+    const contractRows = await db.all(
       `SELECT
         id,
         user_id,
@@ -202,7 +201,7 @@ export const reportService = {
        WHERE company_id = ?
          AND user_id IN (${placeholders})
        ORDER BY start_date ASC`
-    ).all(companyId, ...input.userIds) as Array<{
+    , [companyId, ...input.userIds]) as Array<{
       id: number;
       user_id: number;
       hours_per_week: number;
