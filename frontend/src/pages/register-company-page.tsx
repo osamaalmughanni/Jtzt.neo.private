@@ -1,5 +1,5 @@
-import { AuthAccessPage } from "@/components/auth-access-page";
+import { Navigate } from "react-router-dom";
 
 export function RegisterCompanyPage() {
-  return <AuthAccessPage mode="register" />;
+  return <Navigate to="/?mode=register" replace />;
 }

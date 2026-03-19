@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 type PublicFooterMode = "auth" | "learn";
-type AuthFooterMode = "sign-in" | "register" | "admin";
+type AuthFooterMode = "sign-in" | "register" | "tablet" | "admin";
 
 interface AppFooterProps {
   context: "app" | "public";
@@ -20,7 +20,7 @@ export function AppFooter({ context, publicMode, authMode }: AppFooterProps) {
 
   if (context === "public") {
     const isLearn = publicMode === "learn";
-    const actionTo = isLearn ? "/register" : authMode === "admin" ? "/login" : "/admin/login";
+    const actionTo = isLearn ? "/?mode=register" : authMode === "admin" ? "/" : "/?mode=admin";
     const actionLabel = isLearn ? t("common.register") : authMode === "admin" ? t("common.signIn") : t("common.admin");
 
     return (
@@ -41,7 +41,7 @@ export function AppFooter({ context, publicMode, authMode }: AppFooterProps) {
             <LanguageSwitcher compact />
             <ThemeToggle compact />
             <Button asChild variant="ghost" size="sm" className="h-8 gap-1 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground">
-              <Link to="/tablet">
+              <Link to="/?mode=tablet">
                 Tablet
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>

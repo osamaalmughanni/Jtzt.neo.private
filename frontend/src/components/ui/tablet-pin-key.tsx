@@ -5,11 +5,12 @@ interface TabletPinKeyProps {
   children: ReactNode;
   muted?: boolean;
   onClick: () => void;
+  className?: string;
 }
 
-export function TabletPinKey({ children, muted = false, onClick }: TabletPinKeyProps) {
+export function TabletPinKey({ children, muted = false, onClick, className }: TabletPinKeyProps) {
   return (
-    <div className="relative aspect-square w-full">
+    <div className={cn("relative aspect-square w-full", className)}>
       <div
         className="absolute inset-0 rounded-full shadow-lg"
         style={{

@@ -12,10 +12,10 @@ export function AppFrame({
   centered?: boolean;
 }) {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-dvh bg-background text-foreground">
       <div
         className={cn(
-          `${APP_CONTENT_LANE_CLASSNAME} flex min-h-screen flex-col py-6 sm:py-8 lg:py-12`,
+          `${APP_CONTENT_LANE_CLASSNAME} flex min-h-dvh flex-col py-6 sm:py-8 lg:py-12`,
           centered && "justify-center",
           className
         )}

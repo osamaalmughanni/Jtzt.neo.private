@@ -381,6 +381,10 @@ export interface TabletLoginInput {
 
 export interface TabletAccessResponse {
   companyName: string;
+  encryptionEnabled: boolean;
+  kdfAlgorithm: "pbkdf2-sha256" | null;
+  kdfIterations: number | null;
+  kdfSalt: string | null;
 }
 
 export interface TabletCodeStatusResponse {

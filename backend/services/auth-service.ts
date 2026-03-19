@@ -136,8 +136,14 @@ export const authService = {
       throw new HTTPException(401, { message: "Invalid tablet code" });
     }
 
+    const security = await systemService.getCompanySecurity(db, company.name);
+
     return {
-      companyName: company.name
+      companyName: company.name,
+      encryptionEnabled: Boolean(security?.encryptionEnabled),
+      kdfAlgorithm: security?.kdfAlgorithm ?? null,
+      kdfIterations: security?.kdfIterations ?? null,
+      kdfSalt: security?.kdfSalt ?? null
     };
   },
 

@@ -7,16 +7,16 @@ import { cn } from "@/lib/utils";
 
 export function AppRouteLoadingState() {
   return (
-    <div className="flex min-h-screen w-full bg-background">
+    <div className="flex min-h-dvh w-full bg-background">
       <div className="mx-auto flex w-full max-w-6xl flex-1 px-5 py-6 sm:px-8">
-        <PageLoadingState className="flex-1" label="Loading session..." />
+        <PageLoadingState className="flex-1" />
       </div>
     </div>
   );
 }
 
 export function PageLoadingState({
-  label = "Loading...",
+  label,
   className,
   minHeightClassName = "min-h-[24rem]",
 }: {
@@ -26,12 +26,7 @@ export function PageLoadingState({
 }) {
   return (
     <div className={cn("flex w-full flex-1 items-center justify-center", minHeightClassName, className)}>
-      <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border/70 bg-background/80 shadow-sm backdrop-blur">
-          <Spinner className="size-5" />
-        </div>
-        <p className="text-sm text-muted-foreground">{label}</p>
-      </div>
+      <Spinner className="size-7" />
     </div>
   );
 }

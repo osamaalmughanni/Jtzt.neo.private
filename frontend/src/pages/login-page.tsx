@@ -1,5 +1,6 @@
-import { AuthAccessPage } from "@/components/auth-access-page";
+import { Navigate, useLocation } from "react-router-dom";
 
 export function LoginPage() {
-  return <AuthAccessPage mode="sign-in" />;
+  const location = useLocation();
+  return <Navigate to={`/${location.search}`} replace />;
 }

@@ -3,6 +3,9 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { Backspace, X } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import { Logo } from "@/components/logo";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { TabletPinKey } from "@/components/ui/tablet-pin-key";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -25,11 +28,14 @@ function getErrorMessage(error: unknown, t: (key: string) => string) {
 export function TabletPinPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { companySession, loginCompany, lockTablet, tabletAccess } = useAuth();
+  const { clearTabletAccess, companySession, loginCompany, lockTablet, tabletAccess } = useAuth();
   const [pinCode, setPinCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [errorState, setErrorState] = useState(false);
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const [signOutCode, setSignOutCode] = useState("");
+  const [signOutError, setSignOutError] = useState("");
 
   useEffect(() => {
     if (companySession?.accessMode === "tablet") {
@@ -75,7 +81,7 @@ export function TabletPinPage() {
   }, []);
 
   if (!tabletAccess) {
-    return <Navigate to="/tablet" replace />;
+    return <Navigate to="/?mode=tablet" replace />;
   }
 
   const activeTabletAccess = tabletAccess;
@@ -88,7 +94,7 @@ export function TabletPinPage() {
       setErrorMessage("");
       const response = await api.tabletLogin({
         code: activeTabletAccess.code,
-        pinCode: nextPinCode
+        pinCode: nextPinCode,
       });
       await loginCompany(response.session);
       navigate("/dashboard", { replace: true });
@@ -125,6 +131,20 @@ export function TabletPinPage() {
       }
       return nextValue;
     });
+  }
+
+  function handleSignOutConfirm() {
+    const normalizedValue = signOutCode.trim();
+    if (normalizedValue !== activeTabletAccess.code.trim()) {
+      setSignOutError("Tablet code does not match");
+      return;
+    }
+
+    clearTabletAccess();
+    setSignOutCode("");
+    setSignOutError("");
+    setSignOutOpen(false);
+    navigate("/?mode=tablet", { replace: true });
   }
 
   return (
@@ -175,49 +195,91 @@ export function TabletPinPage() {
 
             <div className="grid min-h-0 w-full place-items-center self-stretch overflow-hidden py-4 sm:py-4">
               <div
-                className="mx-auto grid h-full max-h-full w-full content-center justify-items-center gap-3 sm:gap-4"
+                className="mx-auto grid w-full grid-cols-3 gap-3 p-3 sm:gap-4 sm:p-4"
                 style={{
                   width: keypadWidth,
-                  gridTemplateRows: "repeat(4, minmax(0, 1fr))"
                 }}
               >
-                {keypadRows.map((row) => (
-                  <div key={row.join("-")} className="grid h-full min-h-0 w-full grid-cols-3 justify-items-center gap-3 sm:gap-4">
-                    {row.map((key) => {
-                      if (key === "back") {
-                        return (
-                          <TabletPinKey key={key} onClick={() => handleKeyPress("back")}>
-                            <Backspace size={30} weight="bold" />
-                          </TabletPinKey>
-                        );
-                      }
+                {keypadRows.flat().map((key) => {
+                  if (key === "back") {
+                    return (
+                      <TabletPinKey key={key} onClick={() => handleKeyPress("back")}>
+                        <Backspace size={30} weight="bold" />
+                      </TabletPinKey>
+                    );
+                  }
 
-                      if (key === "clear") {
-                        return (
-                          <TabletPinKey key={key} muted onClick={() => handleKeyPress("clear")}>
-                            <X size={28} weight="bold" />
-                          </TabletPinKey>
-                        );
-                      }
+                  if (key === "clear") {
+                    return (
+                      <TabletPinKey key={key} muted onClick={() => handleKeyPress("clear")}>
+                        <X size={28} weight="bold" />
+                      </TabletPinKey>
+                    );
+                  }
 
-                      return (
-                        <TabletPinKey key={key} onClick={() => handleKeyPress(key)}>
-                          {key}
-                        </TabletPinKey>
-                      );
-                    })}
-                  </div>
-                ))}
+                  return (
+                    <TabletPinKey key={key} onClick={() => handleKeyPress(key)}>
+                      {key}
+                    </TabletPinKey>
+                  );
+                })}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="flex w-full justify-center px-1 pt-3 pb-1 text-xs text-muted-foreground">
+        <div className="flex w-full items-center justify-center gap-3 px-1 pt-3 pb-1 text-xs text-muted-foreground">
           <p className="whitespace-nowrap">jtzt.com</p>
+          <span className="h-1 w-1 rounded-full bg-muted-foreground/40" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              setSignOutCode("");
+              setSignOutError("");
+              setSignOutOpen(true);
+            }}
+          >
+            Sign out
+          </Button>
         </div>
         </div>
       </div>
+
+      <Dialog open={signOutOpen} onOpenChange={setSignOutOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Sign out of tablet mode</DialogTitle>
+            <DialogDescription>
+              Enter the tablet code to confirm sign out.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <Input
+              autoFocus
+              value={signOutCode}
+              onChange={(event) => {
+                setSignOutCode(event.target.value);
+                if (signOutError) {
+                  setSignOutError("");
+                }
+              }}
+              placeholder="Tablet code"
+            />
+            {signOutError ? <p className="text-sm text-destructive">{signOutError}</p> : null}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setSignOutOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleSignOutConfirm}>
+                Sign out
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

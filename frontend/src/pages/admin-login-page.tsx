@@ -1,5 +1,5 @@
-import { AuthAccessPage } from "@/components/auth-access-page";
+import { Navigate } from "react-router-dom";
 
 export function AdminLoginPage() {
-  return <AuthAccessPage mode="admin" />;
+  return <Navigate to="/?mode=admin" replace />;
 }

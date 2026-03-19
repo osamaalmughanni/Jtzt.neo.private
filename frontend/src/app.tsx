@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { AuthAccessPage } from "@/components/auth-access-page";
 import { AppShell } from "@/components/app-shell";
 import { AppRouteLoadingState } from "@/components/page-load-state";
 import { AdminGuard, CompanyAdminGuard, CompanyFullAccessGuard, CompanyGuard } from "@/components/route-guards";
@@ -23,29 +24,23 @@ import { FieldsPage } from "@/pages/fields-page";
 import { UsersPage } from "@/pages/users-page";
 import { UserEditorPage } from "@/pages/user-editor-page";
 
-function SessionAwareHomeRedirect() {
+function PublicEntryRoute() {
   const { loading, adminSession, companySession } = useAuth();
   if (loading) return <AppRouteLoadingState />;
   if (adminSession) return <Navigate to="/admin/menu" replace />;
   if (companySession) {
     return <Navigate to={companySession.accessMode === "tablet" ? "/dashboard" : "/menu"} replace />;
   }
-  return <Navigate to="/login" replace />;
-}
-
-function AdminRootRedirect() {
-  const { loading, adminSession } = useAuth();
-  if (loading) return <AppRouteLoadingState />;
-  return <Navigate to={adminSession ? "/admin/menu" : "/admin/login"} replace />;
+  return <AuthAccessPage />;
 }
 
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<SessionAwareHomeRedirect />} />
+      <Route path="/" element={<PublicEntryRoute />} />
       <Route path="/learn" element={<LearnPage />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/admin" element={<AdminRootRedirect />} />
+      <Route path="/admin" element={<Navigate to="/?mode=admin" replace />} />
       <Route path="/tablet" element={<TabletCodePage />} />
       <Route path="/tablet/pin" element={<TabletPinPage />} />
       <Route path="/register" element={<RegisterCompanyPage />} />
@@ -77,7 +72,7 @@ export function App() {
           <Route path="/admin/company/create" element={<AdminCompanyCreatePage />} />
         </Route>
       </Route>
-      <Route path="*" element={<SessionAwareHomeRedirect />} />
+      <Route path="*" element={<PublicEntryRoute />} />
     </Routes>
   );
 }

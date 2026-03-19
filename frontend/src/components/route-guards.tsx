@@ -11,7 +11,7 @@ export function CompanyGuard() {
 export function AdminGuard() {
   const { loading, adminSession } = useAuth();
   if (loading) return <AppRouteLoadingState />;
-  return adminSession ? <Outlet /> : <Navigate to="/admin/login" replace />;
+  return adminSession ? <Outlet /> : <Navigate to="/?mode=admin" replace />;
 }
 
 export function CompanyAdminGuard() {
