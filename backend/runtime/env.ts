@@ -51,8 +51,13 @@ function toPositiveInteger(value: string | undefined, fallback: number) {
 
 function validateRuntimeConfig(config: RuntimeConfig) {
   const isProduction = config.appEnv === "production";
+  const jwtLooksPlaceholder = config.jwtSecret.startsWith("replace-with-");
+  const adminPasswordLooksPlaceholder =
+    config.adminBootstrapPassword === "admin123" ||
+    config.adminBootstrapPassword === "change-this-now" ||
+    config.adminBootstrapPassword.startsWith("replace-with-");
 
-  if (isProduction && config.jwtSecret === "jtzt-dev-secret-change-me") {
+  if (isProduction && (config.jwtSecret === "jtzt-dev-secret-change-me" || jwtLooksPlaceholder)) {
     throw new Error("JWT_SECRET must be set explicitly in production");
   }
 
@@ -60,7 +65,7 @@ function validateRuntimeConfig(config: RuntimeConfig) {
     throw new Error("JWT_SECRET must be at least 32 characters in production");
   }
 
-  if (isProduction && config.adminBootstrapPassword === "admin123") {
+  if (isProduction && adminPasswordLooksPlaceholder) {
     throw new Error("ADMIN_BOOTSTRAP_PASSWORD must not use the default value in production");
   }
 }

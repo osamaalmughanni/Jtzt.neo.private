@@ -43,37 +43,33 @@ npm run dev
 - `.deploy.py` is the single deployment entrypoint for Wrangler config generation, D1 setup, migrations, Cloudflare dev var generation, frontend builds, and Worker deploys.
 - `cloudflare/d1/migrations/0001_initial_schema.sql` is the D1 bootstrap schema.
 - `cloudflare/worker/index.ts` runs the backend API natively on Workers and serves the SPA assets from the same deployment.
-- `.env` is the single source of truth for local Node dev, local Wrangler dev, and Cloudflare deployment.
+- `.env` is the only env file you manage. It is the single source of truth for local Node dev, local Wrangler dev, and Cloudflare deployment.
 - `cloudflare/.dev.vars` is generated from `.env` and should not be edited manually.
 
-## Recommended Setup
+## Required `.env` Values
 
-```bash
-cp .env.example .env
-```
-
-Fill these in `.env`:
-
+- `CLOUDFLARE_API_TOKEN`: required for fully automated Cloudflare API access.
+- `CLOUDFLARE_ACCOUNT_ID`: required for non-interactive Wrangler operations.
 - `JWT_SECRET`: required in all environments.
-- `CLOUDFLARE_D1_DATABASE_ID`: required for config, migrations, and remote deploys after `python .deploy.py d1-create`.
 - `CLOUDFLARE_WORKER_NAME`: required for deployment.
+- `CLOUDFLARE_D1_DATABASE_NAME`: required for D1 provisioning.
+- `CLOUDFLARE_D1_DATABASE_ID`: can stay as a placeholder; deployment commands will create D1 and write it into `.env` automatically if needed.
 - `ADMIN_BOOTSTRAP_PASSWORD`: strongly recommended to change for any non-demo environment.
-- `CLOUDFLARE_ACCOUNT_ID`: optional, but recommended.
 - `CLOUDFLARE_CUSTOM_DOMAIN`: optional.
+
+Recommended API token scope:
+
+- Workers Scripts: edit
+- D1: edit
+- Account Settings or account read scope needed by Wrangler
+- Zone permissions only if you plan to attach a custom domain/route
 
 Recommended sequence:
 
 ```bash
 python .deploy.py doctor
 python .deploy.py prepare-dev
-python .deploy.py login
-python .deploy.py d1-create
-# paste the returned database id into .env
-python .deploy.py write-config
-python .deploy.py migrate-local
-python .deploy.py migrate-remote
-python .deploy.py set-secret
-python .deploy.py deploy
+python .deploy.py full
 ```
 
 Fast path after `.env` is fully filled:
@@ -91,5 +87,7 @@ python .deploy.py write-config
 python .deploy.py d1-create
 python .deploy.py migrate-local
 python .deploy.py migrate-remote
+python .deploy.py set-secret
+python .deploy.py deploy
 python .deploy.py full
 ```

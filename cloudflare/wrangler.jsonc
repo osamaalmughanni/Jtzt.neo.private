@@ -13,15 +13,16 @@
     {
       "binding": "DB",
       "database_name": "jtzt-app",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "d247b34e-538b-4297-8c22-4f193c6a5746",
       "migrations_dir": "./d1/migrations"
     }
   ],
   "vars": {
-    "APP_ENV": "production",
+    "APP_ENV": "development",
     "APP_VERSION": "dev",
     "SESSION_TTL_HOURS": "12",
     "ADMIN_BOOTSTRAP_USERNAME": "admin",
-    "ADMIN_BOOTSTRAP_PASSWORD": "admin123"
-  }
+    "ADMIN_BOOTSTRAP_PASSWORD": "change-this-now"
+  },
+  "account_id": "9c637e02a954c66c7c46cbdcd402f7e9"
 }
