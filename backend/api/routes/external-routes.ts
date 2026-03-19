@@ -22,46 +22,6 @@ async function resolveExternalCompany(c: Hono<AppRouteConfig> extends never ? ne
 
 export const externalRoutes = new Hono<AppRouteConfig>();
 
-externalRoutes.get("/", async (c) => {
-  const company = await resolveExternalCompany(c);
-  const docs = company ? await companyApiService.getGeneratedDocs(c.get("db")) : null;
-
-  return c.json({
-    service: "jtzt-company-api",
-    ok: true,
-    auth: {
-      required: true,
-      acceptedHeaders: ["X-API-Key", "Authorization: Bearer <key>"],
-      errorExample: {
-        status: 401,
-        body: { error: "API key required" },
-      },
-    },
-    endpoints: company
-      ? [
-          "GET /api/external",
-          "GET /api/external/docs",
-          "GET /api/external/schema",
-          "POST /api/external/query",
-          "POST /api/external/mutate",
-        ]
-      : [
-          "GET /api/external",
-          "GET /api/external/docs",
-        ],
-    company: company ? { id: company.id, name: company.name } : null,
-    docs,
-  });
-});
-
-externalRoutes.get("/docs", async (c) => {
-  return c.json({
-    ok: true,
-    public: true,
-    docs: await companyApiService.getGeneratedDocs(c.get("db")),
-  });
-});
-
 externalRoutes.use("*", async (c, next) => {
   const apiKey = extractApiKey(c.req.header("X-API-Key")) || getBearerToken(c.req.header("Authorization"));
   if (!apiKey) {
@@ -88,6 +48,33 @@ externalRoutes.use("*", async (c, next) => {
 
   c.set("externalCompany", company);
   await next();
+});
+
+externalRoutes.get("/", async (c) => {
+  const company = c.get("externalCompany");
+  return c.json({
+    service: "jtzt-company-api",
+    ok: true,
+    auth: {
+      required: true,
+      acceptedHeaders: ["X-API-Key", "Authorization: Bearer <key>"],
+    },
+    company: { id: company.id, name: company.name },
+    endpoints: [
+      "GET /api/external",
+      "GET /api/external/docs",
+      "GET /api/external/schema",
+      "POST /api/external/query",
+      "POST /api/external/mutate",
+    ],
+  });
+});
+
+externalRoutes.get("/docs", async (c) => {
+  return c.json({
+    ok: true,
+    docs: await companyApiService.getGeneratedDocs(c.get("db")),
+  });
 });
 
 externalRoutes.get("/schema", async (c) => {
