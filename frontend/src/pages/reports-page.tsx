@@ -1,5 +1,5 @@
 import { CheckCheck, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { CompanySettings, CompanyUserListItem } from "@shared/types/models";
@@ -207,6 +207,7 @@ export function ReportsPage() {
   const [userSearch, setUserSearch] = useState("");
   const [fieldSearch, setFieldSearch] = useState("");
   const savedDraft = loadReportDraft(searchParams.get("draft"));
+  const initializedDraftRef = useRef(false);
   const [draft, setDraft] = useState<ReportDraft>(() => savedDraft ?? {
     periodPreset: "this_month",
     ...applyPeriodPreset("this_month", defaultSettings),
@@ -242,15 +243,15 @@ export function ReportsPage() {
     }
   });
 
-  const periodOptions: ReportOption[] = [
+  const periodOptions = useMemo<ReportOption[]>(() => [
     { value: "custom", label: t("reports.customDates") },
     { value: "this_week", label: t("reports.thisWeek") },
     { value: "this_month", label: t("reports.thisMonth") },
     { value: "this_year", label: t("reports.thisYear") },
     { value: "last_month", label: t("reports.lastMonth") },
-  ];
+  ], [t]);
 
-  const baseFieldOptions: ReportOption[] = [
+  const baseFieldOptions = useMemo<ReportOption[]>(() => [
     { value: "user", label: t("reports.user") },
     { value: "role", label: t("reports.role") },
     { value: "type", label: t("reports.type") },
@@ -260,15 +261,19 @@ export function ReportsPage() {
     { value: "duration", label: t("reports.duration") },
     { value: "note", label: t("reports.note") },
     { value: "cost", label: t("reports.cost") },
-  ];
+  ], [t]);
 
-  const customFieldOptions = settings.customFields.map((field) => ({
-    value: `custom:${field.id}`,
-    label: getCustomFieldOptionLabel(field),
-  }));
+  const customFieldOptions = useMemo(
+    () =>
+      settings.customFields.map((field) => ({
+        value: `custom:${field.id}`,
+        label: getCustomFieldOptionLabel(field),
+      })),
+    [settings.customFields],
+  );
 
-  const allFieldOptions = [...baseFieldOptions, ...customFieldOptions];
-  const groupingOptions: ReportOption[] = [
+  const allFieldOptions = useMemo(() => [...baseFieldOptions, ...customFieldOptions], [baseFieldOptions, customFieldOptions]);
+  const groupingOptions = useMemo<ReportOption[]>(() => [
     { value: "", label: t("reports.noGrouping") },
     { value: "user", label: t("reports.user") },
     { value: "role", label: t("reports.role") },
@@ -276,10 +281,10 @@ export function ReportsPage() {
     { value: "date", label: t("reports.day") },
     { value: "month", label: t("reports.thisMonth") },
     ...customFieldOptions,
-  ];
+  ], [customFieldOptions, t]);
 
   const selectedGroups = draft.groupBy.length > 0 ? draft.groupBy : [""];
-  const userOptions = users.map((user) => ({ value: String(user.id), label: user.fullName }));
+  const userOptions = useMemo(() => users.map((user) => ({ value: String(user.id), label: user.fullName })), [users]);
 
   useEffect(() => {
     if (!pageResource.data) {
@@ -293,13 +298,27 @@ export function ReportsPage() {
     const allFieldValues = getAllFieldValues(baseFieldOptions, nextCustomFieldOptions);
     setSettings(pageResource.data.settings);
     setUsers(pageResource.data.users);
+    if (!initializedDraftRef.current) {
+      setDraft((current) => {
+        const normalized = normalizeReportDraftFields(current, pageResource.data!.settings);
+        return {
+          ...current,
+          userIds: current.userIds.length > 0 ? current.userIds : pageResource.data!.users.map((user) => user.id),
+          columns: savedDraft ? normalized.columns : allFieldValues,
+          groupBy: normalized.groupBy,
+        };
+      });
+      initializedDraftRef.current = true;
+      return;
+    }
+
     setDraft((current) => {
       const normalized = normalizeReportDraftFields(current, pageResource.data!.settings);
       return {
         ...current,
-        userIds: current.userIds.length > 0 ? current.userIds : pageResource.data!.users.map((user) => user.id),
-        columns: savedDraft ? normalized.columns : allFieldValues,
         groupBy: normalized.groupBy,
+        columns: current.columns.filter((column) => allFieldValues.includes(column)),
+        userIds: current.userIds.filter((userId) => pageResource.data!.users.some((user) => user.id === userId)),
       };
     });
   }, [baseFieldOptions, pageResource.data, savedDraft]);
@@ -390,10 +409,20 @@ export function ReportsPage() {
               />
             </Field>
             <Field label={t("reports.startDate")}>
-              <DateInput value={draft.startDate} locale={settings.locale} onChange={(value) => setDraft((current) => ({ ...current, periodPreset: "custom", startDate: value }))} />
+              <DateInput
+                value={draft.startDate}
+                locale={settings.locale}
+                timeZone={settings.timeZone}
+                onChange={(value) => setDraft((current) => ({ ...current, periodPreset: "custom", startDate: value }))}
+              />
             </Field>
             <Field label={t("reports.endDate")}>
-              <DateInput value={draft.endDate} locale={settings.locale} onChange={(value) => setDraft((current) => ({ ...current, periodPreset: "custom", endDate: value }))} />
+              <DateInput
+                value={draft.endDate}
+                locale={settings.locale}
+                timeZone={settings.timeZone}
+                onChange={(value) => setDraft((current) => ({ ...current, periodPreset: "custom", endDate: value }))}
+              />
             </Field>
           </FormFields>
         </FormSection>

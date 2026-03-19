@@ -1,6 +1,6 @@
 import { CalendarPlus } from "phosphor-react";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { formatLocalDay } from "@shared/utils/time";
+import { formatLocalDay, getLocalNowSnapshot } from "@shared/utils/time";
 import { Button } from "@/components/ui/button";
 import { Input, inputBaseClassName } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -150,9 +150,10 @@ export const DateInput = forwardRef<
     locale: string;
     onChange: (value: string) => void;
     todayDisabled?: boolean;
+    timeZone?: string;
     className?: string;
   }
->(({ value, locale, onChange, todayDisabled, className }, forwardedRef) => {
+>(({ value, locale, onChange, todayDisabled, timeZone, className }, forwardedRef) => {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [focused, setFocused] = useState(false);
   const { order, separator } = useMemo(() => getDateFormat(locale), [locale]);
@@ -168,7 +169,7 @@ export const DateInput = forwardRef<
   }, [focused, order, separator, value]);
 
   function commit(rawValue: string) {
-    const nextValue = parseSmartDateInput(rawValue, order, value || formatLocalDay(new Date()));
+    const nextValue = parseSmartDateInput(rawValue, order, value || getLocalNowSnapshot(new Date(), timeZone).localDay);
     if (nextValue === null) {
       setDraft(formatDisplayValue(value, order, separator));
       return;
@@ -213,7 +214,7 @@ export const DateInput = forwardRef<
         aria-label="Use today"
         disabled={todayDisabled}
         onClick={() => {
-          const todayValue = formatLocalDay(new Date());
+          const todayValue = getLocalNowSnapshot(new Date(), timeZone).localDay;
           onChange(todayValue);
           setDraft(formatDisplayValue(todayValue, order, separator));
         }}
