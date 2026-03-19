@@ -25,10 +25,9 @@ export interface CompanyCustomField {
 }
 
 export interface CompanyRecord {
-  id: number;
+  id: string;
   name: string;
   encryptionEnabled: boolean;
-  databasePath: string;
   tabletCodeUpdatedAt?: string | null;
   createdAt: string;
 }
@@ -65,7 +64,7 @@ export interface ProjectRecord {
   id: number;
   name: string;
   description: string | null;
-  isActive: number;
+  isActive: boolean;
   createdAt: string;
 }
 
@@ -199,7 +198,7 @@ export interface TaskRecord {
   id: number;
   projectId: number;
   title: string;
-  isActive: number;
+  isActive: boolean;
   createdAt: string;
 }
 

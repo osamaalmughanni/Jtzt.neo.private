@@ -1,106 +1,50 @@
 import fs from "node:fs";
+import path from "node:path";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
 import { appConfig } from "../config";
-import { systemSchema } from "./schema";
+import { appSchema } from "./schema";
 
-let systemDb: Database.Database | null = null;
+let currentDbPath = appConfig.appDbPath;
+let appDb: Database.Database | null = null;
 
-type Migration = {
-  id: string;
-  up: (db: Database.Database) => void;
-};
+function initializeDatabase(databasePath: string): Database.Database {
+  fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+  const db = new Database(databasePath);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  db.exec(appSchema);
 
-function ensureColumn(db: Database.Database, tableName: string, columnName: string, definition: string) {
-  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
-  if (!columns.some((column) => column.name === columnName)) {
-    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
-  }
-}
-
-function ensureMigrationTable(db: Database.Database) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      id TEXT PRIMARY KEY,
-      applied_at TEXT NOT NULL
-    );
-  `);
-}
-
-function applyMigrations(db: Database.Database, migrations: Migration[]) {
-  ensureMigrationTable(db);
-
-  for (const migration of migrations) {
-    const existing = db.prepare("SELECT id FROM schema_migrations WHERE id = ?").get(migration.id);
-    if (existing) {
-      continue;
-    }
-
-    const transaction = db.transaction(() => {
-      migration.up(db);
-      db.prepare("INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)").run(migration.id, new Date().toISOString());
+  const row = db.prepare("SELECT COUNT(*) as count FROM admins").get() as { count: number };
+  if (row.count === 0) {
+    db.prepare("INSERT INTO admins (username, password_hash, created_at) VALUES (@username, @passwordHash, @createdAt)").run({
+      username: "admin",
+      passwordHash: bcrypt.hashSync("admin123", 10),
+      createdAt: new Date().toISOString()
     });
-
-    transaction();
   }
+
+  return db;
 }
-
-const systemMigrations: Migration[] = [
-  {
-    id: "001_system_core",
-    up(db) {
-      db.exec(systemSchema);
-    }
-  },
-  {
-    id: "002_company_encryption_columns",
-    up(db) {
-      ensureColumn(db, "companies", "encryption_enabled", "INTEGER NOT NULL DEFAULT 0");
-      ensureColumn(db, "companies", "encryption_kdf_algorithm", "TEXT");
-      ensureColumn(db, "companies", "encryption_kdf_iterations", "INTEGER");
-      ensureColumn(db, "companies", "encryption_kdf_salt", "TEXT");
-      ensureColumn(db, "companies", "encryption_key_verifier", "TEXT");
-    }
-  },
-  {
-    id: "003_company_tablet_code",
-    up(db) {
-      ensureColumn(db, "companies", "tablet_code_hash", "TEXT");
-      ensureColumn(db, "companies", "tablet_code_updated_at", "TEXT");
-      db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_tablet_code_hash ON companies (tablet_code_hash)");
-    }
-  },
-  {
-    id: "004_company_tablet_code_value",
-    up(db) {
-      ensureColumn(db, "companies", "tablet_code_value", "TEXT");
-      db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_tablet_code_value ON companies (tablet_code_value)");
-    }
-  }
-];
 
 export function getSystemDb(): Database.Database {
-  if (systemDb) {
-    return systemDb;
+  if (!appDb) {
+    appDb = initializeDatabase(currentDbPath);
   }
 
-  fs.mkdirSync(appConfig.dataDir, { recursive: true });
-  systemDb = new Database(appConfig.systemDbPath);
-  systemDb.pragma("journal_mode = WAL");
-  applyMigrations(systemDb, systemMigrations);
+  return appDb;
+}
 
-  const row = systemDb.prepare("SELECT COUNT(*) as count FROM admins").get() as { count: number };
-  if (row.count === 0) {
-    systemDb
-      .prepare(
-        "INSERT INTO admins (username, password_hash, created_at) VALUES (@username, @passwordHash, @createdAt)"
-      )
-      .run({
-        username: "admin",
-        passwordHash: bcrypt.hashSync("admin123", 10),
-        createdAt: new Date().toISOString()
-      });
+export function closeSystemDb(): void {
+  if (!appDb) {
+    return;
   }
 
-  return systemDb;
+  appDb.close();
+  appDb = null;
+}
+
+export function setSystemDbPathForTests(databasePath: string): void {
+  closeSystemDb();
+  currentDbPath = databasePath;
 }

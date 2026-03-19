@@ -9,7 +9,8 @@ import {
   getLocalNowSnapshot,
   toClockTimeValue,
 } from "../shared/utils/time.js";
-import { closeCompanyDb, getCompanyDb } from "../backend/db/company-db.js";
+import { getCompanyDb } from "../backend/db/company-db.js";
+import { getSystemDb, setSystemDbPathForTests, closeSystemDb } from "../backend/db/system-db.js";
 import { timeService } from "../backend/services/time-service.js";
 
 function verify(name: string, run: () => void) {
@@ -56,11 +57,17 @@ verify("calendar day helpers stay deterministic", () => {
 
 verify("manual non-work entries store canonical UTC anchors instead of naive local timestamps", () => {
   const tempDir = mkdtempSync(join(process.cwd(), ".tmp-time-test-"));
-  const databasePath = join(tempDir, "company.db");
+  const databasePath = join(tempDir, "app.db");
+  const companyId = "11111111-1111-1111-1111-111111111111";
 
   try {
-    const db = getCompanyDb(databasePath);
-    db.prepare("INSERT INTO users (username, full_name, password_hash, role, is_active, created_at, pin_code) VALUES (?, ?, ?, ?, 1, ?, ?)").run(
+    setSystemDbPathForTests(databasePath);
+    const db = getSystemDb();
+    db.prepare("INSERT INTO companies (id, name, created_at) VALUES (?, ?, ?)").run(companyId, "Test Co", "2026-03-16T00:00:00.000Z");
+    db.prepare(
+      "INSERT INTO users (company_id, username, full_name, password_hash, role, is_active, created_at, pin_code) VALUES (?, ?, ?, ?, ?, 1, ?, ?)"
+    ).run(
+      companyId,
       "test-user",
       "Test User",
       "hash",
@@ -68,9 +75,10 @@ verify("manual non-work entries store canonical UTC anchors instead of naive loc
       "2026-03-16T00:00:00.000Z",
       "1234",
     );
-    db.prepare("UPDATE company_settings SET time_zone = ? WHERE id = 1").run("Europe/Vienna");
+    getCompanyDb(companyId);
+    db.prepare("UPDATE company_settings SET time_zone = ? WHERE company_id = ?").run("Europe/Vienna", companyId);
 
-    const created = timeService.createManualEntry(databasePath, 1, {
+    const created = timeService.createManualEntry(companyId, 1, {
       entryType: "vacation",
       startDate: "2026-03-16",
       endDate: "2026-03-18",
@@ -92,7 +100,7 @@ verify("manual non-work entries store canonical UTC anchors instead of naive loc
     assert.equal(formatDayInTimeZone(new Date(row.start_time), "Europe/Vienna"), "2026-03-16");
     assert.equal(formatDayInTimeZone(new Date(row.end_time ?? row.start_time), "Europe/Vienna"), "2026-03-18");
   } finally {
-    closeCompanyDb(databasePath);
+    closeSystemDb();
     rmSync(tempDir, { recursive: true, force: true });
   }
 });

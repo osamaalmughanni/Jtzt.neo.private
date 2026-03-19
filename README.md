@@ -18,8 +18,9 @@ shared/
 data/
 ```
 
-- `data/system.db` stores global admins and company records.
-- Each company gets its own SQLite file such as `data/company_acme.db`.
+- `data/app.db` is the single application database.
+- Every company-owned row is scoped by `company_id`, which is a GUID.
+- Admin import/export uses portable JSON company snapshots instead of raw SQLite files.
 
 ## Default admin
 

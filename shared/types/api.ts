@@ -184,18 +184,98 @@ export interface RegisterCompanyInput {
 }
 
 export interface CreateCompanyAdminInput {
-  companyId: number;
+  companyId: string;
   username: string;
   password: string;
   fullName: string;
 }
 
 export interface DeleteCompanyInput {
-  companyId: number;
+  companyId: string;
 }
 
-export interface ImportCompanyDatabaseInput {
-  companyId: number;
+export interface CompanySnapshot {
+  company: {
+    name: string;
+    encryptionEnabled: boolean;
+    encryptionKdfAlgorithm: "pbkdf2-sha256" | null;
+    encryptionKdfIterations: number | null;
+    encryptionKdfSalt: string | null;
+    encryptionKeyVerifier: string | null;
+    tabletCodeValue: string | null;
+    tabletCodeHash: string | null;
+    tabletCodeUpdatedAt: string | null;
+    createdAt: string;
+  };
+  settings: {
+    currency: string;
+    locale: string;
+    timeZone: string;
+    dateTimeFormat: string;
+    firstDayOfWeek: number;
+    editDaysLimit: number;
+    insertDaysLimit: number;
+    allowOneRecordPerDay: boolean;
+    allowIntersectingRecords: boolean;
+    country: string;
+    tabletIdleTimeoutSeconds: number;
+    autoBreakAfterMinutes: number;
+    autoBreakDurationMinutes: number;
+    customFields: CompanyCustomField[];
+  } | null;
+  users: Array<{
+    id: number;
+    username: string;
+    fullName: string;
+    passwordHash: string;
+    role: UserRole;
+    isActive: boolean;
+    pinCode: string;
+    email: string | null;
+    createdAt: string;
+  }>;
+  userContracts: UserContract[];
+  timeEntries: Array<{
+    id: number;
+    userId: number;
+    entryType: TimeEntryType;
+    entryDate: string;
+    endDate: string | null;
+    startTime: string | null;
+    endTime: string | null;
+    notes: string | null;
+    sickLeaveAttachment: {
+      fileName: string;
+      mimeType: string;
+      dataUrl: string;
+    } | null;
+    customFieldValues: Record<string, string | number | boolean>;
+    createdAt: string;
+  }>;
+  projects: Array<{
+    id: number;
+    name: string;
+    description: string | null;
+    isActive: boolean;
+    createdAt: string;
+  }>;
+  tasks: Array<{
+    id: number;
+    projectId: number;
+    title: string;
+    isActive: boolean;
+    createdAt: string;
+  }>;
+  publicHolidayCache: Array<{
+    countryCode: string;
+    year: number;
+    payloadJson: string;
+    fetchedAt: string;
+  }>;
+}
+
+export interface ImportCompanySnapshotInput {
+  companyId: string;
 }
 
 export interface CompanyListResponse {

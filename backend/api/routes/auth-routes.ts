@@ -87,7 +87,6 @@ authRoutes.get("/me", authMiddleware, requireCompanyUser, (c) => {
   return c.json(
     authService.getCompanySessionDetails({
       companyId: session.companyId,
-      databasePath: session.databasePath,
       userId: session.userId,
       accessMode: session.accessMode
     })

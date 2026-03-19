@@ -65,7 +65,7 @@ userRoutes.get("/", (c) => {
   }
   ensureManagerOrAdmin(session);
 
-  return c.json({ users: userService.listUsers(session.databasePath) });
+  return c.json({ users: userService.listUsers(session.companyId) });
 });
 
 userRoutes.get("/:userId", (c) => {
@@ -76,7 +76,7 @@ userRoutes.get("/:userId", (c) => {
   ensureAdmin(session);
 
   const params = userIdParamsSchema.parse(c.req.param());
-  return c.json({ user: userService.getUser(session.databasePath, params.userId) });
+  return c.json({ user: userService.getUser(session.companyId, params.userId) });
 });
 
 userRoutes.post("/", async (c) => {
@@ -87,7 +87,7 @@ userRoutes.post("/", async (c) => {
   ensureAdmin(session);
 
   const body = createUserSchema.parse(await c.req.json());
-  const userId = userService.createUser(session.databasePath, body, settingsService.getBusinessNowSnapshot(session.databasePath).localDay);
+  const userId = userService.createUser(session.companyId, body, settingsService.getBusinessNowSnapshot(session.companyId).localDay);
   return c.json({ success: true, userId });
 });
 
@@ -99,7 +99,7 @@ userRoutes.put("/", async (c) => {
   ensureAdmin(session);
 
   const body = updateUserSchema.parse(await c.req.json());
-  userService.updateUser(session.databasePath, body, settingsService.getBusinessNowSnapshot(session.databasePath).localDay);
+  userService.updateUser(session.companyId, body, settingsService.getBusinessNowSnapshot(session.companyId).localDay);
   return c.json({ success: true });
 });
 
@@ -115,6 +115,6 @@ userRoutes.delete("/", async (c) => {
     throw new HTTPException(400, { message: "You cannot delete the active user" });
   }
 
-  userService.deleteUser(session.databasePath, body.userId);
+  userService.deleteUser(session.companyId, body.userId);
   return c.json({ success: true });
 });

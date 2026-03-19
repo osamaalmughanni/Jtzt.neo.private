@@ -39,7 +39,7 @@ export function AdminCompanyCreatePage() {
     if (!adminSession) return;
     try {
       if (databaseFile) {
-        await api.createCompanyFromDb(adminSession.token, {
+        await api.createCompanyFromSnapshot(adminSession.token, {
           name: values.name,
           file: databaseFile
         });
@@ -91,11 +91,11 @@ export function AdminCompanyCreatePage() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <FormLabel>Import existing SQLite</FormLabel>
+                <FormLabel>Import company snapshot</FormLabel>
                 <FileInput
                   file={databaseFile}
-                  accept=".db,.sqlite,.sqlite3,application/x-sqlite3"
-                  placeholder="Upload an existing company database"
+                  accept=".json,application/json"
+                  placeholder="Upload an existing company snapshot"
                   buttonLabel="Select"
                   onFileChange={setDatabaseFile}
                 />
@@ -143,7 +143,7 @@ export function AdminCompanyCreatePage() {
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
-                  {databaseFile ? "The uploaded SQLite database will be used as the company data." : "The database file is created inside /data."}
+                  {databaseFile ? "The uploaded snapshot will seed this company inside the shared database." : "The company is created inside the shared application database."}
                 </p>
                 <Button type="submit" disabled={form.formState.isSubmitting}>
                   Create company

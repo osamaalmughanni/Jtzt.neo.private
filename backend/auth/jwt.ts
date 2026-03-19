@@ -10,9 +10,8 @@ export interface AdminTokenPayload {
 export interface CompanyTokenPayload {
   actorType: "company_user";
   accessMode: "full" | "tablet";
-  companyId: number;
+  companyId: string;
   companyName: string;
-  databasePath: string;
   userId: number;
   role: "employee" | "manager" | "admin";
 }

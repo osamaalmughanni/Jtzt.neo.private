@@ -58,7 +58,7 @@ settingsRoutes.get("/", (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
 
-  return c.json({ settings: settingsService.getSettings(session.databasePath) });
+  return c.json({ settings: settingsService.getSettings(session.companyId) });
 });
 
 settingsRoutes.put("/", requireCompanyAdmin, async (c) => {
@@ -68,7 +68,7 @@ settingsRoutes.put("/", requireCompanyAdmin, async (c) => {
   }
 
   const body = updateSettingsSchema.parse(await c.req.json());
-  return c.json({ settings: settingsService.updateSettings(session.databasePath, body) });
+  return c.json({ settings: settingsService.updateSettings(session.companyId, body) });
 });
 
 settingsRoutes.get("/holidays", async (c) => {
@@ -82,7 +82,7 @@ settingsRoutes.get("/holidays", async (c) => {
     year: c.req.query("year")
   });
 
-  return c.json(await settingsService.getPublicHolidays(session.databasePath, query.country, query.year));
+  return c.json(await settingsService.getPublicHolidays(session.companyId, query.country, query.year));
 });
 
 settingsRoutes.get("/tablet-code", requireCompanyAdmin, (c) => {

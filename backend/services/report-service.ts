@@ -43,21 +43,17 @@ function buildCustomFieldCanonicalKey(fieldId: string) {
   return `custom:${fieldId}`;
 }
 
+function getCustomFieldLabel(field: CompanyCustomField) {
+  const cleaned = field.label.trim();
+  return cleaned.length > 0 ? cleaned : field.id;
+}
+
 function getCustomFieldKeyMatches(field: CompanyCustomField, key: string) {
   const normalizedKey = normalizeLookupValue(key);
   return normalizedKey === normalizeLookupValue(buildCustomFieldCanonicalKey(field.id))
     || normalizedKey === normalizeLookupValue(field.id)
     || normalizedKey === normalizeLookupValue(`field-${field.id}`)
     || normalizedKey === normalizeLookupValue(getCustomFieldLabel(field));
-}
-
-function getCustomFieldLabel(field: CompanyCustomField) {
-  const cleaned = field.label.trim();
-  if (cleaned.length > 0) {
-    return cleaned;
-  }
-
-  return field.id;
 }
 
 function parseJsonRecord(value: string) {
@@ -90,11 +86,7 @@ function getMonthKey(day: string) {
 }
 
 function getColumnDefinition(key: string, customFields: CompanyCustomField[]): ReportColumnDefinition | null {
-  if (
-    key.startsWith("custom:") ||
-    key.startsWith("field-") ||
-    customFields.some((item) => getCustomFieldKeyMatches(item, key))
-  ) {
+  if (key.startsWith("custom:") || key.startsWith("field-") || customFields.some((item) => getCustomFieldKeyMatches(item, key))) {
     const field = customFields.find((item) => getCustomFieldKeyMatches(item, key));
     if (!field) return null;
     return {
@@ -107,32 +99,17 @@ function getColumnDefinition(key: string, customFields: CompanyCustomField[]): R
   return baseColumns[key] ?? null;
 }
 
-function resolveContractRate(contracts: ContractRow[], day: string) {
-  let match: ContractRow | null = null;
-  for (const contract of contracts) {
-    if (contract.startDate <= day && (contract.endDate === null || contract.endDate >= day)) {
-      if (!match || contract.startDate >= match.startDate) {
-        match = contract;
-      }
-    }
-  }
-
-  return match?.paymentPerHour ?? 0;
-}
-
-async function getHolidaySet(databasePath: string, country: string, startDate: string, endDate: string) {
+async function getHolidaySet(companyId: string, country: string, startDate: string, endDate: string) {
   const holidaySet = new Set<string>();
   let year = Number(startDate.slice(0, 4));
   const finalYear = Number(endDate.slice(0, 4));
-
   while (year <= finalYear) {
-    const response = await settingsService.getPublicHolidays(databasePath, country, year);
+    const response = await settingsService.getPublicHolidays(companyId, country, year);
     for (const holiday of response.holidays) {
       holidaySet.add(holiday.date);
     }
     year += 1;
   }
-
   return holidaySet;
 }
 
@@ -141,34 +118,23 @@ function clampDayRange(startDay: string, endDay: string, reportStartDay: string,
   const clampedEnd = endDay > reportEndDay ? reportEndDay : endDay;
   return {
     startDay: clampedStart,
-    endDay: clampedEnd < clampedStart ? clampedStart : clampedEnd,
+    endDay: clampedEnd < clampedStart ? clampedStart : clampedEnd
   };
 }
 
 function getCustomFieldDisplayValue(field: CompanyCustomField | undefined, rawValue: string | number | boolean | null) {
-  if (!field || rawValue === null) {
-    return rawValue;
-  }
-
-  if (field.type === "boolean" && typeof rawValue === "boolean") {
-    return rawValue ? "Yes" : "No";
-  }
-
+  if (!field || rawValue === null) return rawValue;
+  if (field.type === "boolean" && typeof rawValue === "boolean") return rawValue ? "Yes" : "No";
   if (field.type === "select" && typeof rawValue === "string") {
     const option = field.options.find((item) => item.value === rawValue);
     return option?.label ?? rawValue;
   }
-
   return rawValue;
 }
 
-function getEntryValue(entry: ReportRow, key: string, customFields: CompanyCustomField[], contractsByUser: Map<number, ContractRow[]>) {
+function getEntryValue(entry: ReportRow, key: string, customFields: CompanyCustomField[]) {
   const customValues = parseJsonRecord(entry.custom_field_values_json);
-  if (
-    key.startsWith("custom:") ||
-    key.startsWith("field-") ||
-    customFields.some((item) => getCustomFieldKeyMatches(item, key))
-  ) {
+  if (key.startsWith("custom:") || key.startsWith("field-") || customFields.some((item) => getCustomFieldKeyMatches(item, key))) {
     const field = customFields.find((item) => getCustomFieldKeyMatches(item, key));
     const valueKey = field?.id ?? (key.startsWith("custom:") ? key.slice("custom:".length) : key);
     return getCustomFieldDisplayValue(field, customValues[valueKey] ?? null);
@@ -179,41 +145,27 @@ function getEntryValue(entry: ReportRow, key: string, customFields: CompanyCusto
   if (key === "type") return getTypeLabel(entry.entry_type);
   if (key === "date") return entry.entry_date;
   if (key === "start") return entry.entry_type === "work" ? entry.start_time : entry.entry_date;
-  if (key === "finish") return entry.entry_type === "work" ? entry.end_time : (entry.end_date ?? entry.entry_date);
+  if (key === "finish") return entry.entry_type === "work" ? entry.end_time : entry.end_date ?? entry.entry_date;
   if (key === "duration") return 0;
   if (key === "note") return entry.notes ?? "";
   if (key === "month") return getMonthKey(entry.entry_date);
-  if (key === "cost") {
-    if (entry.entry_type !== "work") return 0;
-    return 0;
-  }
-
+  if (key === "cost") return 0;
   return null;
 }
 
 function normalizeReportValue(value: string | number | boolean | null) {
-  if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
-  }
-
-  return value;
+  return typeof value === "boolean" ? (value ? "Yes" : "No") : value;
 }
 
 export const reportService = {
-  async generate(databasePath: string, input: ReportRequestInput) {
-    if (input.userIds.length === 0) {
-      throw new HTTPException(400, { message: "Select at least one user" });
-    }
-    if (input.columns.length === 0) {
-      throw new HTTPException(400, { message: "Select at least one field" });
-    }
-    if (input.endDate < input.startDate) {
-      throw new HTTPException(400, { message: "End date must be on or after start date" });
-    }
+  async generate(companyId: string, input: ReportRequestInput) {
+    if (input.userIds.length === 0) throw new HTTPException(400, { message: "Select at least one user" });
+    if (input.columns.length === 0) throw new HTTPException(400, { message: "Select at least one field" });
+    if (input.endDate < input.startDate) throw new HTTPException(400, { message: "End date must be on or after start date" });
 
-    const settings = settingsService.getSettings(databasePath);
-    const holidaySet = await getHolidaySet(databasePath, settings.country, input.startDate, input.endDate);
-    const db = getCompanyDb(databasePath);
+    const settings = settingsService.getSettings(companyId);
+    const holidaySet = await getHolidaySet(companyId, settings.country, input.startDate, input.endDate);
+    const db = getCompanyDb(companyId);
     const placeholders = buildInClause(input.userIds);
     const rows = db.prepare(
       `SELECT
@@ -230,11 +182,12 @@ export const reportService = {
         te.custom_field_values_json
        FROM time_entries te
        INNER JOIN users u ON u.id = te.user_id
-       WHERE te.user_id IN (${placeholders})
+       WHERE te.company_id = ?
+         AND te.user_id IN (${placeholders})
          AND te.entry_date <= ?
          AND COALESCE(te.end_date, te.entry_date) >= ?
        ORDER BY u.full_name COLLATE NOCASE ASC, te.entry_date ASC, te.start_time ASC, te.id ASC`
-    ).all(...input.userIds, input.endDate, input.startDate) as ReportRow[];
+    ).all(companyId, ...input.userIds, input.endDate, input.startDate) as ReportRow[];
 
     const contractRows = db.prepare(
       `SELECT
@@ -246,9 +199,10 @@ export const reportService = {
         payment_per_hour,
         created_at
        FROM user_contracts
-       WHERE user_id IN (${placeholders})
+       WHERE company_id = ?
+         AND user_id IN (${placeholders})
        ORDER BY start_date ASC`
-    ).all(...input.userIds) as Array<{
+    ).all(companyId, ...input.userIds) as Array<{
       id: number;
       user_id: number;
       hours_per_week: number;
@@ -278,40 +232,21 @@ export const reportService = {
       if ((key === "duration" || key === "cost") && row.entry_type !== "work") {
         let cached = leaveMetricCache.get(row.id);
         if (!cached) {
-          const clampedRange = clampDayRange(
-            row.entry_date,
-            row.end_date ?? row.entry_date,
-            input.startDate,
-            input.endDate,
-          );
-          cached = calculateLeaveCompensation(
-            row.entry_type,
-            clampedRange.startDay,
-            clampedRange.endDay,
-            holidaySet,
-            contractsByUser.get(row.user_id) ?? [],
-          );
+          const clampedRange = clampDayRange(row.entry_date, row.end_date ?? row.entry_date, input.startDate, input.endDate);
+          cached = calculateLeaveCompensation(row.entry_type, clampedRange.startDay, clampedRange.endDay, holidaySet, contractsByUser.get(row.user_id) ?? []);
           leaveMetricCache.set(row.id, cached);
         }
-
         return key === "duration" ? cached.durationMinutes : cached.costAmount;
       }
 
       if (key === "duration" && row.entry_type === "work") {
         return calculateWorkDurationMinutes(row.start_time, row.end_time, settings);
       }
-
       if (key === "cost" && row.entry_type === "work") {
-        return calculateWorkCostAmount(
-          row.start_time,
-          row.end_time,
-          row.entry_date,
-          settings,
-          contractsByUser.get(row.user_id) ?? [],
-        );
+        return calculateWorkCostAmount(row.start_time, row.end_time, row.entry_date, settings, contractsByUser.get(row.user_id) ?? []);
       }
 
-      return getEntryValue(row, key, settings.customFields, contractsByUser);
+      return getEntryValue(row, key, settings.customFields);
     };
 
     const validGroupBy = input.groupBy.filter((key, index, array) => key && array.indexOf(key) === index).slice(0, 8);
@@ -331,9 +266,7 @@ export const reportService = {
     );
 
     if (!grouped) {
-      const columns = input.columns
-        .map((key) => getColumnDefinition(key, settings.customFields))
-        .filter((value): value is ReportColumnDefinition => value !== null);
+      const columns = input.columns.map((key) => getColumnDefinition(key, settings.customFields)).filter((value): value is ReportColumnDefinition => value !== null);
       const detailRows = rows.map((row) => {
         const next: Record<string, string | number | null> = {};
         for (const column of columns) {
@@ -363,18 +296,12 @@ export const reportService = {
           endDate: row.end_date ?? row.entry_date,
           startTime: row.start_time,
           endTime: row.end_time,
-          notes: row.notes ?? null,
+          notes: row.notes ?? null
         }))
       };
     }
 
-    const bucketMap = new Map<string, {
-      groupValues: Record<string, string | number | null>;
-      entryCount: number;
-      durationMinutes: number;
-      cost: number;
-    }>();
-
+    const bucketMap = new Map<string, { groupValues: Record<string, string | number | null>; entryCount: number; durationMinutes: number; cost: number }>();
     const effectiveGroupBy = input.totalsOnly ? [] : validGroupBy;
     for (const row of rows) {
       const groupValues: Record<string, string | number | null> = {};
@@ -390,26 +317,14 @@ export const reportService = {
         current.durationMinutes += durationMinutes;
         current.cost = Math.round((current.cost + cost) * 100) / 100;
       } else {
-        bucketMap.set(bucketKey, {
-          groupValues,
-          entryCount: 1,
-          durationMinutes,
-          cost
-        });
+        bucketMap.set(bucketKey, { groupValues, entryCount: 1, durationMinutes, cost });
       }
     }
 
-    const columnKeys = [
-      ...effectiveGroupBy,
-      "entries",
-      ...(input.columns.includes("duration") ? ["duration"] : []),
-      ...(input.columns.includes("cost") ? ["cost"] : [])
-    ].filter((key, index, array) => array.indexOf(key) === index);
-
-    const columns = columnKeys
-      .map((key) => getColumnDefinition(key, settings.customFields))
-      .filter((value): value is ReportColumnDefinition => value !== null);
-
+    const columnKeys = [...effectiveGroupBy, "entries", ...(input.columns.includes("duration") ? ["duration"] : []), ...(input.columns.includes("cost") ? ["cost"] : [])].filter(
+      (key, index, array) => array.indexOf(key) === index
+    );
+    const columns = columnKeys.map((key) => getColumnDefinition(key, settings.customFields)).filter((value): value is ReportColumnDefinition => value !== null);
     const groupedRows = Array.from(bucketMap.values()).map((bucket) => {
       const next: Record<string, string | number | null> = {};
       for (const key of effectiveGroupBy) {
@@ -442,7 +357,7 @@ export const reportService = {
         endDate: row.end_date ?? row.entry_date,
         startTime: row.start_time,
         endTime: row.end_time,
-        notes: row.notes ?? null,
+        notes: row.notes ?? null
       }))
     };
   }

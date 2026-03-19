@@ -69,7 +69,7 @@ function buildNonWorkTimestamps(entryType: TimeEntryType, startDate: string, end
   };
 }
 
-function normalizeManualEntryInput(databasePath: string, input: CreateManualTimeEntryInput | UpdateTimeEntryInput) {
+function normalizeManualEntryInput(companyId: string, input: CreateManualTimeEntryInput | UpdateTimeEntryInput) {
   const entryType = input.entryType;
   if (isWorkEntry(entryType)) {
     return {
@@ -81,20 +81,20 @@ function normalizeManualEntryInput(databasePath: string, input: CreateManualTime
 
   return {
     entryType,
-    ...buildNonWorkTimestamps(entryType, input.startDate, input.endDate, settingsService.getSettings(databasePath).timeZone),
+    ...buildNonWorkTimestamps(entryType, input.startDate, input.endDate, settingsService.getSettings(companyId).timeZone),
     customFieldValues: input.customFieldValues
   };
 }
 
-function getOpenEntry(db: ReturnType<typeof getCompanyDb>, userId: number) {
-  return db
+function getOpenEntry(companyId: string, userId: number) {
+  return getCompanyDb(companyId)
     .prepare(
       `SELECT te.*
        FROM time_entries te
-       WHERE te.user_id = ? AND te.entry_type = 'work' AND te.end_time IS NULL
+       WHERE te.company_id = ? AND te.user_id = ? AND te.entry_type = 'work' AND te.end_time IS NULL
        ORDER BY te.start_time DESC LIMIT 1`
     )
-    .get(userId) as
+    .get(companyId, userId) as
     | {
         id: number;
         user_id: number;
@@ -113,21 +113,13 @@ function rangesOverlap(startDay: string, endDay: string, otherStartDay: string, 
   return startDay <= otherEndDay && otherStartDay <= endDay;
 }
 
-function timestampsOverlap(
-  startTime: string | null,
-  endTime: string | null,
-  otherStartTime: string | null,
-  otherEndTime: string | null,
-) {
+function timestampsOverlap(startTime: string | null, endTime: string | null, otherStartTime: string | null, otherEndTime: string | null) {
   const start = startTime ? new Date(startTime).getTime() : Number.NaN;
   const end = endTime ? new Date(endTime).getTime() : Number.POSITIVE_INFINITY;
   const otherStart = otherStartTime ? new Date(otherStartTime).getTime() : Number.NaN;
   const otherEnd = otherEndTime ? new Date(otherEndTime).getTime() : Number.POSITIVE_INFINITY;
 
-  if (
-    Number.isNaN(start) ||
-    Number.isNaN(otherStart)
-  ) {
+  if (Number.isNaN(start) || Number.isNaN(otherStart)) {
     return false;
   }
 
@@ -135,18 +127,18 @@ function timestampsOverlap(
 }
 
 export const timeService = {
-  getActiveEntry(databasePath: string, userId: number) {
-    const db = getCompanyDb(databasePath);
-    const activeEntry = getOpenEntry(db, userId);
+  getActiveEntry(companyId: string, userId: number) {
+    const activeEntry = getOpenEntry(companyId, userId);
     return activeEntry ? mapTimeEntryView(activeEntry) : null;
   },
 
-  createManualEntry(databasePath: string, userId: number, input: CreateManualTimeEntryInput) {
-    const normalized = normalizeManualEntryInput(databasePath, input);
+  createManualEntry(companyId: string, userId: number, input: CreateManualTimeEntryInput) {
+    const normalized = normalizeManualEntryInput(companyId, input);
     const createdAt = new Date().toISOString();
-    const result = getCompanyDb(databasePath)
+    const result = getCompanyDb(companyId)
       .prepare(
         `INSERT INTO time_entries (
+          company_id,
           user_id,
           entry_type,
           entry_date,
@@ -160,6 +152,7 @@ export const timeService = {
           custom_field_values_json,
           created_at
         ) VALUES (
+          @companyId,
           @userId,
           @entryType,
           @entryDate,
@@ -175,6 +168,7 @@ export const timeService = {
         )`
       )
       .run({
+        companyId,
         userId,
         entryType: normalized.entryType,
         entryDate: normalized.entryDate,
@@ -189,38 +183,34 @@ export const timeService = {
         createdAt
       });
 
-    return this.getEntryById(databasePath, Number(result.lastInsertRowid));
+    return this.getEntryById(companyId, Number(result.lastInsertRowid));
   },
 
-  hasEntryOnRange(databasePath: string, userId: number, startDay: string, endDay: string, excludeEntryId?: number) {
-    const rows = getCompanyDb(databasePath)
+  hasEntryOnRange(companyId: string, userId: number, startDay: string, endDay: string, excludeEntryId?: number) {
+    const row = getCompanyDb(companyId)
       .prepare(
-        `SELECT id, entry_date, COALESCE(end_date, entry_date) AS range_end
+        `SELECT id
          FROM time_entries
-         WHERE user_id = @userId
+         WHERE company_id = @companyId
+           AND user_id = @userId
            AND (@excludeEntryId IS NULL OR id != @excludeEntryId)
            AND entry_date <= @endDay
            AND COALESCE(end_date, entry_date) >= @startDay
          LIMIT 1`
       )
       .get({
+        companyId,
         userId,
         startDay,
         endDay,
-        excludeEntryId: excludeEntryId ?? null,
-      }) as
-      | {
-          id: number;
-          entry_date: string;
-          range_end: string;
-        }
-      | undefined;
+        excludeEntryId: excludeEntryId ?? null
+      });
 
-    return Boolean(rows);
+    return Boolean(row);
   },
 
   hasIntersectingEntry(
-    databasePath: string,
+    companyId: string,
     userId: number,
     candidate: {
       entryType: TimeEntryType;
@@ -229,23 +219,25 @@ export const timeService = {
       startTime: string | null;
       endTime: string | null;
     },
-    excludeEntryId?: number,
+    excludeEntryId?: number
   ) {
-    const rows = getCompanyDb(databasePath)
+    const rows = getCompanyDb(companyId)
       .prepare(
         `SELECT id, entry_type, entry_date, end_date, start_time, end_time
          FROM time_entries
-         WHERE user_id = @userId
+         WHERE company_id = @companyId
+           AND user_id = @userId
            AND (@excludeEntryId IS NULL OR id != @excludeEntryId)
            AND entry_date <= @endDay
            AND COALESCE(end_date, entry_date) >= @startDay
          ORDER BY entry_date ASC, start_time ASC`
       )
       .all({
+        companyId,
         userId,
         startDay: candidate.entryDate,
         endDay: candidate.endDate ?? candidate.entryDate,
-        excludeEntryId: excludeEntryId ?? null,
+        excludeEntryId: excludeEntryId ?? null
       }) as Array<{
         id: number;
         entry_type: TimeEntryType;
@@ -256,7 +248,6 @@ export const timeService = {
       }>;
 
     const candidateEndDay = candidate.endDate ?? candidate.entryDate;
-
     return rows.some((row) => {
       const rowEndDay = row.end_date ?? row.entry_date;
       if (!rangesOverlap(candidate.entryDate, candidateEndDay, row.entry_date, rowEndDay)) {
@@ -271,21 +262,16 @@ export const timeService = {
     });
   },
 
-  startTimer(
-    databasePath: string,
-    userId: number,
-    input: StartTimerInput,
-    snapshot = getLocalNowSnapshot(),
-  ) {
-    const db = getCompanyDb(databasePath);
-    const openEntry = getOpenEntry(db, userId);
+  startTimer(companyId: string, userId: number, input: StartTimerInput, snapshot = getLocalNowSnapshot()) {
+    const openEntry = getOpenEntry(companyId, userId);
     if (openEntry) {
       throw new HTTPException(400, { message: "A timer is already running" });
     }
 
-    const result = db
+    const result = getCompanyDb(companyId)
       .prepare(
         `INSERT INTO time_entries (
+          company_id,
           user_id,
           entry_type,
           entry_date,
@@ -294,6 +280,7 @@ export const timeService = {
           custom_field_values_json,
           created_at
         ) VALUES (
+          @companyId,
           @userId,
           'work',
           @entryDate,
@@ -304,6 +291,7 @@ export const timeService = {
         )`
       )
       .run({
+        companyId,
         userId,
         entryDate: snapshot.localDay,
         startTime: snapshot.instantIso,
@@ -312,33 +300,34 @@ export const timeService = {
         createdAt: snapshot.instantIso
       });
 
-    return this.getEntryById(databasePath, Number(result.lastInsertRowid));
+    return this.getEntryById(companyId, Number(result.lastInsertRowid));
   },
 
-  stopTimer(databasePath: string, userId: number, input: StopTimerInput) {
-    const db = getCompanyDb(databasePath);
+  stopTimer(companyId: string, userId: number, input: StopTimerInput) {
+    const db = getCompanyDb(companyId);
     const target = (
       input.entryId
-        ? db.prepare("SELECT id, user_id, end_time, entry_type FROM time_entries WHERE id = ?").get(input.entryId)
-        : getOpenEntry(db, userId)
+        ? db.prepare("SELECT id, user_id, end_time, entry_type FROM time_entries WHERE company_id = ? AND id = ?").get(companyId, input.entryId)
+        : getOpenEntry(companyId, userId)
     ) as { id: number; user_id: number; end_time: string | null; entry_type: TimeEntryType } | undefined;
 
     if (!target || target.user_id !== userId || target.entry_type !== "work" || target.end_time) {
       throw new HTTPException(404, { message: "Open time entry not found" });
     }
 
-    db.prepare("UPDATE time_entries SET end_time = @endTime, notes = COALESCE(@notes, notes) WHERE id = @id").run({
+    db.prepare("UPDATE time_entries SET end_time = @endTime, notes = COALESCE(@notes, notes) WHERE company_id = @companyId AND id = @id").run({
+      companyId,
       id: target.id,
       endTime: new Date().toISOString(),
       notes: input.notes?.trim() || null
     });
 
-    return this.getEntryById(databasePath, target.id);
+    return this.getEntryById(companyId, target.id);
   },
 
-  updateEntry(databasePath: string, userId: number, input: UpdateTimeEntryInput) {
-    const db = getCompanyDb(databasePath);
-    const existing = db.prepare("SELECT id, user_id FROM time_entries WHERE id = ?").get(input.entryId) as
+  updateEntry(companyId: string, userId: number, input: UpdateTimeEntryInput) {
+    const db = getCompanyDb(companyId);
+    const existing = db.prepare("SELECT id, user_id FROM time_entries WHERE company_id = ? AND id = ?").get(companyId, input.entryId) as
       | { id: number; user_id: number }
       | undefined;
 
@@ -346,11 +335,11 @@ export const timeService = {
       throw new HTTPException(404, { message: "Time entry not found" });
     }
 
-    const normalized = normalizeManualEntryInput(databasePath, input);
-
+    const normalized = normalizeManualEntryInput(companyId, input);
     db.prepare(
       `UPDATE time_entries
        SET
+         user_id = @userId,
          entry_type = @entryType,
          entry_date = @entryDate,
          end_date = @endDate,
@@ -361,9 +350,11 @@ export const timeService = {
          sick_leave_attachment_mime_type = @sickLeaveAttachmentMimeType,
          sick_leave_attachment_data_url = @sickLeaveAttachmentDataUrl,
          custom_field_values_json = @customFieldValuesJson
-       WHERE id = @id`
+       WHERE company_id = @companyId AND id = @id`
     ).run({
+      companyId,
       id: input.entryId,
+      userId,
       entryType: normalized.entryType,
       entryDate: normalized.entryDate,
       endDate: normalized.endDate,
@@ -376,12 +367,12 @@ export const timeService = {
       customFieldValuesJson: JSON.stringify(normalized.customFieldValues)
     });
 
-    return this.getEntryById(databasePath, input.entryId);
+    return this.getEntryById(companyId, input.entryId);
   },
 
-  deleteEntry(databasePath: string, userId: number, entryId: number) {
-    const db = getCompanyDb(databasePath);
-    const existing = db.prepare("SELECT id, user_id FROM time_entries WHERE id = ?").get(entryId) as
+  deleteEntry(companyId: string, userId: number, entryId: number) {
+    const db = getCompanyDb(companyId);
+    const existing = db.prepare("SELECT id, user_id FROM time_entries WHERE company_id = ? AND id = ?").get(companyId, entryId) as
       | { id: number; user_id: number }
       | undefined;
 
@@ -389,22 +380,24 @@ export const timeService = {
       throw new HTTPException(404, { message: "Time entry not found" });
     }
 
-    db.prepare("DELETE FROM time_entries WHERE id = ?").run(entryId);
+    db.prepare("DELETE FROM time_entries WHERE company_id = ? AND id = ?").run(companyId, entryId);
   },
 
-  listEntries(databasePath: string, userId: number, filters: { from?: string; to?: string }) {
+  listEntries(companyId: string, userId: number, filters: { from?: string; to?: string }) {
     const fromDay = toFilterDay(filters.from);
     const toDay = toFilterDay(filters.to);
-    const rows = getCompanyDb(databasePath)
+    const rows = getCompanyDb(companyId)
       .prepare(
         `SELECT te.*
          FROM time_entries te
-         WHERE te.user_id = @userId
+         WHERE te.company_id = @companyId
+           AND te.user_id = @userId
            AND (@fromDay IS NULL OR COALESCE(te.end_date, te.entry_date) >= @fromDay)
            AND (@toDay IS NULL OR te.entry_date <= @toDay)
          ORDER BY te.entry_date DESC, te.start_time DESC, te.id DESC`
       )
       .all({
+        companyId,
         userId,
         fromDay,
         toDay
@@ -413,32 +406,28 @@ export const timeService = {
     return rows.map(mapTimeEntryView);
   },
 
-  getDashboard(databasePath: string, userId: number) {
-    const todayDay = settingsService.getBusinessNowSnapshot(databasePath).localDay;
+  getDashboard(companyId: string, userId: number) {
+    const todayDay = settingsService.getBusinessNowSnapshot(companyId).localDay;
     const weekStart = parseLocalDay(todayDay) ?? new Date();
     const weekday = weekStart.getDay();
     const offset = weekday === 0 ? -6 : 1 - weekday;
     weekStart.setDate(weekStart.getDate() + offset);
-    const weekEntries = this.listEntries(databasePath, userId, { from: formatLocalDay(weekStart) });
-    const todayEntries = this.listEntries(databasePath, userId, { from: todayDay, to: todayDay });
-    const activeEntry = this.getActiveEntry(databasePath, userId);
+    const weekEntries = this.listEntries(companyId, userId, { from: formatLocalDay(weekStart) });
+    const todayEntries = this.listEntries(companyId, userId, { from: todayDay, to: todayDay });
+    const activeEntry = this.getActiveEntry(companyId, userId);
 
     return {
       todayMinutes: todayEntries.filter((entry) => entry.entryType === "work").reduce((sum, entry) => sum + entry.durationMinutes, 0),
       weekMinutes: weekEntries.filter((entry) => entry.entryType === "work").reduce((sum, entry) => sum + entry.durationMinutes, 0),
       activeEntry,
-      recentEntries: this.listEntries(databasePath, userId, {}).slice(0, 5)
+      recentEntries: this.listEntries(companyId, userId, {}).slice(0, 5)
     };
   },
 
-  getEntryById(databasePath: string, entryId: number) {
-    const row = getCompanyDb(databasePath)
-      .prepare(
-        `SELECT te.*
-         FROM time_entries te
-         WHERE te.id = ?`
-      )
-      .get(entryId);
+  getEntryById(companyId: string, entryId: number) {
+    const row = getCompanyDb(companyId)
+      .prepare("SELECT te.* FROM time_entries te WHERE te.company_id = ? AND te.id = ?")
+      .get(companyId, entryId);
 
     if (!row) {
       throw new HTTPException(404, { message: "Time entry not found" });

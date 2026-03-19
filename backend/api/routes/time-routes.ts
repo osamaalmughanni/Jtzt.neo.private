@@ -130,7 +130,7 @@ function enforceDayLimit(
 }
 
 function enforceSingleRecordPerDay(
-  databasePath: string,
+  companyId: string,
   userId: number,
   settings: ReturnType<typeof settingsService.getSettings>,
   startDate: string,
@@ -142,13 +142,13 @@ function enforceSingleRecordPerDay(
   }
 
   const rangeEnd = endDate && endDate >= startDate ? endDate : startDate;
-  if (timeService.hasEntryOnRange(databasePath, userId, startDate, rangeEnd, excludeEntryId)) {
+  if (timeService.hasEntryOnRange(companyId, userId, startDate, rangeEnd, excludeEntryId)) {
     throw new Error("Only one record per day is allowed");
   }
 }
 
 function enforceIntersectingRecords(
-  databasePath: string,
+  companyId: string,
   userId: number,
   settings: ReturnType<typeof settingsService.getSettings>,
   candidate: {
@@ -167,7 +167,7 @@ function enforceIntersectingRecords(
   const normalizedEndDate = candidate.endDate && candidate.endDate >= candidate.startDate ? candidate.endDate : candidate.startDate;
   if (
     timeService.hasIntersectingEntry(
-      databasePath,
+      companyId,
       userId,
       {
         entryType: candidate.entryType,
@@ -184,10 +184,10 @@ function enforceIntersectingRecords(
 }
 
 async function enrichEntryWithDayMetrics(
-  databasePath: string,
+  companyId: string,
   entry: Awaited<ReturnType<typeof timeService.getEntryById>>
 ) {
-  const settings = settingsService.getSettings(databasePath);
+  const settings = settingsService.getSettings(companyId);
   if (entry.entryType === "work") {
     const totalDayCount = entry.endDate ? Math.max(1, diffCalendarDays(entry.endDate, entry.entryDate) + 1) : 1;
     return {
@@ -211,7 +211,7 @@ async function enrichEntryWithDayMetrics(
   }
 
   const holidays = await Promise.all(
-    Array.from(holidayYears).map((holidayYear) => settingsService.getPublicHolidays(databasePath, settings.country, holidayYear)),
+    Array.from(holidayYears).map((holidayYear) => settingsService.getPublicHolidays(companyId, settings.country, holidayYear)),
   );
   const holidaySet = new Set(
     holidays
@@ -227,13 +227,13 @@ async function enrichEntryWithDayMetrics(
 }
 
 async function enrichEntriesWithDayMetrics(
-  databasePath: string,
+  companyId: string,
   entries: ReturnType<typeof timeService.listEntries>
 ) {
-  return Promise.all(entries.map((entry) => enrichEntryWithDayMetrics(databasePath, entry)));
+  return Promise.all(entries.map((entry) => enrichEntryWithDayMetrics(companyId, entry)));
 }
 
-async function getHolidaySetForRange(databasePath: string, country: string, startDay: string, endDay: string) {
+async function getHolidaySetForRange(companyId: string, country: string, startDay: string, endDay: string) {
   const years = new Set<number>();
   let year = Number(startDay.slice(0, 4));
   const finalYear = Number(endDay.slice(0, 4));
@@ -244,7 +244,7 @@ async function getHolidaySetForRange(databasePath: string, country: string, star
   }
 
   const responses = await Promise.all(
-    Array.from(years).map((currentYear) => settingsService.getPublicHolidays(databasePath, country, currentYear)),
+    Array.from(years).map((currentYear) => settingsService.getPublicHolidays(companyId, country, currentYear)),
   );
 
   return new Set(
@@ -252,15 +252,15 @@ async function getHolidaySetForRange(databasePath: string, country: string, star
   );
 }
 
-async function buildDashboardSummary(databasePath: string, userId: number) {
-  const settings = settingsService.getSettings(databasePath);
-  const todayDay = settingsService.getBusinessNowSnapshot(databasePath).localDay;
+async function buildDashboardSummary(companyId: string, userId: number) {
+  const settings = settingsService.getSettings(companyId);
+  const todayDay = settingsService.getBusinessNowSnapshot(companyId).localDay;
   const fullWeekRange = getWeekRange(todayDay, settings.firstDayOfWeek);
   const fullMonthRange = getMonthRange(todayDay);
   const weekRange = { startDay: fullWeekRange.startDay, endDay: todayDay };
   const monthRange = { startDay: fullMonthRange.startDay, endDay: todayDay };
-  const contracts = userService.listUserContracts(databasePath, userId);
-  const allEntries = timeService.listEntries(databasePath, userId, {});
+  const contracts = userService.listUserContracts(companyId, userId);
+  const allEntries = timeService.listEntries(companyId, userId, {});
   const currentContract =
     contracts.find((contract) => contract.startDate <= todayDay && (contract.endDate === null || contract.endDate >= todayDay)) ?? null;
   const historyStartDay = [
@@ -269,16 +269,16 @@ async function buildDashboardSummary(databasePath: string, userId: number) {
     todayDay,
   ].sort((left, right) => left.localeCompare(right))[0];
   const holidaySet = await getHolidaySetForRange(
-    databasePath,
+    companyId,
     settings.country,
     historyStartDay,
     todayDay,
   );
 
-  const todayEntries = timeService.listEntries(databasePath, userId, { from: todayDay, to: todayDay });
-  const weekEntries = timeService.listEntries(databasePath, userId, { from: weekRange.startDay, to: weekRange.endDay });
-  const monthEntries = timeService.listEntries(databasePath, userId, { from: monthRange.startDay, to: monthRange.endDay });
-  const activeEntry = timeService.getActiveEntry(databasePath, userId);
+  const todayEntries = timeService.listEntries(companyId, userId, { from: todayDay, to: todayDay });
+  const weekEntries = timeService.listEntries(companyId, userId, { from: weekRange.startDay, to: weekRange.endDay });
+  const monthEntries = timeService.listEntries(companyId, userId, { from: monthRange.startDay, to: monthRange.endDay });
+  const activeEntry = timeService.getActiveEntry(companyId, userId);
 
   function getRecordedMinutes(entries: ReturnType<typeof timeService.listEntries>, startDay: string, endDay: string) {
     return entries.reduce((sum, entry) => {
@@ -312,8 +312,8 @@ async function buildDashboardSummary(databasePath: string, userId: number) {
   return {
     todayMinutes: todayRecordedMinutes,
     weekMinutes: weekRecordedMinutes,
-    activeEntry: activeEntry ? await enrichEntryWithDayMetrics(databasePath, activeEntry) : null,
-    recentEntries: await enrichEntriesWithDayMetrics(databasePath, allEntries.slice(0, 5)),
+    activeEntry: activeEntry ? await enrichEntryWithDayMetrics(companyId, activeEntry) : null,
+    recentEntries: await enrichEntriesWithDayMetrics(companyId, allEntries.slice(0, 5)),
     contractStats: {
       currentContract: currentContract
         ? {
@@ -350,11 +350,11 @@ timeRoutes.post("/start", async (c) => {
   }
   const session = getCompanySession(rawSession);
   const body = startTimerSchema.parse(await c.req.json());
-  const settings = settingsService.getSettings(session.databasePath);
-  const snapshot = settingsService.getBusinessNowSnapshot(session.databasePath);
+  const settings = settingsService.getSettings(session.companyId);
+  const snapshot = settingsService.getBusinessNowSnapshot(session.companyId);
   try {
-    enforceSingleRecordPerDay(session.databasePath, session.userId, settings, snapshot.localDay);
-    enforceIntersectingRecords(session.databasePath, session.userId, settings, {
+    enforceSingleRecordPerDay(session.companyId, session.userId, settings, snapshot.localDay);
+    enforceIntersectingRecords(session.companyId, session.userId, settings, {
       entryType: "work",
       startDate: snapshot.localDay,
       endDate: null,
@@ -370,7 +370,7 @@ timeRoutes.post("/start", async (c) => {
     return c.json({ error: error instanceof Error ? error.message : "Invalid custom fields" }, 400);
   }
   return c.json({
-    entry: timeService.startTimer(session.databasePath, session.userId, body, snapshot)
+    entry: timeService.startTimer(session.companyId, session.userId, body, snapshot)
   });
 });
 
@@ -382,18 +382,18 @@ timeRoutes.post("/entry", async (c) => {
   const session = getCompanySession(rawSession);
 
   const body = createManualEntrySchema.parse(await c.req.json());
-  const todayDay = settingsService.getBusinessNowSnapshot(session.databasePath).localDay;
+  const todayDay = settingsService.getBusinessNowSnapshot(session.companyId).localDay;
   let targetUserId: number;
   try {
     targetUserId = resolveTargetUserId(session, body.targetUserId);
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
-  const settings = settingsService.getSettings(session.databasePath);
+  const settings = settingsService.getSettings(session.companyId);
   try {
     enforceDayLimit(session, settings.insertDaysLimit, todayDay, body.startDate, "Insert day limit reached");
-    enforceSingleRecordPerDay(session.databasePath, targetUserId, settings, body.startDate, body.endDate);
-    enforceIntersectingRecords(session.databasePath, targetUserId, settings, {
+    enforceSingleRecordPerDay(session.companyId, targetUserId, settings, body.startDate, body.endDate);
+    enforceIntersectingRecords(session.companyId, targetUserId, settings, {
       entryType: body.entryType,
       startDate: body.startDate,
       endDate: body.endDate,
@@ -416,9 +416,9 @@ timeRoutes.post("/entry", async (c) => {
     return c.json({ error: error instanceof Error ? error.message : "Invalid custom fields" }, 400);
   }
 
-  const createdEntry = timeService.createManualEntry(session.databasePath, targetUserId, body);
+  const createdEntry = timeService.createManualEntry(session.companyId, targetUserId, body);
   return c.json({
-    entry: await enrichEntryWithDayMetrics(session.databasePath, createdEntry)
+    entry: await enrichEntryWithDayMetrics(session.companyId, createdEntry)
   });
 });
 
@@ -430,7 +430,7 @@ timeRoutes.post("/stop", async (c) => {
   const session = getCompanySession(rawSession);
   const body = stopTimerSchema.parse(await c.req.json());
   return c.json({
-    entry: timeService.stopTimer(session.databasePath, session.userId, body)
+    entry: timeService.stopTimer(session.companyId, session.userId, body)
   });
 });
 
@@ -448,7 +448,7 @@ timeRoutes.get("/list", async (c) => {
     return c.json({ error: "Manager access required" }, 403);
   }
   return c.json({
-    entries: await enrichEntriesWithDayMetrics(session.databasePath, timeService.listEntries(session.databasePath, targetUserId, {
+    entries: await enrichEntriesWithDayMetrics(session.companyId, timeService.listEntries(session.companyId, targetUserId, {
       from: c.req.query("from"),
       to: c.req.query("to")
     }))
@@ -469,11 +469,11 @@ timeRoutes.get("/entry/:entryId", async (c) => {
     return c.json({ error: "Manager access required" }, 403);
   }
   const entryId = Number(c.req.param("entryId"));
-  const entry = timeService.getEntryById(session.databasePath, entryId);
+  const entry = timeService.getEntryById(session.companyId, entryId);
   if (entry.userId !== targetUserId) {
     return c.json({ error: "Time entry not found" }, 404);
   }
-  return c.json({ entry: await enrichEntryWithDayMetrics(session.databasePath, entry) });
+  return c.json({ entry: await enrichEntryWithDayMetrics(session.companyId, entry) });
 });
 
 timeRoutes.put("/entry", async (c) => {
@@ -483,18 +483,18 @@ timeRoutes.put("/entry", async (c) => {
   }
   const session = getCompanySession(rawSession);
   const body = updateEntrySchema.parse(await c.req.json());
-  const todayDay = settingsService.getBusinessNowSnapshot(session.databasePath).localDay;
+  const todayDay = settingsService.getBusinessNowSnapshot(session.companyId).localDay;
   let targetUserId: number;
   try {
     targetUserId = resolveTargetUserId(session, body.targetUserId);
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
-  const settings = settingsService.getSettings(session.databasePath);
+  const settings = settingsService.getSettings(session.companyId);
   try {
     enforceDayLimit(session, settings.editDaysLimit, todayDay, body.startDate, "Edit day limit reached");
-    enforceSingleRecordPerDay(session.databasePath, targetUserId, settings, body.startDate, body.endDate, body.entryId);
-    enforceIntersectingRecords(session.databasePath, targetUserId, settings, {
+    enforceSingleRecordPerDay(session.companyId, targetUserId, settings, body.startDate, body.endDate, body.entryId);
+    enforceIntersectingRecords(session.companyId, targetUserId, settings, {
       entryType: body.entryType,
       startDate: body.startDate,
       endDate: body.endDate,
@@ -515,9 +515,9 @@ timeRoutes.put("/entry", async (c) => {
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Invalid custom fields" }, 400);
   }
-  const updatedEntry = timeService.updateEntry(session.databasePath, targetUserId, body);
+  const updatedEntry = timeService.updateEntry(session.companyId, targetUserId, body);
   return c.json({
-    entry: await enrichEntryWithDayMetrics(session.databasePath, updatedEntry)
+    entry: await enrichEntryWithDayMetrics(session.companyId, updatedEntry)
   });
 });
 
@@ -534,7 +534,7 @@ timeRoutes.delete("/entry", async (c) => {
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
-  timeService.deleteEntry(session.databasePath, targetUserId, body.entryId);
+  timeService.deleteEntry(session.companyId, targetUserId, body.entryId);
   return c.json({ success: true });
 });
 
@@ -551,5 +551,5 @@ timeRoutes.get("/dashboard", async (c) => {
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
-  return c.json({ summary: await buildDashboardSummary(session.databasePath, targetUserId) });
+  return c.json({ summary: await buildDashboardSummary(session.companyId, targetUserId) });
 });

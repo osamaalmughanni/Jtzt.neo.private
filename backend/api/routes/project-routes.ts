@@ -24,7 +24,7 @@ projectRoutes.get("/", (c) => {
   if (session.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
-  return c.json(projectService.listProjects(session.databasePath));
+  return c.json(projectService.listProjects(session.companyId));
 });
 
 projectRoutes.post("/", requireCompanyAdmin, async (c) => {
@@ -34,7 +34,7 @@ projectRoutes.post("/", requireCompanyAdmin, async (c) => {
   }
 
   const body = createProjectSchema.parse(await c.req.json());
-  taskService.createProject(session.databasePath, body);
+  taskService.createProject(session.companyId, body);
   return c.json({ success: true });
 });
 
@@ -45,6 +45,6 @@ projectRoutes.post("/tasks", requireCompanyAdmin, async (c) => {
   }
 
   const body = createTaskSchema.parse(await c.req.json());
-  taskService.createTask(session.databasePath, body);
+  taskService.createTask(session.companyId, body);
   return c.json({ success: true });
 });

@@ -69,9 +69,11 @@ export const authService = {
       throw new HTTPException(500, { message: "Company could not be created" });
     }
 
-    const userRow = getCompanyDb(company.databasePath)
-      .prepare("SELECT id, username, full_name, password_hash, role, is_active, created_at FROM users WHERE username = ?")
-      .get(input.adminUsername);
+    const userRow = getCompanyDb(company.id)
+      .prepare(
+        "SELECT id, username, full_name, password_hash, role, is_active, pin_code, created_at FROM users WHERE company_id = ? AND username = ?"
+      )
+      .get(company.id, input.adminUsername);
 
     const user = userRow ? mapCompanyUser(userRow) : null;
     if (!user) {
@@ -83,7 +85,6 @@ export const authService = {
       accessMode: "full",
       companyId: company.id,
       companyName: company.name,
-      databasePath: company.databasePath,
       userId: user.id,
       role: user.role
     });
@@ -108,9 +109,11 @@ export const authService = {
       }
     }
 
-    const userRow = getCompanyDb(company.databasePath)
-      .prepare("SELECT id, username, full_name, password_hash, role, is_active, created_at FROM users WHERE username = ?")
-      .get(input.username);
+    const userRow = getCompanyDb(company.id)
+      .prepare(
+        "SELECT id, username, full_name, password_hash, role, is_active, pin_code, created_at FROM users WHERE company_id = ? AND username = ?"
+      )
+      .get(company.id, input.username);
 
     const user = userRow ? mapCompanyUser(userRow) : null;
     if (!user || !bcrypt.compareSync(input.password, user.passwordHash)) {
@@ -125,7 +128,6 @@ export const authService = {
       accessMode: "full",
       companyId: company.id,
       companyName: company.name,
-      databasePath: company.databasePath,
       userId: user.id,
       role: user.role
     });
@@ -148,9 +150,11 @@ export const authService = {
       throw new HTTPException(401, { message: "Invalid tablet code" });
     }
 
-    const userRow = getCompanyDb(company.databasePath)
-      .prepare("SELECT id, username, full_name, password_hash, role, is_active, pin_code, created_at FROM users WHERE pin_code = ?")
-      .get(input.pinCode.trim()) as Record<string, unknown> | undefined;
+    const userRow = getCompanyDb(company.id)
+      .prepare(
+        "SELECT id, username, full_name, password_hash, role, is_active, pin_code, created_at FROM users WHERE company_id = ? AND pin_code = ?"
+      )
+      .get(company.id, input.pinCode.trim()) as Record<string, unknown> | undefined;
 
     const user = userRow ? mapCompanyUser(userRow) : null;
     if (!user) {
@@ -165,7 +169,6 @@ export const authService = {
       accessMode: "tablet",
       companyId: company.id,
       companyName: company.name,
-      databasePath: company.databasePath,
       userId: user.id,
       role: user.role
     });
@@ -180,15 +183,15 @@ export const authService = {
     return companySecurity;
   },
 
-  getCompanySessionDetails(payload: { companyId: number; databasePath: string; userId: number; accessMode: "full" | "tablet" }) {
+  getCompanySessionDetails(payload: { companyId: string; userId: number; accessMode: "full" | "tablet" }) {
     const company = systemService.getCompanyById(payload.companyId);
     if (!company) {
       throw new HTTPException(404, { message: "Company not found" });
     }
 
-    const row = getCompanyDb(payload.databasePath)
-      .prepare("SELECT id, username, full_name, role FROM users WHERE id = ?")
-      .get(payload.userId);
+    const row = getCompanyDb(payload.companyId)
+      .prepare("SELECT id, username, full_name, role FROM users WHERE company_id = ? AND id = ?")
+      .get(payload.companyId, payload.userId);
 
     if (!row) {
       throw new HTTPException(404, { message: "User not found" });

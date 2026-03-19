@@ -45,7 +45,6 @@ export function mapCompanyRecord(row: any): CompanyRecord {
     id: row.id,
     name: row.name,
     encryptionEnabled: Boolean(row.encryption_enabled),
-    databasePath: row.database_path,
     tabletCodeUpdatedAt: row.tablet_code_updated_at ?? null,
     createdAt: row.created_at
   };
@@ -113,7 +112,7 @@ export function mapProject(row: any): ProjectRecord {
     id: row.id,
     name: row.name,
     description: row.description,
-    isActive: row.is_active,
+    isActive: Boolean(row.is_active),
     createdAt: row.created_at
   };
 }
@@ -179,7 +178,7 @@ export function mapTask(row: any): TaskRecord {
     id: row.id,
     projectId: row.project_id,
     title: row.title,
-    isActive: row.is_active,
+    isActive: Boolean(row.is_active),
     createdAt: row.created_at
   };
 }

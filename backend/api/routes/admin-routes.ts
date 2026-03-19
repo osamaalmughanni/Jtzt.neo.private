@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import fs from "node:fs";
 import { z } from "zod";
 import { authMiddleware, requireAdmin } from "../../auth/middleware";
 import { adminService } from "../../services/admin-service";
@@ -20,11 +19,11 @@ const createCompanySchema = z.object({
 });
 
 const deleteCompanySchema = z.object({
-  companyId: z.number()
+  companyId: z.string().uuid()
 });
 
 const createCompanyAdminSchema = z.object({
-  companyId: z.number(),
+  companyId: z.string().uuid(),
   username: z.string().min(2),
   password: z.string().min(6),
   fullName: z.string().min(2)
@@ -47,8 +46,10 @@ adminRoutes.get("/me", (c) => {
   return c.json({ username: session.username });
 });
 
-adminRoutes.get("/companies", (c) => {
-  return c.json({ companies: systemService.listCompanies() });
+adminRoutes.get("/companies", () => {
+  return new Response(JSON.stringify({ companies: systemService.listCompanies() }), {
+    headers: { "Content-Type": "application/json" }
+  });
 });
 
 adminRoutes.post("/companies/create", async (c) => {
@@ -65,11 +66,11 @@ adminRoutes.post("/companies/create/import", async (c) => {
     return c.json({ error: "Company name is required" }, 400);
   }
   if (!(file instanceof File)) {
-    return c.json({ error: "SQLite file is required" }, 400);
+    return c.json({ error: "Snapshot file is required" }, 400);
   }
 
-  const databaseBuffer = Buffer.from(await file.arrayBuffer());
-  return c.json({ company: adminService.createCompanyFromDatabase({ name, databaseBuffer }) });
+  const snapshot = JSON.parse(await file.text());
+  return c.json({ company: adminService.createCompanyFromSnapshot({ name, snapshot }) });
 });
 
 adminRoutes.post("/companies/delete", async (c) => {
@@ -78,35 +79,35 @@ adminRoutes.post("/companies/delete", async (c) => {
   return c.json({ success: true });
 });
 
-adminRoutes.get("/companies/:companyId/download", async (c) => {
-  const companyId = Number(c.req.param("companyId"));
-  if (!Number.isFinite(companyId)) {
-    return c.json({ error: "Invalid company id" }, 400);
+adminRoutes.get("/companies/:companyId/export", (c) => {
+  const companyId = c.req.param("companyId");
+  const company = systemService.getCompanyById(companyId);
+  if (!company) {
+    return c.json({ error: "Company not found" }, 404);
   }
 
-  const { company, filePath } = adminService.getCompanyDatabaseDownload(companyId);
-  const fileName = `${company.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "company"}.sqlite`;
-
-  return c.body(fs.readFileSync(filePath), 200, {
-    "Content-Type": "application/x-sqlite3",
+  const fileName = `${company.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "company"}.snapshot.json`;
+  return c.body(JSON.stringify(adminService.exportCompanySnapshot(companyId), null, 2), 200, {
+    "Content-Type": "application/json",
     "Content-Disposition": `attachment; filename="${fileName}"`
   });
 });
 
 adminRoutes.post("/companies/:companyId/import", async (c) => {
-  const companyId = Number(c.req.param("companyId"));
-  if (!Number.isFinite(companyId)) {
-    return c.json({ error: "Invalid company id" }, 400);
+  const companyId = c.req.param("companyId");
+  const company = systemService.getCompanyById(companyId);
+  if (!company) {
+    return c.json({ error: "Company not found" }, 404);
   }
 
   const formData = await c.req.formData();
   const file = formData.get("file");
   if (!(file instanceof File)) {
-    return c.json({ error: "SQLite file is required" }, 400);
+    return c.json({ error: "Snapshot file is required" }, 400);
   }
 
-  const databaseBuffer = Buffer.from(await file.arrayBuffer());
-  return c.json({ company: adminService.replaceCompanyDatabase({ companyId, databaseBuffer }) });
+  const snapshot = JSON.parse(await file.text());
+  return c.json({ company: adminService.replaceCompanySnapshot({ companyId, snapshot }) });
 });
 
 adminRoutes.post("/companies/admins/create", async (c) => {

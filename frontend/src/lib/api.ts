@@ -289,7 +289,7 @@ export const api = {
     });
   },
 
-  async createCompanyFromDb(token: string, input: { name: string; file: File }) {
+  async createCompanyFromSnapshot(token: string, input: { name: string; file: File }) {
     const formData = new FormData();
     formData.set("name", input.name);
     formData.set("file", input.file);
@@ -330,8 +330,8 @@ export const api = {
     });
   },
 
-  async downloadCompanyDb(token: string, companyId: number) {
-    const response = await fetch(`/api/admin/companies/${companyId}/download`, {
+  async downloadCompanySnapshot(token: string, companyId: string) {
+    const response = await fetch(`/api/admin/companies/${companyId}/export`, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
@@ -345,11 +345,11 @@ export const api = {
       fileName:
         response.headers
           .get("Content-Disposition")
-          ?.match(/filename="([^"]+)"/)?.[1] ?? `company-${companyId}.sqlite`
+          ?.match(/filename="([^"]+)"/)?.[1] ?? `company-${companyId}.snapshot.json`
     };
   },
 
-  async importCompanyDb(token: string, companyId: number, file: File) {
+  async importCompanySnapshot(token: string, companyId: string, file: File) {
     const formData = new FormData();
     formData.set("file", file);
 

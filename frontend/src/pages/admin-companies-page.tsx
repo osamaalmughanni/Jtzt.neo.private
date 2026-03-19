@@ -17,8 +17,8 @@ export function AdminCompaniesPage() {
   const { adminSession } = useAuth();
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [stats, setStats] = useState<SystemStats | null>(null);
-  const [newAdmin, setNewAdmin] = useState({ companyId: 0, username: "", password: "", fullName: "" });
-  const [importingCompanyId, setImportingCompanyId] = useState<number | null>(null);
+  const [newAdmin, setNewAdmin] = useState({ companyId: "", username: "", password: "", fullName: "" });
+  const [importingCompanyId, setImportingCompanyId] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [pendingDeleteCompany, setPendingDeleteCompany] = useState<CompanyRecord | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
@@ -50,7 +50,7 @@ export function AdminCompaniesPage() {
     void load();
   }, [adminSession]);
 
-  async function removeCompany(companyId: number) {
+  async function removeCompany(companyId: string) {
     if (!adminSession) return;
     setDeleteSubmitting(true);
     try {
@@ -68,10 +68,10 @@ export function AdminCompaniesPage() {
     }
   }
 
-  async function downloadCompanyDb(company: CompanyRecord) {
+  async function downloadCompanySnapshot(company: CompanyRecord) {
     if (!adminSession) return;
     try {
-      const { blob, fileName } = await api.downloadCompanyDb(adminSession.token, company.id);
+      const { blob, fileName } = await api.downloadCompanySnapshot(adminSession.token, company.id);
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
 
@@ -94,7 +94,7 @@ export function AdminCompaniesPage() {
     if (!adminSession) return;
     try {
       await api.createCompanyAdmin(adminSession.token, newAdmin);
-      setNewAdmin({ companyId: 0, username: "", password: "", fullName: "" });
+      setNewAdmin({ companyId: "", username: "", password: "", fullName: "" });
       toast({ title: t("adminCompanies.companyAdminCreated") });
     } catch (error) {
       toast({
@@ -104,17 +104,17 @@ export function AdminCompaniesPage() {
     }
   }
 
-  async function importCompanyDatabase(company: CompanyRecord) {
+  async function importCompanySnapshot(company: CompanyRecord) {
     if (!adminSession || !importFile) return;
     try {
       setImportingCompanyId(company.id);
-      await api.importCompanyDb(adminSession.token, company.id, importFile);
+      await api.importCompanySnapshot(adminSession.token, company.id, importFile);
       setImportFile(null);
-      toast({ title: "Company database replaced" });
+      toast({ title: "Company snapshot imported" });
       await load();
     } catch (error) {
       toast({
-        title: "Could not replace company database",
+        title: "Could not import company snapshot",
         description: error instanceof Error ? error.message : "Request failed"
       });
     } finally {
@@ -202,26 +202,26 @@ export function AdminCompaniesPage() {
                             </Button>
                           </DialogTrigger>
                         </TooltipTrigger>
-                        <TooltipContent>Replace database</TooltipContent>
+                        <TooltipContent>Import snapshot</TooltipContent>
                       </Tooltip>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Replace company database</DialogTitle>
-                          <DialogDescription>Upload a SQLite file to fully replace this company database.</DialogDescription>
+                          <DialogTitle>Import company snapshot</DialogTitle>
+                          <DialogDescription>Upload a snapshot file to fully replace this company inside the shared database.</DialogDescription>
                         </DialogHeader>
                         <div className="flex flex-col gap-3">
                           <FileInput
                             file={importFile}
-                            accept=".db,.sqlite,.sqlite3,application/x-sqlite3"
-                            placeholder="Upload a SQLite database"
+                            accept=".json,application/json"
+                            placeholder="Upload a company snapshot"
                             buttonLabel="Select"
                             onFileChange={setImportFile}
                           />
                           <Button
-                            onClick={() => void importCompanyDatabase(company)}
+                            onClick={() => void importCompanySnapshot(company)}
                             disabled={importingCompanyId === company.id || !importFile}
                           >
-                            {importingCompanyId === company.id ? "Replacing..." : "Replace database"}
+                            {importingCompanyId === company.id ? "Importing..." : "Import snapshot"}
                           </Button>
                         </div>
                       </DialogContent>
@@ -233,7 +233,7 @@ export function AdminCompaniesPage() {
                           size="icon"
                           variant="ghost"
                           className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
-                          onClick={() => void downloadCompanyDb(company)}
+                          onClick={() => void downloadCompanySnapshot(company)}
                         >
                           <Download className="h-3.5 w-3.5" />
                         </Button>

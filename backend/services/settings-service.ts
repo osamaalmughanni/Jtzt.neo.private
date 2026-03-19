@@ -8,9 +8,9 @@ const HOLIDAY_CACHE_MAX_AGE_DAYS = 30;
 const CURRENT_YEAR_CACHE_MAX_AGE_DAYS = 7;
 export const DEFAULT_COMPANY_TIME_ZONE = "Europe/Vienna";
 
-function getDefaultSettingsRow() {
+function getDefaultSettingsRow(companyId: string) {
   return {
-    id: 1,
+    company_id: companyId,
     currency: "EUR",
     locale: "en-GB",
     time_zone: DEFAULT_COMPANY_TIME_ZONE,
@@ -28,38 +28,44 @@ function getDefaultSettingsRow() {
   };
 }
 
-function ensureSettingsRow(db: ReturnType<typeof getCompanyDb>) {
-  db.prepare(
-    `INSERT INTO company_settings (
-      id,
-      currency,
-      locale,
-      time_zone,
-      date_time_format,
-      first_day_of_week,
-      edit_days_limit,
-      insert_days_limit,
-      allow_one_record_per_day,
-      allow_intersecting_records,
-      country,
-      tablet_idle_timeout_seconds,
-      custom_fields_json
-    ) VALUES (
-      @id,
-      @currency,
-      @locale,
-      @time_zone,
-      @date_time_format,
-      @first_day_of_week,
-      @edit_days_limit,
-      @insert_days_limit,
-      @allow_one_record_per_day,
-      @allow_intersecting_records,
-      @country,
-      @tablet_idle_timeout_seconds,
-      @custom_fields_json
-    ) ON CONFLICT(id) DO NOTHING`
-  ).run(getDefaultSettingsRow());
+function ensureSettingsRow(companyId: string) {
+  getCompanyDb(companyId)
+    .prepare(
+      `INSERT INTO company_settings (
+        company_id,
+        currency,
+        locale,
+        time_zone,
+        date_time_format,
+        first_day_of_week,
+        edit_days_limit,
+        insert_days_limit,
+        allow_one_record_per_day,
+        allow_intersecting_records,
+        country,
+        tablet_idle_timeout_seconds,
+        auto_break_after_minutes,
+        auto_break_duration_minutes,
+        custom_fields_json
+      ) VALUES (
+        @company_id,
+        @currency,
+        @locale,
+        @time_zone,
+        @date_time_format,
+        @first_day_of_week,
+        @edit_days_limit,
+        @insert_days_limit,
+        @allow_one_record_per_day,
+        @allow_intersecting_records,
+        @country,
+        @tablet_idle_timeout_seconds,
+        @auto_break_after_minutes,
+        @auto_break_duration_minutes,
+        @custom_fields_json
+      ) ON CONFLICT(company_id) DO NOTHING`
+    )
+    .run(getDefaultSettingsRow(companyId));
 }
 
 function normalizeSettingsTimeZone(value: string) {
@@ -69,12 +75,6 @@ function normalizeSettingsTimeZone(value: string) {
   }
 
   return normalized;
-}
-
-function isFresh(isoDate: string) {
-  const fetchedAt = new Date(isoDate).getTime();
-  const ageMs = Date.now() - fetchedAt;
-  return ageMs < HOLIDAY_CACHE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 }
 
 function isFreshForYear(isoDate: string, year: number) {
@@ -96,52 +96,52 @@ function enumerateYears(startDate: string, endDate: string) {
 }
 
 export const settingsService = {
-  getSettings(databasePath: string) {
-    const db = getCompanyDb(databasePath);
-    ensureSettingsRow(db);
-    const row = db.prepare("SELECT * FROM company_settings WHERE id = 1").get();
+  getSettings(companyId: string) {
+    ensureSettingsRow(companyId);
+    const row = getCompanyDb(companyId).prepare("SELECT * FROM company_settings WHERE company_id = ?").get(companyId);
     return mapCompanySettings(row);
   },
 
-  updateSettings(databasePath: string, input: UpdateSettingsInput) {
-    const db = getCompanyDb(databasePath);
-    ensureSettingsRow(db);
+  updateSettings(companyId: string, input: UpdateSettingsInput) {
+    ensureSettingsRow(companyId);
+    getCompanyDb(companyId)
+      .prepare(
+        `UPDATE company_settings
+         SET
+           currency = @currency,
+           locale = @locale,
+           time_zone = @timeZone,
+           date_time_format = @dateTimeFormat,
+           first_day_of_week = @firstDayOfWeek,
+           edit_days_limit = @editDaysLimit,
+           insert_days_limit = @insertDaysLimit,
+           allow_one_record_per_day = @allowOneRecordPerDay,
+           allow_intersecting_records = @allowIntersectingRecords,
+           country = @country,
+           tablet_idle_timeout_seconds = @tabletIdleTimeoutSeconds,
+           auto_break_after_minutes = @autoBreakAfterMinutes,
+           auto_break_duration_minutes = @autoBreakDurationMinutes,
+           custom_fields_json = @customFieldsJson
+         WHERE company_id = @companyId`
+      )
+      .run({
+        companyId,
+        ...input,
+        timeZone: normalizeSettingsTimeZone(input.timeZone),
+        allowOneRecordPerDay: input.allowOneRecordPerDay ? 1 : 0,
+        allowIntersectingRecords: input.allowIntersectingRecords ? 1 : 0,
+        customFieldsJson: JSON.stringify(input.customFields)
+      });
 
-    db.prepare(
-      `UPDATE company_settings
-      SET
-        currency = @currency,
-        locale = @locale,
-        time_zone = @timeZone,
-        date_time_format = @dateTimeFormat,
-        first_day_of_week = @firstDayOfWeek,
-        edit_days_limit = @editDaysLimit,
-        insert_days_limit = @insertDaysLimit,
-        allow_one_record_per_day = @allowOneRecordPerDay,
-        allow_intersecting_records = @allowIntersectingRecords,
-        country = @country,
-        tablet_idle_timeout_seconds = @tabletIdleTimeoutSeconds,
-        auto_break_after_minutes = @autoBreakAfterMinutes,
-        auto_break_duration_minutes = @autoBreakDurationMinutes,
-        custom_fields_json = @customFieldsJson
-      WHERE id = 1`
-    ).run({
-      ...input,
-      timeZone: normalizeSettingsTimeZone(input.timeZone),
-      allowOneRecordPerDay: input.allowOneRecordPerDay ? 1 : 0,
-      allowIntersectingRecords: input.allowIntersectingRecords ? 1 : 0,
-      customFieldsJson: JSON.stringify(input.customFields)
-    });
-
-    return this.getSettings(databasePath);
+    return this.getSettings(companyId);
   },
 
-  async getPublicHolidays(databasePath: string, countryCode: string, year: number) {
-    const db = getCompanyDb(databasePath);
+  async getPublicHolidays(companyId: string, countryCode: string, year: number) {
+    const db = getCompanyDb(companyId);
     const normalizedCountry = countryCode.trim().toUpperCase();
     const cached = db
-      .prepare("SELECT payload_json, fetched_at FROM public_holiday_cache WHERE country_code = ? AND year = ?")
-      .get(normalizedCountry, year) as { payload_json: string; fetched_at: string } | undefined;
+      .prepare("SELECT payload_json, fetched_at FROM public_holiday_cache WHERE company_id = ? AND country_code = ? AND year = ?")
+      .get(companyId, normalizedCountry, year) as { payload_json: string; fetched_at: string } | undefined;
 
     if (cached && isFreshForYear(cached.fetched_at, year)) {
       return {
@@ -164,11 +164,11 @@ export const settingsService = {
       }>;
 
       db.prepare(
-        `INSERT INTO public_holiday_cache (country_code, year, payload_json, fetched_at)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(country_code, year)
-        DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at`
-      ).run(normalizedCountry, year, JSON.stringify(holidays), new Date().toISOString());
+        `INSERT INTO public_holiday_cache (company_id, country_code, year, payload_json, fetched_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(company_id, country_code, year)
+         DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at`
+      ).run(companyId, normalizedCountry, year, JSON.stringify(holidays), new Date().toISOString());
 
       return {
         holidays,
@@ -188,19 +188,18 @@ export const settingsService = {
     }
   },
 
-  async isPublicHoliday(databasePath: string, date: string) {
-    const settings = this.getSettings(databasePath);
+  async isPublicHoliday(companyId: string, date: string) {
+    const settings = this.getSettings(companyId);
     const year = Number(date.slice(0, 4));
-    const { holidays } = await this.getPublicHolidays(databasePath, settings.country, year);
+    const { holidays } = await this.getPublicHolidays(companyId, settings.country, year);
     return holidays.some((holiday: { date: string }) => holiday.date === date);
   },
 
-  async findPublicHolidayInRange(databasePath: string, startDate: string, endDate: string) {
-    const settings = this.getSettings(databasePath);
+  async findPublicHolidayInRange(companyId: string, startDate: string, endDate: string) {
+    const settings = this.getSettings(companyId);
     const years = enumerateYears(startDate, endDate);
-
     for (const year of years) {
-      const { holidays } = await this.getPublicHolidays(databasePath, settings.country, year);
+      const { holidays } = await this.getPublicHolidays(companyId, settings.country, year);
       const match = holidays.find((holiday: { date: string }) => holiday.date >= startDate && holiday.date <= endDate);
       if (match) {
         return match;
@@ -210,8 +209,8 @@ export const settingsService = {
     return null;
   },
 
-  getBusinessNowSnapshot(databasePath: string, now = new Date()) {
-    const settings = this.getSettings(databasePath);
+  getBusinessNowSnapshot(companyId: string, now = new Date()) {
+    const settings = this.getSettings(companyId);
     return getLocalNowSnapshot(now, settings.timeZone);
   }
 };
