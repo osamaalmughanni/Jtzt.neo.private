@@ -33,11 +33,19 @@ export function createApp() {
 
   app.use("*", async (c, next) => {
     const config = resolveRuntimeConfig(c.env);
-    const db = c.env.DB ? createD1Database(c.env.DB) : createNodeDatabase(config.nodeSqlitePath);
+    const d1Session = c.env.DB
+      ? c.env.DB.withSession(c.req.header("X-D1-Bookmark")?.trim() || "first-primary")
+      : null;
+    const db = c.env.DB ? createD1Database(c.env.DB, d1Session ?? c.env.DB) : createNodeDatabase(config.nodeSqlitePath);
     await ensureBootstrapState(db, config);
     c.set("db", db);
     c.set("config", config);
     await next();
+
+    const nextBookmark = d1Session?.getBookmark?.();
+    if (nextBookmark) {
+      c.header("X-D1-Bookmark", nextBookmark);
+    }
   });
 
   app.route("/api/auth", authRoutes);

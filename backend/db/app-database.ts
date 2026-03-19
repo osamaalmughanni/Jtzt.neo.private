@@ -1,7 +1,15 @@
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
-import type { AppDatabase, D1DatabaseLike, D1PreparedStatementLike, RunResult, SqlStatement, SqlValue } from "../runtime/types";
+import type {
+  AppDatabase,
+  D1DatabaseLike,
+  D1PreparedStatementLike,
+  D1QueryableLike,
+  RunResult,
+  SqlStatement,
+  SqlValue,
+} from "../runtime/types";
 import { appSchema } from "./schema";
 
 const nodeConnections = new Map<string, Database.Database>();
@@ -94,27 +102,27 @@ function bindStatement(statement: D1PreparedStatementLike, params?: SqlValue[]) 
   return statement.bind(...normalizeParams(params));
 }
 
-export function createD1Database(database: D1DatabaseLike): AppDatabase {
+export function createD1Database(database: D1DatabaseLike, queryable: D1QueryableLike = database): AppDatabase {
   return {
     async all<T>(sql: string, params?: SqlValue[]) {
       return withD1Retry(async () => {
-        const result = await bindStatement(database.prepare(sql), params).all<T>();
+        const result = await bindStatement(queryable.prepare(sql), params).all<T>();
         return result.results ?? [];
       });
     },
 
     async first<T>(sql: string, params?: SqlValue[]) {
-      return withD1Retry(async () => (await bindStatement(database.prepare(sql), params).first<T>()) ?? null);
+      return withD1Retry(async () => (await bindStatement(queryable.prepare(sql), params).first<T>()) ?? null);
     },
 
     async run(sql: string, params?: SqlValue[]) {
-      return withD1Retry(async () => mapD1Result(await bindStatement(database.prepare(sql), params).run()));
+      return withD1Retry(async () => mapD1Result(await bindStatement(queryable.prepare(sql), params).run()));
     },
 
     async batch(statements: SqlStatement[]) {
       return withD1Retry(async () => {
-        const bound = statements.map((statement) => bindStatement(database.prepare(statement.sql), statement.params));
-        return (await database.batch(bound)).map(mapD1Result);
+        const bound = statements.map((statement) => bindStatement(queryable.prepare(statement.sql), statement.params));
+        return (await queryable.batch(bound)).map(mapD1Result);
       });
     },
 

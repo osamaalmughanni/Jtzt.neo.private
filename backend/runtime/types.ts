@@ -33,10 +33,20 @@ export interface D1PreparedStatementLike {
   run(): Promise<D1ResultLike>;
 }
 
+export interface D1QueryableLike {
+  prepare(query: string): D1PreparedStatementLike;
+  batch(statements: D1PreparedStatementLike[]): Promise<D1ResultLike[]>;
+}
+
+export interface D1DatabaseSessionLike extends D1QueryableLike {
+  getBookmark(): string | null;
+}
+
 export interface D1DatabaseLike {
   prepare(query: string): D1PreparedStatementLike;
   batch(statements: D1PreparedStatementLike[]): Promise<D1ResultLike[]>;
   exec(query: string): Promise<unknown>;
+  withSession(bookmarkOrConstraint?: string): D1DatabaseSessionLike;
 }
 
 export interface RuntimeBindings {

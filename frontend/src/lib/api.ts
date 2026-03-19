@@ -49,6 +49,8 @@ export class ApiRequestError extends Error {
   }
 }
 
+const D1_BOOKMARK_STORAGE_KEY = "jtzt.d1-bookmark";
+
 function buildDefaultHeaders(init?: HeadersInit): HeadersInit {
   return {
     "Content-Type": "application/json",
@@ -56,11 +58,38 @@ function buildDefaultHeaders(init?: HeadersInit): HeadersInit {
   };
 }
 
+function readD1Bookmark() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem(D1_BOOKMARK_STORAGE_KEY);
+}
+
+function writeD1Bookmark(value: string | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (!value) {
+    window.localStorage.removeItem(D1_BOOKMARK_STORAGE_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(D1_BOOKMARK_STORAGE_KEY, value);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const bookmark = readD1Bookmark();
   const response = await fetch(path, {
-    headers: buildDefaultHeaders(init?.headers),
+    headers: buildDefaultHeaders({
+      ...(init?.headers ?? {}),
+      ...(bookmark ? { "X-D1-Bookmark": bookmark } : {}),
+    }),
     ...init
   });
+
+  writeD1Bookmark(response.headers.get("X-D1-Bookmark"));
 
   if (!response.ok) {
     const error = (await response.json().catch(() => ({ error: "Request failed" }))) as { error?: string };

@@ -21,6 +21,7 @@ import { CustomFieldInput } from "@/components/custom-field-input";
 import { EntryTypeTabs } from "@/components/entry-type-tabs";
 import { Field, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
+import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
@@ -379,84 +380,95 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
         confirming={deleting}
         onConfirm={() => void handleDelete()}
       />
-      <PageBackAction to={backTo} label={t("recordEditor.backToOverview")} />
-      <PageLabel title={mode === "create" ? t("recordEditor.addTitle") : t("recordEditor.editTitle")} description={t("recordEditor.description", { name: selectedUserName })} />
-      <FormPanel>
-        {loading ? <p className="text-sm text-muted-foreground">{t("recordEditor.loading")}</p> : null}
-        {dayLimitError ? (
-          <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
-            {dayLimitError}
-          </div>
-        ) : null}
-
-        <FormSection>
-          <EntryTypeTabs value={entryType} onValueChange={setEntryType} items={entryTypeTabs} />
-        </FormSection>
-
-        <FormSection>
-          <FormFields>
-            <EntryScheduleFields
-              locale={settings.locale}
-              timeZone={settings.timeZone}
-              entryType={entryType}
-              startDate={startDate}
-              endDate={usesDateRange ? endDate : startDate}
-              startTime={startTime}
-              endTime={endTime}
-              onStartDateChange={setStartDate}
-              onEndDateChange={setEndDate}
-              onStartTimeChange={setStartTime}
-              onEndTimeChange={setEndTime}
-              fromDateLabel={t("recordEditor.fromDate")}
-              toDateLabel={t("recordEditor.toDate")}
-              startTimeLabel={t("recordEditor.startTime")}
-              endTimeLabel={t("recordEditor.endTime")}
+      <PageLoadBoundary
+        intro={
+          <>
+            <PageBackAction to={backTo} label={t("recordEditor.backToOverview")} />
+            <PageLabel
+              title={mode === "create" ? t("recordEditor.addTitle") : t("recordEditor.editTitle")}
+              description={t("recordEditor.description", { name: selectedUserName })}
             />
-            {activeCustomFields.map((field) => (
-              <Field key={field.id} label={field.label}>
-                <CustomFieldInput
-                  field={field}
-                  value={customFieldValues[field.id]}
-                  locale={settings.locale}
-                  onValueChange={(value) => setCustomFieldValue(field, value)}
-                  booleanLabels={{ yes: t("recordEditor.yes"), no: t("recordEditor.no") }}
+          </>
+        }
+        loading={loading}
+        skeleton={<PageLoadingState />}
+      >
+        <FormPanel>
+          {dayLimitError ? (
+            <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
+              {dayLimitError}
+            </div>
+          ) : null}
+
+          <FormSection>
+            <EntryTypeTabs value={entryType} onValueChange={setEntryType} items={entryTypeTabs} />
+          </FormSection>
+
+          <FormSection>
+            <FormFields>
+              <EntryScheduleFields
+                locale={settings.locale}
+                timeZone={settings.timeZone}
+                entryType={entryType}
+                startDate={startDate}
+                endDate={usesDateRange ? endDate : startDate}
+                startTime={startTime}
+                endTime={endTime}
+                onStartDateChange={setStartDate}
+                onEndDateChange={setEndDate}
+                onStartTimeChange={setStartTime}
+                onEndTimeChange={setEndTime}
+                fromDateLabel={t("recordEditor.fromDate")}
+                toDateLabel={t("recordEditor.toDate")}
+                startTimeLabel={t("recordEditor.startTime")}
+                endTimeLabel={t("recordEditor.endTime")}
+              />
+              {activeCustomFields.map((field) => (
+                <Field key={field.id} label={field.label}>
+                  <CustomFieldInput
+                    field={field}
+                    value={customFieldValues[field.id]}
+                    locale={settings.locale}
+                    onValueChange={(value) => setCustomFieldValue(field, value)}
+                    booleanLabels={{ yes: t("recordEditor.yes"), no: t("recordEditor.no") }}
+                  />
+                </Field>
+              ))}
+              <Field label={t("recordEditor.notes")}>
+                <Textarea
+                  placeholder={
+                    entryType === "work"
+                      ? t("recordEditor.workNotesPlaceholder")
+                      : entryType === "vacation"
+                        ? t("recordEditor.vacationNotesPlaceholder")
+                        : t("recordEditor.absenceNotesPlaceholder")
+                  }
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
                 />
               </Field>
-            ))}
-            <Field label={t("recordEditor.notes")}>
-              <Textarea
-                placeholder={
-                  entryType === "work"
-                    ? t("recordEditor.workNotesPlaceholder")
-                    : entryType === "vacation"
-                      ? t("recordEditor.vacationNotesPlaceholder")
-                      : t("recordEditor.absenceNotesPlaceholder")
-                }
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-              />
-            </Field>
-          </FormFields>
-        </FormSection>
+            </FormFields>
+          </FormSection>
 
-        <FormActions>
-          <div className="flex flex-1 justify-start">
-            {mode === "edit" ? (
-              <Button variant="ghost" disabled={deleting || saving} onClick={() => setConfirmDeleteOpen(true)} type="button">
-                {deleting ? t("recordEditor.deleting") : t("recordEditor.delete")}
+          <FormActions>
+            <div className="flex flex-1 justify-start">
+              {mode === "edit" ? (
+                <Button variant="ghost" disabled={deleting || saving} onClick={() => setConfirmDeleteOpen(true)} type="button">
+                  {deleting ? t("recordEditor.deleting") : t("recordEditor.delete")}
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" onClick={() => navigate(backTo)} type="button">
+                {t("recordEditor.cancel")}
               </Button>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={() => navigate(backTo)} type="button">
-              {t("recordEditor.cancel")}
-            </Button>
-            <Button disabled={saving || loading || deleting || Boolean(dayLimitError)} onClick={() => void handleSave()} type="button">
-              {saving ? t("recordEditor.saving") : mode === "create" ? t("recordEditor.addEntry") : t("recordEditor.save")}
-            </Button>
-          </div>
-        </FormActions>
-      </FormPanel>
+              <Button disabled={saving || loading || deleting || Boolean(dayLimitError)} onClick={() => void handleSave()} type="button">
+                {saving ? t("recordEditor.saving") : mode === "create" ? t("recordEditor.addEntry") : t("recordEditor.save")}
+              </Button>
+            </div>
+          </FormActions>
+        </FormPanel>
+      </PageLoadBoundary>
     </FormPage>
   );
 }
