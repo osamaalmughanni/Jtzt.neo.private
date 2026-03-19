@@ -87,7 +87,6 @@ await verify("manual non-work entries store canonical UTC anchors instead of nai
       startTime: null,
       endTime: null,
       notes: "",
-      sickLeaveAttachment: null,
       customFieldValues: {},
     });
 

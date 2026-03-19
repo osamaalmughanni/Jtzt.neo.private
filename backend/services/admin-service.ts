@@ -200,12 +200,9 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         start_time,
         end_time,
         notes,
-        sick_leave_attachment_name,
-        sick_leave_attachment_mime_type,
-        sick_leave_attachment_data_url,
         custom_field_values_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         userId,
@@ -215,9 +212,6 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         entry.startTime ?? entry.entryDate,
         entry.endTime,
         entry.notes,
-        entry.sickLeaveAttachment?.fileName ?? null,
-        entry.sickLeaveAttachment?.mimeType ?? null,
-        entry.sickLeaveAttachment?.dataUrl ?? null,
         JSON.stringify(entry.customFieldValues),
         entry.createdAt
       ]
@@ -432,9 +426,6 @@ export const adminService = {
         start_time,
         end_time,
         notes,
-        sick_leave_attachment_name,
-        sick_leave_attachment_mime_type,
-        sick_leave_attachment_data_url,
         custom_field_values_json,
         created_at
        FROM time_entries

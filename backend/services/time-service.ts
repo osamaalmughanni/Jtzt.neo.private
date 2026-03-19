@@ -144,12 +144,9 @@ export const timeService = {
           start_time,
           end_time,
           notes,
-          sick_leave_attachment_name,
-          sick_leave_attachment_mime_type,
-          sick_leave_attachment_data_url,
           custom_field_values_json,
           created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         userId,
@@ -159,9 +156,6 @@ export const timeService = {
         normalized.startTime,
         normalized.endTime,
         input.notes.trim() || null,
-        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.fileName ?? null : null,
-        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.mimeType ?? null : null,
-        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.dataUrl ?? null : null,
         JSON.stringify(normalized.customFieldValues),
         createdAt
       ]
@@ -288,9 +282,6 @@ export const timeService = {
          start_time = ?,
          end_time = ?,
          notes = ?,
-         sick_leave_attachment_name = ?,
-         sick_leave_attachment_mime_type = ?,
-         sick_leave_attachment_data_url = ?,
          custom_field_values_json = ?
        WHERE company_id = ? AND id = ?`,
       [
@@ -301,9 +292,6 @@ export const timeService = {
         normalized.startTime,
         normalized.endTime,
         input.notes.trim(),
-        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.fileName ?? null : null,
-        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.mimeType ?? null : null,
-        input.entryType === "sick_leave" ? input.sickLeaveAttachment?.dataUrl ?? null : null,
         JSON.stringify(normalized.customFieldValues),
         companyId,
         input.entryId

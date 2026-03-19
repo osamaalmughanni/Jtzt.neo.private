@@ -5,6 +5,10 @@ export interface AppVariables {
   session: SessionTokenPayload;
   db: AppDatabase;
   config: RuntimeConfig;
+  externalCompany: {
+    id: string;
+    name: string;
+  };
 }
 
 export type AppRouteConfig = {

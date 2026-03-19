@@ -6,7 +6,6 @@ import type {
   CompanySettings,
   CompanyUserListItem,
   PublicHolidayRecord,
-  SickLeaveAttachment,
   TimeEntryType,
 } from "@shared/types/models";
 import {
@@ -25,7 +24,6 @@ import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
-import { Input } from "@/components/ui/input";
 import { TimeInput } from "@/components/ui/time-input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
@@ -77,63 +75,6 @@ function enumerateYears(startDate: string, endDate: string) {
     year += 1;
   }
   return Array.from(years);
-}
-
-async function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new Error("Could not read file"));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function compressImageFile(file: File) {
-  const dataUrl = await readFileAsDataUrl(file);
-  const image = new Image();
-
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve();
-    image.onerror = () => reject(new Error("Could not load image"));
-    image.src = dataUrl;
-  });
-
-  const maxSide = 1600;
-  const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
-  const width = Math.max(1, Math.round(image.width * scale));
-  const height = Math.max(1, Math.round(image.height * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Could not process image");
-  context.drawImage(image, 0, 0, width, height);
-  const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.82);
-  if (compressedDataUrl.length > 8_000_000) {
-    throw new Error("Compressed image is still too large");
-  }
-
-  return {
-    fileName: file.name.replace(/\.[^.]+$/, ".jpg"),
-    mimeType: "image/jpeg",
-    dataUrl: compressedDataUrl
-  };
-}
-
-async function prepareSickLeaveAttachment(file: File): Promise<SickLeaveAttachment> {
-  if (file.type.startsWith("image/")) {
-    return compressImageFile(file);
-  }
-
-  if (file.size > 6 * 1024 * 1024) {
-    throw new Error("PDF must be 6 MB or smaller");
-  }
-
-  return {
-    fileName: file.name,
-    mimeType: file.type || "application/octet-stream",
-    dataUrl: await readFileAsDataUrl(file)
-  };
 }
 
 interface DashboardRecordEditorPageProps {
@@ -223,7 +164,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [notes, setNotes] = useState("");
-  const [sickLeaveAttachment, setSickLeaveAttachment] = useState<SickLeaveAttachment | null>(null);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, string | number | boolean>>({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(mode === "edit");
@@ -296,7 +236,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
         setStartTime(toClockTimeValue(response.entry.startTime, settings.timeZone));
         setEndTime(toClockTimeValue(response.entry.endTime, settings.timeZone));
         setNotes(response.entry.notes);
-        setSickLeaveAttachment(response.entry.sickLeaveAttachment);
         setCustomFieldValues(response.entry.customFieldValues);
       })
       .catch((error) =>
@@ -313,11 +252,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       setStartTime("");
       setEndTime("");
     }
-
-    if (entryType !== "sick_leave") {
-      setSickLeaveAttachment(null);
-    }
-
   }, [entryType]);
 
   async function handleSave() {
@@ -352,7 +286,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
               startTime: workStartTime,
               endTime: workEndTime,
               notes,
-              sickLeaveAttachment: null,
               customFieldValues,
             }
           : {
@@ -362,7 +295,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
               startTime: null,
               endTime: null,
               notes,
-              sickLeaveAttachment: entryType === "sick_leave" ? sickLeaveAttachment : null,
               customFieldValues,
             };
 
@@ -403,19 +335,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       });
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function handleAttachmentChange(file: File | null) {
-    if (!file) return;
-    try {
-      const nextAttachment = await prepareSickLeaveAttachment(file);
-      setSickLeaveAttachment(nextAttachment);
-    } catch (error) {
-      toast({
-        title: t("recordEditor.couldNotPrepareAttachment"),
-        description: error instanceof Error ? error.message : "Request failed",
-      });
     }
   }
 
@@ -504,37 +423,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
                 />
               </Field>
             ))}
-            {entryType === "sick_leave" ? (
-              <Field label={t("recordEditor.document")}>
-                <div className="flex flex-col gap-2">
-                  <Input
-                    type="file"
-                    className="file:mr-3 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground"
-                    accept="application/pdf,image/*"
-                    capture="environment"
-                    onChange={(event) => void handleAttachmentChange(event.target.files?.[0] ?? null)}
-                  />
-                  {sickLeaveAttachment ? (
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">{sickLeaveAttachment.fileName}</p>
-                        <p className="text-xs text-muted-foreground">{sickLeaveAttachment.mimeType}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button asChild variant="ghost" type="button">
-                          <a href={sickLeaveAttachment.dataUrl} download={sickLeaveAttachment.fileName}>
-                            {t("recordEditor.open")}
-                          </a>
-                        </Button>
-                        <Button variant="ghost" onClick={() => setSickLeaveAttachment(null)} type="button">
-                          {t("recordEditor.remove")}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </Field>
-            ) : null}
             <Field label={t("recordEditor.notes")}>
               <Textarea
                 placeholder={

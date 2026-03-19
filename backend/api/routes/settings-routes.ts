@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { normalizeTimeZone } from "../../../shared/utils/time";
 import { authMiddleware, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
+import { companyApiService } from "../../services/company-api-service";
 import { settingsService } from "../../services/settings-service";
 import { systemService } from "../../services/system-service";
 import type { AppRouteConfig } from "../context";
@@ -117,4 +118,31 @@ settingsRoutes.post("/tablet-code/regenerate", requireCompanyAdmin, async (c) =>
   }
 
   return c.json(await systemService.regenerateTabletCode(c.get("db"), session.companyId));
+});
+
+settingsRoutes.get("/api-access", requireCompanyAdmin, async (c) => {
+  const session = c.get("session");
+  if (session.actorType !== "company_user") {
+    return c.json({ error: "Company login required" }, 403);
+  }
+
+  return c.json({ status: await companyApiService.getApiKeyStatus(c.get("db"), session.companyId) });
+});
+
+settingsRoutes.post("/api-access/rotate", requireCompanyAdmin, async (c) => {
+  const session = c.get("session");
+  if (session.actorType !== "company_user") {
+    return c.json({ error: "Company login required" }, 403);
+  }
+
+  return c.json(await companyApiService.rotateApiKey(c.get("db"), session.companyId));
+});
+
+settingsRoutes.get("/api-access/docs", requireCompanyAdmin, async (c) => {
+  const session = c.get("session");
+  if (session.actorType !== "company_user") {
+    return c.json({ error: "Company login required" }, 403);
+  }
+
+  return c.json({ docs: await companyApiService.getGeneratedDocs(c.get("db")) });
 });

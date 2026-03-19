@@ -1,5 +1,7 @@
 import type {
   AdminLoginInput,
+  CompanyApiDocsResponse,
+  CompanyApiKeyStatusResponse,
   CompanyListResponse,
   CompanyLoginInput,
   CompanySecurityResponse,
@@ -32,7 +34,8 @@ import type {
   TabletAccessInput,
   TabletAccessResponse,
   TabletCodeStatusResponse,
-  TabletLoginInput
+  TabletLoginInput,
+  RotateCompanyApiKeyResponse
 } from "@shared/types/api";
 import type { TimeEntryView } from "@shared/types/models";
 
@@ -256,6 +259,25 @@ export const api = {
   regenerateTabletCode(token: string) {
     return request<UpdateTabletCodeResponse>("/api/settings/tablet-code/regenerate", {
       method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  getCompanyApiKeyStatus(token: string) {
+    return request<CompanyApiKeyStatusResponse>("/api/settings/api-access", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  rotateCompanyApiKey(token: string) {
+    return request<RotateCompanyApiKeyResponse>("/api/settings/api-access/rotate", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  getCompanyApiDocs(token: string) {
+    return request<CompanyApiDocsResponse>("/api/settings/api-access/docs", {
       headers: { Authorization: `Bearer ${token}` }
     });
   },

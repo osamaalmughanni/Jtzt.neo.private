@@ -8,12 +8,6 @@ export interface CompanyCustomFieldOption {
   value: string;
 }
 
-export interface SickLeaveAttachment {
-  fileName: string;
-  mimeType: string;
-  dataUrl: string;
-}
-
 export interface CompanyCustomField {
   id: string;
   label: string;
@@ -77,7 +71,6 @@ export interface TimeEntryRecord {
   startTime: string | null;
   endTime: string | null;
   notes: string | null;
-  sickLeaveAttachment: SickLeaveAttachment | null;
   customFieldValues: Record<string, string | number | boolean>;
   createdAt: string;
 }
@@ -159,7 +152,6 @@ export interface TimeEntryView {
   effectiveDayCount: number;
   excludedHolidayCount: number;
   excludedWeekendCount: number;
-  sickLeaveAttachment: SickLeaveAttachment | null;
   customFieldValues: Record<string, string | number | boolean>;
   createdAt: string;
 }

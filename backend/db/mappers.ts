@@ -128,14 +128,6 @@ export function mapTimeEntry(row: any): TimeEntryRecord {
     startTime: entryType === "work" ? row.start_time : null,
     endTime: row.end_time,
     notes: row.notes,
-    sickLeaveAttachment:
-      entryType === "sick_leave" && row.sick_leave_attachment_data_url
-        ? {
-            fileName: row.sick_leave_attachment_name,
-            mimeType: row.sick_leave_attachment_mime_type,
-            dataUrl: row.sick_leave_attachment_data_url
-          }
-        : null,
     customFieldValues: parseJsonValue(row.custom_field_values_json, {}),
     createdAt: row.created_at
   };
@@ -160,14 +152,6 @@ export function mapTimeEntryView(row: any): TimeEntryView {
     effectiveDayCount: totalDayCount,
     excludedHolidayCount: 0,
     excludedWeekendCount: 0,
-    sickLeaveAttachment:
-      entryType === "sick_leave" && row.sick_leave_attachment_data_url
-        ? {
-            fileName: row.sick_leave_attachment_name,
-            mimeType: row.sick_leave_attachment_mime_type,
-            dataUrl: row.sick_leave_attachment_data_url
-          }
-        : null,
     customFieldValues: parseJsonValue(row.custom_field_values_json, {}),
     createdAt: row.created_at
   };

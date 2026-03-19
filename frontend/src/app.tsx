@@ -17,6 +17,7 @@ import { MenuPage } from "@/pages/menu-page";
 import { RegisterCompanyPage } from "@/pages/register-company-page";
 import { ReportsPage } from "@/pages/reports-page";
 import { ReportsPreviewPage } from "@/pages/reports-preview-page";
+import { ApiAccessPage } from "@/pages/api-access-page";
 import { SettingsMenuPage } from "@/pages/settings-menu-page";
 import { TabletCodePage } from "@/pages/tablet-code-page";
 import { TabletPinPage } from "@/pages/tablet-pin-page";
@@ -61,6 +62,7 @@ export function App() {
               <Route path="/users/:userId/edit" element={<UserEditorPage mode="edit" />} />
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/settings" element={<SettingsMenuPage />} />
+              <Route path="/api-access" element={<ApiAccessPage />} />
             </Route>
           </Route>
         </Route>

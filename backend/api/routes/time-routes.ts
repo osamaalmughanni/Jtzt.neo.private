@@ -17,14 +17,6 @@ import { userService } from "../../services/user-service";
 import type { AppRouteConfig, AppVariables } from "../context";
 import type { AppDatabase } from "../../runtime/types";
 
-const attachmentSchema = z
-  .object({
-    fileName: z.string().min(1).max(255),
-    mimeType: z.string().min(1).max(100),
-    dataUrl: z.string().startsWith("data:").max(10_000_000)
-  })
-  .nullable();
-
 const customFieldValuesSchema = z.record(z.union([z.string(), z.number(), z.boolean()]));
 
 const startTimerSchema = z.object({
@@ -46,7 +38,6 @@ const updateEntrySchema = z.object({
   startTime: z.string().nullable(),
   endTime: z.string().nullable(),
   notes: z.string(),
-  sickLeaveAttachment: attachmentSchema,
   customFieldValues: customFieldValuesSchema
 });
 
@@ -58,7 +49,6 @@ const createManualEntrySchema = z.object({
   startTime: z.string().nullable(),
   endTime: z.string().nullable(),
   notes: z.string(),
-  sickLeaveAttachment: attachmentSchema,
   customFieldValues: customFieldValuesSchema
 });
 
@@ -372,10 +362,6 @@ timeRoutes.post("/entry", async (c) => {
   if (body.endDate && body.endDate < body.startDate) {
     return c.json({ error: "End date must be on or after start date" }, 400);
   }
-  if (body.entryType !== "sick_leave" && body.sickLeaveAttachment !== null) {
-    return c.json({ error: "Attachments are only allowed for sick leave" }, 400);
-  }
-
   const createdEntry = await timeService.createManualEntry(db, session.companyId, targetUserId, body);
   return c.json({ entry: await enrichEntryWithDayMetrics(db, session.companyId, createdEntry) });
 });
@@ -456,10 +442,6 @@ timeRoutes.put("/entry", async (c) => {
   if (body.endDate && body.endDate < body.startDate) {
     return c.json({ error: "End date must be on or after start date" }, 400);
   }
-  if (body.entryType !== "sick_leave" && body.sickLeaveAttachment !== null) {
-    return c.json({ error: "Attachments are only allowed for sick leave" }, 400);
-  }
-
   const updatedEntry = await timeService.updateEntry(db, session.companyId, targetUserId, body);
   return c.json({ entry: await enrichEntryWithDayMetrics(db, session.companyId, updatedEntry) });
 });

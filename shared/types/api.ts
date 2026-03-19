@@ -63,11 +63,6 @@ export interface UpdateTimeEntryInput {
   startTime: string | null;
   endTime: string | null;
   notes: string;
-  sickLeaveAttachment: {
-    fileName: string;
-    mimeType: string;
-    dataUrl: string;
-  } | null;
   customFieldValues: Record<string, string | number | boolean>;
 }
 
@@ -84,11 +79,6 @@ export interface CreateManualTimeEntryInput {
   startTime: string | null;
   endTime: string | null;
   notes: string;
-  sickLeaveAttachment: {
-    fileName: string;
-    mimeType: string;
-    dataUrl: string;
-  } | null;
   customFieldValues: Record<string, string | number | boolean>;
 }
 
@@ -244,11 +234,6 @@ export interface CompanySnapshot {
     startTime: string | null;
     endTime: string | null;
     notes: string | null;
-    sickLeaveAttachment: {
-      fileName: string;
-      mimeType: string;
-      dataUrl: string;
-    } | null;
     customFieldValues: Record<string, string | number | boolean>;
     createdAt: string;
   }>;
@@ -398,4 +383,124 @@ export interface UpdateTabletCodeInput {
 export interface UpdateTabletCodeResponse {
   tabletCode: TabletCodeStatus;
   code: string;
+}
+
+export interface CompanyApiKeyStatusResponse {
+  status: {
+    configured: boolean;
+    createdAt: string | null;
+  };
+}
+
+export interface RotateCompanyApiKeyResponse {
+  apiKey: string;
+  status: {
+    configured: boolean;
+    createdAt: string | null;
+  };
+}
+
+export type CompanyApiFilterOperator = "eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "like" | "in";
+
+export interface CompanyApiQueryFilter {
+  column: string;
+  operator: CompanyApiFilterOperator;
+  value: string | number | boolean | null | Array<string | number | boolean | null>;
+}
+
+export interface CompanyApiQueryOrderBy {
+  column: string;
+  direction: "asc" | "desc";
+}
+
+export interface CompanyApiQueryInput {
+  table: string;
+  columns?: string[];
+  filters?: CompanyApiQueryFilter[];
+  orderBy?: CompanyApiQueryOrderBy[];
+  limit?: number;
+  offset?: number;
+}
+
+export interface CompanyApiSchemaColumn {
+  name: string;
+  type: string;
+  nullable: boolean;
+  primaryKey: boolean;
+  example: string | number | null;
+}
+
+export interface CompanyApiTableSchema {
+  name: string;
+  columns: CompanyApiSchemaColumn[];
+  defaultOrderBy: CompanyApiQueryOrderBy[];
+}
+
+export interface CompanyApiSchemaResponse {
+  tables: CompanyApiTableSchema[];
+}
+
+export interface CompanyApiQueryResponse {
+  table: string;
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export type CompanyApiMutationAction = "insert" | "update" | "delete";
+
+export interface CompanyApiMutationInput {
+  action: CompanyApiMutationAction;
+  table: string;
+  values?: Record<string, string | number | boolean | null>;
+  filters?: CompanyApiQueryFilter[];
+}
+
+export interface CompanyApiMutationResponse {
+  action: CompanyApiMutationAction;
+  table: string;
+  affectedRows: number;
+  insertedRowId: number | null;
+}
+
+export interface CompanyApiDocsResponse {
+  docs: {
+    auth: {
+      header: string;
+      format: string;
+      basePath: string;
+      storage: string;
+    };
+    endpoints: Array<{
+      method: "GET" | "POST";
+      path: string;
+      title: string;
+      description: string;
+    }>;
+    query: {
+      operators: CompanyApiFilterOperator[];
+      notes: string[];
+      example: CompanyApiQueryInput | null;
+      curlExample: string | null;
+      powerQueryExample: string | null;
+    };
+    mutation: {
+      actions: CompanyApiMutationAction[];
+      notes: string[];
+      examples: {
+        insert: CompanyApiMutationInput | null;
+        update: CompanyApiMutationInput | null;
+        delete: CompanyApiMutationInput | null;
+      };
+      curlExamples: {
+        insert: string | null;
+        update: string | null;
+        delete: string | null;
+      };
+    };
+    tables: CompanyApiTableSchema[];
+    markdown: string;
+  };
 }

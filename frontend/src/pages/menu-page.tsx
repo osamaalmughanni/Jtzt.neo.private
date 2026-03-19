@@ -20,7 +20,8 @@ export function MenuPage() {
       ? [
           { to: "/users", title: t("menu.users") },
           { to: "/fields", title: t("menu.fields") },
-          { to: "/settings", title: t("menu.settings") }
+          { to: "/settings", title: t("menu.settings") },
+          { to: "/api-access", title: "API" }
         ]
       : [])
   ];

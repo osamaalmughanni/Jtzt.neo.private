@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { adminRoutes } from "./routes/admin-routes";
 import { authRoutes } from "./routes/auth-routes";
+import { externalRoutes } from "./routes/external-routes";
 import { projectRoutes } from "./routes/project-routes";
 import { reportRoutes } from "./routes/report-routes";
 import { settingsRoutes } from "./routes/settings-routes";
@@ -25,6 +26,7 @@ export function createApp() {
   });
 
   app.route("/api/auth", authRoutes);
+  app.route("/api/external", externalRoutes);
   app.route("/api/time", timeRoutes);
   app.route("/api/users", userRoutes);
   app.route("/api/settings", settingsRoutes);
