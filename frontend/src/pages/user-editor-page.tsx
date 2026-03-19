@@ -5,6 +5,7 @@ import { getLocalNowSnapshot } from "@shared/utils/time";
 import type { UserContractInput } from "@shared/types/api";
 import type { UserRole } from "@shared/types/models";
 import { FormActions, FormFields, FormPage, FormPanel, FormSection, Field, FieldCombobox } from "@/components/form-layout";
+import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
@@ -272,16 +273,21 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   return (
     <FormPage>
       <PageLoadBoundary
+        intro={
+          <>
+            <PageBackAction to="/users" label={t("userEditor.back")} />
+            <PageIntro>
+              <PageLabel
+                title={mode === "create" ? t("userEditor.createTitle") : t("userEditor.editTitle")}
+                description={mode === "create" ? t("userEditor.createDescription") : t("userEditor.editDescription")}
+              />
+            </PageIntro>
+          </>
+        }
         loading={pageResource.isLoading}
         refreshing={pageResource.isRefreshing}
-        overlayLabel={t("userEditor.loading")}
         skeleton={<PageLoadingState label={t("userEditor.loading")} />}
       >
-        <PageBackAction to="/users" label={t("userEditor.back")} />
-        <PageLabel
-          title={mode === "create" ? t("userEditor.createTitle") : t("userEditor.editTitle")}
-          description={mode === "create" ? t("userEditor.createDescription") : t("userEditor.editDescription")}
-        />
         <FormPanel className="flex flex-col gap-6">
           <>
 

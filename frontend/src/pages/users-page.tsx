@@ -1,11 +1,11 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { CompanyUserListItem } from "@shared/types/models";
-import { PageActionBar, PageActionBarActions, PageActionBarLead } from "@/components/page-action-bar";
+import { PageActionBar, PageActionBarActions, PageActionButton } from "@/components/page-action-bar";
 import { FormPage } from "@/components/form-layout";
+import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
-import { Button } from "@/components/ui/button";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -40,21 +40,22 @@ export function UsersPage() {
   return (
     <FormPage>
       <PageLoadBoundary
+        intro={
+          <PageIntro>
+            <PageLabel title={t("users.title")} description={t("users.description")} />
+            <PageActionBar>
+              <PageActionBarActions>
+                <PageActionButton asChild>
+                  <Link to="/users/create">{t("users.new")}</Link>
+                </PageActionButton>
+              </PageActionBarActions>
+            </PageActionBar>
+          </PageIntro>
+        }
         loading={usersResource.isLoading}
         refreshing={usersResource.isRefreshing}
-        overlayLabel={t("users.loading")}
         skeleton={<PageLoadingState label={t("users.loading")} />}
       >
-        <PageLabel title={t("users.title")} description={t("users.description")} />
-        <PageActionBar>
-          <PageActionBarLead>{t("users.empty")}</PageActionBarLead>
-          <PageActionBarActions>
-            <Button asChild type="button">
-              <Link to="/users/create">{t("users.new")}</Link>
-            </Button>
-          </PageActionBarActions>
-        </PageActionBar>
-
         <div className="overflow-hidden rounded-2xl border border-border bg-card">
           {users.length === 0 ? <p className="px-5 py-6 text-sm text-muted-foreground">{t("users.empty")}</p> : null}
           {users.length > 0 ? (

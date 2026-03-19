@@ -6,6 +6,7 @@ import type { CompanySettings, CompanyUserListItem } from "@shared/types/models"
 import type { ReportRequestInput } from "@shared/types/api";
 import { formatLocalDay, getLocalNowSnapshot, parseLocalDay } from "@shared/utils/time";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
+import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
@@ -362,12 +363,15 @@ export function ReportsPage() {
   return (
     <FormPage>
       <PageLoadBoundary
+        intro={
+          <PageIntro>
+            <PageLabel title={t("reports.title")} description={t("reports.description")} />
+          </PageIntro>
+        }
         loading={pageResource.isLoading}
         refreshing={pageResource.isRefreshing}
-        overlayLabel={t("common.loading", { defaultValue: "Loading..." })}
         skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
       >
-      <PageLabel title={t("reports.title")} description={t("reports.description")} />
       <FormPanel className="flex flex-col gap-6">
         <FormSection>
           <FormFields>

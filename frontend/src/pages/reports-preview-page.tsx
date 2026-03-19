@@ -5,6 +5,7 @@ import type { ReportResponse } from "@shared/types/api";
 import type { CompanySettings } from "@shared/types/models";
 import { diffCalendarDays, enumerateLocalDays, formatMinutes, parseLocalDay } from "@shared/utils/time";
 import { FormPage, FormPanel } from "@/components/form-layout";
+import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
@@ -399,18 +400,23 @@ export function ReportsPreviewPage() {
   }, [viewMode, timelineWidth]);
 
   return (
-    <FormPage className="w-full">
-      <PageBackAction to={backTo} label={t("reports.backToReports")} />
-      <PageLabel title={t("reports.previewTitle")} description={t("reports.previewDescription")} />
-      <div
-        className="relative left-1/2 w-full -translate-x-1/2 px-5 sm:px-8 lg:px-10"
-        style={{ width: "min(120rem, calc(100vw - 2rem))" }}
-      >
-        <PageLoadBoundary
+    <FormPage>
+      <PageLoadBoundary
+        intro={
+          <>
+            <PageBackAction to={backTo} label={t("reports.backToReports")} />
+            <PageIntro>
+              <PageLabel title={t("reports.previewTitle")} description={t("reports.previewDescription")} />
+            </PageIntro>
+          </>
+        }
         loading={reportResource.isLoading}
         refreshing={reportResource.isRefreshing}
-        overlayLabel={t("reports.creating")}
-          skeleton={<PageLoadingState label={t("reports.creating")} minHeightClassName="min-h-[28rem]" />}
+        skeleton={<PageLoadingState label={t("reports.creating")} minHeightClassName="min-h-[28rem]" />}
+      >
+        <div
+          className="relative left-1/2 w-full -translate-x-1/2 px-5 sm:px-8 lg:px-10"
+          style={{ width: "min(120rem, calc(100vw - 2rem))" }}
         >
           <FormPanel className="flex w-full flex-col gap-6">
             {report ? (
@@ -582,8 +588,8 @@ export function ReportsPreviewPage() {
               </>
             ) : null}
           </FormPanel>
-        </PageLoadBoundary>
-      </div>
+        </div>
+      </PageLoadBoundary>
     </FormPage>
   );
 }

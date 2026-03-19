@@ -159,7 +159,6 @@ export function AdminCompaniesPage() {
       <PageLoadBoundary
         loading={companiesResource.isLoading}
         refreshing={companiesResource.isRefreshing}
-        overlayLabel={t("common.loading", { defaultValue: "Loading..." })}
         skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
       >
         <Card className="overflow-hidden">

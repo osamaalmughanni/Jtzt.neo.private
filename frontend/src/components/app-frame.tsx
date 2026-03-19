@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { APP_CONTENT_LANE_CLASSNAME } from "@/components/app-content-lane";
 import { cn } from "@/lib/utils";
 
 export function AppFrame({
@@ -14,7 +15,7 @@ export function AppFrame({
     <div className="min-h-screen bg-background text-foreground">
       <div
         className={cn(
-          "mx-auto flex min-h-screen w-full max-w-xl flex-col px-5 py-6 sm:px-8 sm:py-8 lg:px-16 lg:py-12",
+          `${APP_CONTENT_LANE_CLASSNAME} flex min-h-screen flex-col py-6 sm:py-8 lg:py-12`,
           centered && "justify-center",
           className
         )}

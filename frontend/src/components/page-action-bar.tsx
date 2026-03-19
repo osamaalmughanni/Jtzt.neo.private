@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function PageActionBar({
@@ -11,7 +12,7 @@ export function PageActionBar({
   return (
     <div
       className={cn(
-        "flex min-h-12 flex-wrap items-center justify-between gap-2 rounded-2xl border border-border/80 bg-card/95 px-3 py-2 shadow-sm",
+        "flex min-h-10 flex-wrap items-center justify-between gap-2",
         className
       )}
     >
@@ -38,4 +39,18 @@ export function PageActionBarActions({
   className?: string;
 }) {
   return <div className={cn("ml-auto flex flex-wrap items-center gap-2", className)}>{children}</div>;
+}
+
+export function PageActionButton({
+  className,
+  ...props
+}: ComponentPropsWithoutRef<typeof Button>) {
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className={cn("h-9 rounded-full border-border/80 bg-background px-3.5 text-sm hover:bg-muted", className)}
+      {...props}
+    />
+  );
 }

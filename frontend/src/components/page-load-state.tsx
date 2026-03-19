@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { useEffect } from "react";
+import { useAppHeaderState } from "@/components/app-header-state";
 import { Stack } from "@/components/stack";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -34,43 +36,49 @@ export function PageLoadingState({
   );
 }
 
-export function PageLoadingOverlay({ label = "Loading..." }: { label?: string }) {
-  return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center">
-      <div className="mt-2 rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur">
-        <span className="inline-flex items-center gap-2">
-          <Spinner className="size-3.5" />
-          {label}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 export function PageLoadBoundary({
+  intro,
   loading,
   refreshing,
   skeleton,
   children,
-  overlayLabel,
   className,
   gap = "xl",
 }: {
+  intro?: ReactNode;
   loading: boolean;
   refreshing?: boolean;
   skeleton: ReactNode;
   children: ReactNode;
-  overlayLabel?: string;
   className?: string;
   gap?: "none" | "xs" | "sm" | "md" | "lg" | "xl";
 }) {
+  const { startLoading, stopLoading } = useAppHeaderState();
+
+  useEffect(() => {
+    if (!refreshing) {
+      return;
+    }
+
+    startLoading();
+
+    return () => {
+      stopLoading();
+    };
+  }, [refreshing, startLoading, stopLoading]);
+
   if (loading) {
-    return <Stack gap={gap} className={cn("min-h-full flex-1", className)}>{skeleton}</Stack>;
+    return (
+      <Stack gap={gap} className={cn("min-h-full flex-1", className)}>
+        {intro}
+        {skeleton}
+      </Stack>
+    );
   }
 
   return (
-    <Stack gap={gap} className={cn("relative min-h-full flex-1", className)}>
-      {refreshing ? <PageLoadingOverlay label={overlayLabel} /> : null}
+    <Stack gap={gap} className={cn("min-h-full flex-1", className)}>
+      {intro}
       {children}
     </Stack>
   );

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { PublicHolidayRecord } from "@shared/types/models";
 import { enumerateLocalDays, formatLocalDay, parseLocalDay } from "@shared/utils/time";
 import { FormPage, FormPanel } from "@/components/form-layout";
+import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
@@ -115,32 +116,37 @@ export function DashboardDayPickerPage() {
   return (
     <FormPage>
       <PageLoadBoundary
+        intro={
+          <>
+            <PageBackAction to={backTo} label={t("dayPicker.backToOverview")} />
+            <PageIntro>
+              <PageLabel
+                title={t("dayPicker.title")}
+                description={
+                  selectedHoliday
+                    ? t("dayPicker.holidayDescription", {
+                        name: selectedHoliday.localName,
+                        date: formatCompanyDate(selectedHoliday.date, settingsLocale),
+                      })
+                    : selectedDayState === "work"
+                      ? t("dayPicker.workDescription")
+                      : selectedDayState === "sick_leave"
+                        ? t("dayPicker.sickLeaveDescription")
+                        : selectedDayState === "vacation"
+                          ? t("dayPicker.vacationDescription")
+                          : selectedDayState === "mixed"
+                            ? t("dayPicker.mixedDescription")
+                            : t("dayPicker.defaultDescription")
+                }
+              />
+            </PageIntro>
+          </>
+        }
         loading={pageResource.isLoading}
         refreshing={pageResource.isRefreshing}
-        overlayLabel={t("common.loading", { defaultValue: "Loading..." })}
         skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
       >
-        <PageBackAction to={backTo} label={t("dayPicker.backToOverview")} />
-        <PageLabel
-          title={t("dayPicker.title")}
-          description={
-            selectedHoliday
-              ? t("dayPicker.holidayDescription", {
-                  name: selectedHoliday.localName,
-                  date: formatCompanyDate(selectedHoliday.date, settingsLocale),
-                })
-              : selectedDayState === "work"
-                ? t("dayPicker.workDescription")
-                : selectedDayState === "sick_leave"
-                  ? t("dayPicker.sickLeaveDescription")
-                  : selectedDayState === "vacation"
-                    ? t("dayPicker.vacationDescription")
-                    : selectedDayState === "mixed"
-                      ? t("dayPicker.mixedDescription")
-                      : t("dayPicker.defaultDescription")
-          }
-        />
-        <FormPanel className="flex flex-col gap-4 overflow-hidden p-5">
+          <FormPanel className="flex flex-col gap-4 overflow-hidden p-5">
           <div className="flex flex-wrap gap-2 text-xs">
           <div className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 ${entryStateUi.work.badgeClassName}`}>
             <span className={`h-2 w-2 rounded-full ${entryStateUi.work.dotClassName}`} />

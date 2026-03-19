@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CompanyCustomField, CompanyCustomFieldOption, CompanySettings, TimeEntryType } from "@shared/types/models";
-import { PageActionBar, PageActionBarActions, PageActionBarLead } from "@/components/page-action-bar";
+import { PageActionBar, PageActionBarActions, PageActionButton } from "@/components/page-action-bar";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormSection } from "@/components/form-layout";
+import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Stack } from "@/components/stack";
@@ -179,21 +180,25 @@ export function FieldsPage() {
   return (
     <FormPage>
       <PageLoadBoundary
+        intro={
+          <PageIntro>
+            <PageLabel title={t("fields.title")} description={t("fields.description")} />
+            <PageActionBar>
+              <PageActionBarActions>
+                <PageActionButton
+                  onClick={() => setSettings((current) => ({ ...current, customFields: [...current.customFields, createField()] }))}
+                  type="button"
+                >
+                  {t("fields.addField")}
+                </PageActionButton>
+              </PageActionBarActions>
+            </PageActionBar>
+          </PageIntro>
+        }
         loading={pageResource.isLoading}
         refreshing={pageResource.isRefreshing}
-        overlayLabel={t("common.loading", { defaultValue: "Loading..." })}
         skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
       >
-        <PageLabel title={t("fields.title")} description={t("fields.description")} />
-        <PageActionBar>
-          <PageActionBarLead>{t("fields.intro")}</PageActionBarLead>
-          <PageActionBarActions>
-            <Button variant="outline" onClick={() => setSettings((current) => ({ ...current, customFields: [...current.customFields, createField()] }))} type="button">
-              {t("fields.addField")}
-            </Button>
-          </PageActionBarActions>
-        </PageActionBar>
-
         <FormSection>
           <Stack gap="md">
             {settings.customFields.map((field, index) => (

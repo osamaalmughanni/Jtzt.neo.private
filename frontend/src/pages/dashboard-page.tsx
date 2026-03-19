@@ -25,6 +25,7 @@ import {
   FormPage,
   FormSection,
 } from "@/components/form-layout";
+import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Stack } from "@/components/stack";
@@ -453,7 +454,7 @@ export function DashboardPage() {
     label: user.fullName,
   }));
   return (
-    <FormPage className="flex h-full min-h-full flex-1 flex-col gap-5">
+    <FormPage className="h-full">
       <Dialog
         open={tabletPunchOpen}
         onOpenChange={(open) => {
@@ -516,15 +517,18 @@ export function DashboardPage() {
         }
       />
       <PageLoadBoundary
+        intro={
+          <PageIntro>
+            <PageLabel
+              title={t("dashboard.pageTitle")}
+              description={t("dashboard.pageDescription")}
+            />
+          </PageIntro>
+        }
         loading={dashboardResource.isLoading}
         refreshing={dashboardResource.isRefreshing}
-        overlayLabel={t("common.loading", { defaultValue: "Loading..." })}
         skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} minHeightClassName="min-h-[28rem]" />}
       >
-      <PageLabel
-        title={t("dashboard.pageTitle")}
-        description={t("dashboard.pageDescription")}
-      />
       <Stack gap="lg" className="min-h-full flex-1">
       {canSwitchUser ? (
         <div className="rounded-2xl border border-border bg-card p-5">

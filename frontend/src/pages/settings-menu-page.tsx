@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CompanySettings, TabletCodeStatus } from "@shared/types/models";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
+import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
@@ -184,12 +185,15 @@ export function SettingsMenuPage() {
   return (
     <FormPage>
       <PageLoadBoundary
+        intro={
+          <PageIntro>
+            <PageLabel title={t("settings.title")} description={t("settings.description")} />
+          </PageIntro>
+        }
         loading={pageResource.isLoading}
         refreshing={pageResource.isRefreshing}
-        overlayLabel={t("common.loading", { defaultValue: "Loading..." })}
         skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
       >
-      <PageLabel title={t("settings.title")} description={t("settings.description")} />
       <FormPanel>
         <FormSection>
           <FormFields>

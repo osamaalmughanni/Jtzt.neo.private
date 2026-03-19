@@ -1,9 +1,11 @@
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { AppFooter } from "@/components/app-footer";
 import { AppHeader, type HeaderAction } from "@/components/app-header";
-import { AppHeaderStateProvider } from "@/components/app-header-state";
+import { AppHeaderLoadingBar } from "@/components/app-header-loading-bar";
+import { AppHeaderStateProvider, useAppHeaderState } from "@/components/app-header-state";
 import { AppFrame } from "@/components/app-frame";
+import { Stack } from "@/components/stack";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { LockSimple } from "phosphor-react";
@@ -14,9 +16,11 @@ interface AppShellProps {
 
 export function AppShell({ mode }: AppShellProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { companyIdentity, companySession, lockTablet } = useAuth();
   const [tabletIdleTimeoutSeconds, setTabletIdleTimeoutSeconds] = useState(10);
   const idleTimerRef = useRef<number | null>(null);
+  const firstRouteRef = useRef(true);
   const menuTo =
     mode === "admin"
       ? "/admin/menu"
@@ -96,14 +100,58 @@ export function AppShell({ mode }: AppShellProps) {
   return (
     <AppFrame>
       <AppHeaderStateProvider>
-        <div className="flex flex-1 flex-col gap-4">
-          <AppHeader menuTo={menuTo} actions={tabletActions} scope={scope} />
-          <main className="flex min-h-0 flex-1 flex-col">
-            <Outlet />
-          </main>
-          <AppFooter context="app" />
-        </div>
+        <ShellContent
+          firstRouteRef={firstRouteRef}
+          locationKey={`${location.pathname}${location.search}${location.hash}`}
+          menuTo={menuTo}
+          scope={scope}
+          tabletActions={tabletActions}
+        />
       </AppHeaderStateProvider>
     </AppFrame>
+  );
+}
+
+function ShellContent({
+  firstRouteRef,
+  locationKey,
+  menuTo,
+  scope,
+  tabletActions,
+}: {
+  firstRouteRef: React.MutableRefObject<boolean>;
+  locationKey: string;
+  menuTo?: string;
+  scope: "company" | "admin" | "tablet";
+  tabletActions?: HeaderAction[];
+}) {
+  const { startLoading, stopLoading } = useAppHeaderState();
+
+  useEffect(() => {
+    if (firstRouteRef.current) {
+      firstRouteRef.current = false;
+      return;
+    }
+
+    startLoading();
+    const timeout = window.setTimeout(() => {
+      stopLoading();
+    }, 320);
+
+    return () => {
+      window.clearTimeout(timeout);
+      stopLoading();
+    };
+  }, [firstRouteRef, locationKey, startLoading, stopLoading]);
+
+  return (
+    <Stack gap="md" className="flex-1">
+      <AppHeader menuTo={menuTo} actions={tabletActions} scope={scope} />
+      <AppHeaderLoadingBar />
+      <main className="flex min-h-0 flex-1 flex-col">
+        <Outlet />
+      </main>
+      <AppFooter context="app" />
+    </Stack>
   );
 }
