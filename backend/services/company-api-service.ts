@@ -81,8 +81,8 @@ function inferExampleValue(column: CompanyApiSchemaColumn): string | number | nu
 }
 
 async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTableSchema[]> {
-  const tables = await db.all<{ name: string }>(
-    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC",
+  const tables = await db.all<{ name: string; sql: string | null }>(
+    "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC",
   );
 
   const result: CompanyApiTableSchema[] = [];
@@ -95,14 +95,7 @@ async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTable
       continue;
     }
 
-    const columns = await db.all<{
-      name: string;
-      type: string;
-      is_not_null: number;
-      pk: number;
-    }>(
-      `SELECT name, type, "notnull" AS is_not_null, pk FROM pragma_table_info('${table.name}') ORDER BY cid ASC`,
-    );
+    const columns = parseColumnsFromCreateTableSql(table.sql);
 
     if (!columns.some((column) => column.name === "company_id")) {
       continue;
@@ -142,6 +135,79 @@ async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTable
   }
 
   return result;
+}
+
+function parseColumnsFromCreateTableSql(createTableSql: string | null) {
+  if (!createTableSql) {
+    return [];
+  }
+
+  const start = createTableSql.indexOf("(");
+  const end = createTableSql.lastIndexOf(")");
+  if (start === -1 || end === -1 || end <= start) {
+    return [];
+  }
+
+  const body = createTableSql.slice(start + 1, end);
+  const segments = splitTopLevelCommaSegments(body);
+
+  return segments
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .filter((segment) => !/^(constraint|foreign key|primary key|unique|check)\b/i.test(segment))
+    .map((segment) => {
+      const match = segment.match(/^"?(?<name>[A-Za-z_][A-Za-z0-9_]*)"?\s+(?<rest>.+)$/s);
+      if (!match?.groups?.name || !match.groups.rest) {
+        return null;
+      }
+
+      const rest = match.groups.rest.trim();
+      const typeMatch = rest.match(/^(?<type>[A-Za-z0-9_()]+(?:\s+[A-Za-z0-9_()]+)?)/);
+      const type = typeMatch?.groups?.type?.trim() || "TEXT";
+      const normalizedRest = rest.toUpperCase();
+
+      return {
+        name: match.groups.name,
+        type,
+        is_not_null: normalizedRest.includes("NOT NULL") ? 1 : 0,
+        pk: normalizedRest.includes("PRIMARY KEY") ? 1 : 0,
+      };
+    })
+    .filter((column): column is { name: string; type: string; is_not_null: number; pk: number } => column !== null);
+}
+
+function splitTopLevelCommaSegments(value: string) {
+  const segments: string[] = [];
+  let current = "";
+  let depth = 0;
+
+  for (const char of value) {
+    if (char === "(") {
+      depth += 1;
+      current += char;
+      continue;
+    }
+
+    if (char === ")") {
+      depth = Math.max(0, depth - 1);
+      current += char;
+      continue;
+    }
+
+    if (char === "," && depth === 0) {
+      segments.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.trim()) {
+    segments.push(current);
+  }
+
+  return segments;
 }
 
 const scalarValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
