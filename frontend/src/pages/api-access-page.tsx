@@ -12,6 +12,7 @@ import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
+import type { CompanyApiDocsResponse } from "@shared/types/api";
 
 type ApiAccessPageData = {
   status: {
@@ -77,7 +78,7 @@ export function ApiAccessPage() {
       return;
     }
 
-    const blob = new Blob([docs.markdown], { type: "text/markdown;charset=utf-8" });
+    const blob = new Blob([buildMarkdownDocument(docs, baseUrl, revealedKey)], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
 
@@ -203,8 +204,8 @@ export function ApiAccessPage() {
                           {docs.endpoints.map((endpoint) => (
                             <div key={`${endpoint.method}-${endpoint.path}`} className="rounded-2xl border border-border p-4">
                               <div className="flex flex-wrap items-center gap-2">
-                                <Badge variant="outline">{endpoint.method}</Badge>
-                                <code className="text-sm text-foreground">{`${baseUrl}${endpoint.path}`}</code>
+                          <Badge variant="outline">{endpoint.method}</Badge>
+                                <code className="text-sm text-foreground">{buildAbsoluteUrl(baseUrl, endpoint.path)}</code>
                               </div>
                               <p className="mt-3 text-sm font-medium text-foreground">{endpoint.title}</p>
                               <p className="mt-1 text-sm text-muted-foreground">{endpoint.description}</p>
@@ -249,8 +250,8 @@ export function ApiAccessPage() {
                       title="Read examples"
                       description="Generated from the current schema so they stay aligned with the database as it evolves."
                     >
-                      {docs.query.curlExample ? <CodeBlock title="cURL" code={docs.query.curlExample} /> : null}
-                      {docs.query.powerQueryExample ? <CodeBlock title="Excel / Power Query" code={docs.query.powerQueryExample} /> : null}
+                      {docs.query.curlExample ? <CodeBlock title="cURL" code={materializeDocText(docs.query.curlExample, baseUrl, revealedKey)} /> : null}
+                      {docs.query.powerQueryExample ? <CodeBlock title="Excel / Power Query" code={materializeDocText(docs.query.powerQueryExample, baseUrl, revealedKey)} /> : null}
                     </DocPanel>
                   </div>
                 </TabsContent>
@@ -261,19 +262,19 @@ export function ApiAccessPage() {
                       title="Insert"
                       description="Create company-scoped rows. company_id is injected automatically."
                       body={docs.mutation.examples.insert}
-                      curl={docs.mutation.curlExamples.insert}
+                      curl={materializeOptionalDocText(docs.mutation.curlExamples.insert, baseUrl, revealedKey)}
                     />
                     <MutationCard
                       title="Update"
                       description="Update rows with required filters so writes stay targeted."
                       body={docs.mutation.examples.update}
-                      curl={docs.mutation.curlExamples.update}
+                      curl={materializeOptionalDocText(docs.mutation.curlExamples.update, baseUrl, revealedKey)}
                     />
                     <MutationCard
                       title="Delete"
                       description="Delete rows with required filters and automatic company scoping."
                       body={docs.mutation.examples.delete}
-                      curl={docs.mutation.curlExamples.delete}
+                      curl={materializeOptionalDocText(docs.mutation.curlExamples.delete, baseUrl, revealedKey)}
                     />
                   </div>
                 </TabsContent>
@@ -411,4 +412,129 @@ function CodeBlock({ title, code }: { title: string; code: string }) {
       </pre>
     </Stack>
   );
+}
+
+function buildAbsoluteUrl(baseUrl: string, path: string) {
+  return `${baseUrl}${path}`;
+}
+
+function materializeOptionalDocText(value: string | null, baseUrl: string, revealedKey: string | null) {
+  return value ? materializeDocText(value, baseUrl, revealedKey) : null;
+}
+
+function materializeDocText(value: string, baseUrl: string, revealedKey: string | null) {
+  const effectiveKey = revealedKey ?? "jtzt_your_company_key";
+
+  return value
+    .replaceAll("https://your-app.example.com", baseUrl)
+    .replaceAll("jtzt_your_company_key", effectiveKey);
+}
+
+function buildMarkdownDocument(
+  docs: NonNullable<CompanyApiDocsResponse["docs"]>,
+  baseUrl: string,
+  revealedKey: string | null,
+) {
+  const endpointLines = docs.endpoints
+    .map((endpoint) => `- \`${endpoint.method} ${buildAbsoluteUrl(baseUrl, endpoint.path)}\` - ${endpoint.description}`)
+    .join("\n");
+
+  const queryExample = docs.query.example ? JSON.stringify(docs.query.example, null, 2) : null;
+  const insertExample = docs.mutation.examples.insert ? JSON.stringify(docs.mutation.examples.insert, null, 2) : null;
+  const updateExample = docs.mutation.examples.update ? JSON.stringify(docs.mutation.examples.update, null, 2) : null;
+  const deleteExample = docs.mutation.examples.delete ? JSON.stringify(docs.mutation.examples.delete, null, 2) : null;
+  const queryCurl = materializeOptionalDocText(docs.query.curlExample, baseUrl, revealedKey);
+  const powerQuery = materializeOptionalDocText(docs.query.powerQueryExample, baseUrl, revealedKey);
+  const insertCurl = materializeOptionalDocText(docs.mutation.curlExamples.insert, baseUrl, revealedKey);
+  const updateCurl = materializeOptionalDocText(docs.mutation.curlExamples.update, baseUrl, revealedKey);
+  const deleteCurl = materializeOptionalDocText(docs.mutation.curlExamples.delete, baseUrl, revealedKey);
+  const tableSections = docs.tables
+    .map((table) => {
+      const lines = table.columns
+        .map(
+          (column) =>
+            `| ${column.name} | ${column.type} | ${column.nullable ? "Yes" : "No"} | ${column.primaryKey ? "Yes" : "No"} | ${column.example === null ? "null" : String(column.example)} |`,
+        )
+        .join("\n");
+
+      return [
+        `## Table: ${table.name}`,
+        "",
+        table.defaultOrderBy.length > 0 ? `Default sort: \`${table.defaultOrderBy.map((item) => `${item.column} ${item.direction}`).join(", ")}\`` : "",
+        "",
+        "| Column | Type | Nullable | Primary | Example |",
+        "| --- | --- | --- | --- | --- |",
+        lines,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n\n");
+
+  return [
+    "# Company API",
+    "",
+    "## Overview",
+    `- Base URL: \`${buildAbsoluteUrl(baseUrl, docs.auth.basePath)}\``,
+    `- Auth header: \`${docs.auth.header}\``,
+    `- Active key: \`${revealedKey ?? "Use your active company API key"}\``,
+    `- Key storage: ${docs.auth.storage}`,
+    "",
+    "## Endpoints",
+    endpointLines,
+    "",
+    "## Read",
+    ...docs.query.notes.map((note) => `- ${note}`),
+    "",
+    "Supported operators:",
+    "",
+    docs.query.operators.map((operator) => `- \`${operator}\``).join("\n"),
+    "",
+    queryExample ? "### Query body" : "",
+    queryExample ? "```json" : "",
+    queryExample ?? "",
+    queryExample ? "```" : "",
+    queryCurl ? "" : "",
+    queryCurl ? "### Query cURL" : "",
+    queryCurl ? "```bash" : "",
+    queryCurl ?? "",
+    queryCurl ? "```" : "",
+    powerQuery ? "" : "",
+    powerQuery ? "### Excel / Power Query" : "",
+    powerQuery ? "```text" : "",
+    powerQuery ?? "",
+    powerQuery ? "```" : "",
+    "",
+    "## Write",
+    ...docs.mutation.notes.map((note) => `- ${note}`),
+    "",
+    insertExample ? "### Insert body" : "",
+    insertExample ? "```json" : "",
+    insertExample ?? "",
+    insertExample ? "```" : "",
+    insertCurl ? "```bash" : "",
+    insertCurl ?? "",
+    insertCurl ? "```" : "",
+    "",
+    updateExample ? "### Update body" : "",
+    updateExample ? "```json" : "",
+    updateExample ?? "",
+    updateExample ? "```" : "",
+    updateCurl ? "```bash" : "",
+    updateCurl ?? "",
+    updateCurl ? "```" : "",
+    "",
+    deleteExample ? "### Delete body" : "",
+    deleteExample ? "```json" : "",
+    deleteExample ?? "",
+    deleteExample ? "```" : "",
+    deleteCurl ? "```bash" : "",
+    deleteCurl ?? "",
+    deleteCurl ? "```" : "",
+    "",
+    "## Schema",
+    tableSections,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
