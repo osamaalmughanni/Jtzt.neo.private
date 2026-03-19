@@ -153,9 +153,19 @@ def fail(message: str, code: int = 1) -> None:
 
 def print_command_output(result: subprocess.CompletedProcess[str]) -> None:
     if result.stdout:
-        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+        try:
+            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+        except UnicodeEncodeError:
+            sys.stdout.buffer.write(result.stdout.encode("utf-8", errors="replace"))
+            if not result.stdout.endswith("\n"):
+                sys.stdout.buffer.write(b"\n")
     if result.stderr:
-        print(result.stderr, end="" if result.stderr.endswith("\n") else "\n", file=sys.stderr)
+        try:
+            print(result.stderr, end="" if result.stderr.endswith("\n") else "\n", file=sys.stderr)
+        except UnicodeEncodeError:
+            sys.stderr.buffer.write(result.stderr.encode("utf-8", errors="replace"))
+            if not result.stderr.endswith("\n"):
+                sys.stderr.buffer.write(b"\n")
 
 
 def npm_executable() -> str:

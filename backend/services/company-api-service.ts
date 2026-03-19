@@ -98,9 +98,11 @@ async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTable
     const columns = await db.all<{
       name: string;
       type: string;
-      notnull: number;
+      is_not_null: number;
       pk: number;
-    }>(`PRAGMA table_info(${quoteIdentifier(table.name)})`);
+    }>(
+      `SELECT name, type, "notnull" AS is_not_null, pk FROM pragma_table_info('${table.name}') ORDER BY cid ASC`,
+    );
 
     if (!columns.some((column) => column.name === "company_id")) {
       continue;
@@ -109,12 +111,12 @@ async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTable
     const normalizedColumns: CompanyApiSchemaColumn[] = columns.map((column) => ({
       name: column.name,
       type: column.type || "TEXT",
-      nullable: column.notnull === 0,
+      nullable: column.is_not_null === 0,
       primaryKey: column.pk > 0,
       example: inferExampleValue({
         name: column.name,
         type: column.type || "TEXT",
-        nullable: column.notnull === 0,
+        nullable: column.is_not_null === 0,
         primaryKey: column.pk > 0,
         example: null,
       }),

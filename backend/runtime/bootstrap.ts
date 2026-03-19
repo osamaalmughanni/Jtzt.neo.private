@@ -14,7 +14,9 @@ function getRuntimeKey(config: RuntimeConfig) {
 }
 
 async function ensureTimeEntriesSchema(db: AppDatabase) {
-  const timeEntryColumns = await db.all<{ name: string }>("PRAGMA table_info(time_entries)");
+  const timeEntryColumns = await db.all<{ name: string }>(
+    "SELECT name FROM pragma_table_info('time_entries')",
+  );
   const timeEntryColumnNames = new Set(timeEntryColumns.map((column) => column.name));
   const hasLegacyColumns = legacyTimeEntryColumns.some((column) => timeEntryColumnNames.has(column));
   if (!hasLegacyColumns) {
@@ -85,7 +87,9 @@ export async function ensureBootstrapState(db: AppDatabase, config: RuntimeConfi
 
   await ensureTimeEntriesSchema(db);
 
-  const companyColumns = await db.all<{ name: string }>("PRAGMA table_info(companies)");
+  const companyColumns = await db.all<{ name: string }>(
+    "SELECT name FROM pragma_table_info('companies')",
+  );
   const companyColumnNames = new Set(companyColumns.map((column) => column.name));
   if (!companyColumnNames.has("api_key_hash")) {
     await db.exec("ALTER TABLE companies ADD COLUMN api_key_hash TEXT");

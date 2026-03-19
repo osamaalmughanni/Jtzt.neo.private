@@ -19,6 +19,7 @@ type ApiAccessPageData = {
     createdAt: string | null;
   };
   docs: Awaited<ReturnType<typeof api.getCompanyApiDocs>>["docs"] | null;
+  docsError: string | null;
 };
 
 export function ApiAccessPage() {
@@ -33,6 +34,7 @@ export function ApiAccessPage() {
         return {
           status: { configured: false, createdAt: null },
           docs: null,
+          docsError: null,
         };
       }
 
@@ -41,6 +43,7 @@ export function ApiAccessPage() {
   });
 
   const docs = pageResource.data?.docs;
+  const docsError = pageResource.data?.docsError ?? null;
   const status = pageResource.data?.status ?? { configured: false, createdAt: null };
   const baseUrl = useMemo(() => window.location.origin, []);
 
@@ -56,6 +59,7 @@ export function ApiAccessPage() {
       pageResource.setData((current) => ({
         status: response.status,
         docs: current?.docs ?? null,
+        docsError: current?.docsError ?? null,
       }));
       toast({ title: "API key rotated" });
     } catch (error) {
@@ -100,6 +104,11 @@ export function ApiAccessPage() {
                 <PageActionButton type="button" onClick={handleDownloadMarkdown} disabled={!docs}>
                   Download markdown
                 </PageActionButton>
+                {docsError ? (
+                  <PageActionButton type="button" onClick={() => void pageResource.reload()}>
+                    Retry docs
+                  </PageActionButton>
+                ) : null}
                 <PageActionButton type="button" onClick={() => void handleRotate()} disabled={rotating}>
                   {rotating ? "Rotating..." : status.configured ? "Rotate key" : "Create key"}
                 </PageActionButton>
@@ -114,6 +123,12 @@ export function ApiAccessPage() {
         <Stack gap="lg">
           <FormPanel>
             <FormSection>
+              {docsError ? (
+                <div className="rounded-2xl border border-border bg-muted/35 px-4 py-3 text-sm text-muted-foreground">
+                  Documentation could not be loaded from the server right now. Key management still works. Retry after the
+                  worker and schema are fully live.
+                </div>
+              ) : null}
               <Stack gap="md">
                 <Stack gap="md" className="min-w-0 rounded-2xl border border-border p-5">
                   <Field label="Current key">
@@ -310,14 +325,24 @@ export function ApiAccessPage() {
 }
 
 async function loadApiAccessData(token: string): Promise<ApiAccessPageData> {
-  const [statusResponse, docsResponse] = await Promise.all([
+  const [statusResult, docsResult] = await Promise.allSettled([
     api.getCompanyApiKeyStatus(token),
     api.getCompanyApiDocs(token),
   ]);
 
+  if (statusResult.status !== "fulfilled") {
+    throw statusResult.reason;
+  }
+
   return {
-    status: statusResponse.status,
-    docs: docsResponse.docs,
+    status: statusResult.value.status,
+    docs: docsResult.status === "fulfilled" ? docsResult.value.docs : null,
+    docsError:
+      docsResult.status === "rejected"
+        ? docsResult.reason instanceof Error
+          ? docsResult.reason.message
+          : "Documentation request failed"
+        : null,
   };
 }
 
