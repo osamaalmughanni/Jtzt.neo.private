@@ -124,9 +124,17 @@ export function ApiAccessPage() {
           <FormPanel>
             <FormSection>
               {docsError ? (
-                <div className="rounded-2xl border border-border bg-muted/35 px-4 py-3 text-sm text-muted-foreground">
-                  Documentation could not be loaded from the server right now. Key management still works. Retry after the
-                  worker and schema are fully live.
+                <div className="rounded-2xl border border-border bg-muted/35 px-4 py-3">
+                  <p className="text-sm font-medium text-foreground">Documentation could not be loaded.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Key management still works, but the docs request failed with:
+                  </p>
+                  <pre className="mt-3 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-xl bg-background/70 p-3 text-xs leading-6 text-foreground">
+                    <code>{docsError}</code>
+                  </pre>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Retry after deploy or schema update if this is a temporary runtime mismatch.
+                  </p>
                 </div>
               ) : null}
               <Stack gap="md">

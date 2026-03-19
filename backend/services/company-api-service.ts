@@ -547,9 +547,14 @@ export const companyApiService = {
   },
 
   async getSchema(db: AppDatabase): Promise<CompanyApiSchemaResponse> {
-    return {
-      tables: await readCompanyScopedTables(db),
-    };
+    try {
+      return {
+        tables: await readCompanyScopedTables(db),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown schema introspection error";
+      throw new HTTPException(500, { message: `Company API schema introspection failed: ${message}` });
+    }
   },
 
   async queryTable(db: AppDatabase, companyId: string, input: CompanyApiQueryInput): Promise<CompanyApiQueryResponse> {
@@ -638,83 +643,88 @@ export const companyApiService = {
   },
 
   async getGeneratedDocs(db: AppDatabase): Promise<CompanyApiDocsResponse["docs"]> {
-    const schema = await this.getSchema(db);
-    const exampleQuery = buildExampleQuery(schema.tables);
-    const mutationExamples = {
-      insert: buildExampleMutation(schema.tables, "insert"),
-      update: buildExampleMutation(schema.tables, "update"),
-      delete: buildExampleMutation(schema.tables, "delete"),
-    };
-    const docsWithoutMarkdown: Omit<CompanyApiDocsResponse["docs"], "markdown"> = {
-      auth: {
-        header: "X-API-Key",
-        format: `${API_KEY_PREFIX}...`,
-        basePath: "/api/external",
-        storage: "Only the SHA-256 hash of the key is stored. Rotating the key immediately invalidates the previous value.",
-      },
-      endpoints: [
-        {
-          method: "GET",
-          path: "/api/external",
-          title: "Service index",
-          description: "Returns the authenticated service overview and, when a valid key is supplied, the current generated API documentation.",
+    try {
+      const schema = await this.getSchema(db);
+      const exampleQuery = buildExampleQuery(schema.tables);
+      const mutationExamples = {
+        insert: buildExampleMutation(schema.tables, "insert"),
+        update: buildExampleMutation(schema.tables, "update"),
+        delete: buildExampleMutation(schema.tables, "delete"),
+      };
+      const docsWithoutMarkdown: Omit<CompanyApiDocsResponse["docs"], "markdown"> = {
+        auth: {
+          header: "X-API-Key",
+          format: `${API_KEY_PREFIX}...`,
+          basePath: "/api/external",
+          storage: "Only the SHA-256 hash of the key is stored. Rotating the key immediately invalidates the previous value.",
         },
-        {
-          method: "GET",
-          path: "/api/external/docs",
-          title: "Generated docs",
-          description: "Returns the current authenticated documentation payload built from the live schema.",
-        },
-        {
-          method: "GET",
-          path: "/api/external/schema",
-          title: "Live schema",
-          description: "Discovers every company-scoped table and column directly from the current database.",
-        },
-        {
-          method: "POST",
-          path: "/api/external/query",
-          title: "Generic company query",
-          description: "Runs validated read queries against any discovered company table without schema-specific endpoints.",
-        },
-        {
-          method: "POST",
-          path: "/api/external/mutate",
-          title: "Generic company mutation",
-          description: "Runs validated insert, update, and delete operations against discovered company tables with automatic company scoping.",
-        },
-      ],
-      query: {
-        operators: [...queryOperators],
-        notes: [
-          "Every query is automatically scoped to the authenticated company.",
-          "Table names and columns are validated against the live schema before SQL is built.",
-          "The schema endpoint updates itself as your database evolves, so the API page stays in sync.",
+        endpoints: [
+          {
+            method: "GET",
+            path: "/api/external",
+            title: "Service index",
+            description: "Returns the authenticated service overview and, when a valid key is supplied, the current generated API documentation.",
+          },
+          {
+            method: "GET",
+            path: "/api/external/docs",
+            title: "Generated docs",
+            description: "Returns the current authenticated documentation payload built from the live schema.",
+          },
+          {
+            method: "GET",
+            path: "/api/external/schema",
+            title: "Live schema",
+            description: "Discovers every company-scoped table and column directly from the current database.",
+          },
+          {
+            method: "POST",
+            path: "/api/external/query",
+            title: "Generic company query",
+            description: "Runs validated read queries against any discovered company table without schema-specific endpoints.",
+          },
+          {
+            method: "POST",
+            path: "/api/external/mutate",
+            title: "Generic company mutation",
+            description: "Runs validated insert, update, and delete operations against discovered company tables with automatic company scoping.",
+          },
         ],
-        example: exampleQuery,
-        curlExample: buildCurlExample("/api/external/query", exampleQuery),
-        powerQueryExample: buildPowerQueryExample(exampleQuery),
-      },
-      mutation: {
-        actions: [...mutationActions],
-        notes: [
-          "Mutations are validated against the live schema before SQL is built.",
-          "company_id is injected automatically and cannot be overridden by clients.",
-          "Update and delete operations require filters to reduce accidental broad writes.",
-        ],
-        examples: mutationExamples,
-        curlExamples: {
-          insert: buildCurlExample("/api/external/mutate", mutationExamples.insert),
-          update: buildCurlExample("/api/external/mutate", mutationExamples.update),
-          delete: buildCurlExample("/api/external/mutate", mutationExamples.delete),
+        query: {
+          operators: [...queryOperators],
+          notes: [
+            "Every query is automatically scoped to the authenticated company.",
+            "Table names and columns are validated against the live schema before SQL is built.",
+            "The schema endpoint updates itself as your database evolves, so the API page stays in sync.",
+          ],
+          example: exampleQuery,
+          curlExample: buildCurlExample("/api/external/query", exampleQuery),
+          powerQueryExample: buildPowerQueryExample(exampleQuery),
         },
-      },
-      tables: schema.tables,
-    };
+        mutation: {
+          actions: [...mutationActions],
+          notes: [
+            "Mutations are validated against the live schema before SQL is built.",
+            "company_id is injected automatically and cannot be overridden by clients.",
+            "Update and delete operations require filters to reduce accidental broad writes.",
+          ],
+          examples: mutationExamples,
+          curlExamples: {
+            insert: buildCurlExample("/api/external/mutate", mutationExamples.insert),
+            update: buildCurlExample("/api/external/mutate", mutationExamples.update),
+            delete: buildCurlExample("/api/external/mutate", mutationExamples.delete),
+          },
+        },
+        tables: schema.tables,
+      };
 
-    return {
-      ...docsWithoutMarkdown,
-      markdown: buildMarkdownDocs(docsWithoutMarkdown),
-    };
+      return {
+        ...docsWithoutMarkdown,
+        markdown: buildMarkdownDocs(docsWithoutMarkdown),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown documentation generation error";
+      throw new HTTPException(500, { message: `Company API docs generation failed: ${message}` });
+    }
   },
 };
