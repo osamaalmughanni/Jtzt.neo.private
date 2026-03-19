@@ -6,11 +6,13 @@ import type { CompanySettings, CompanyUserListItem } from "@shared/types/models"
 import type { ReportRequestInput } from "@shared/types/api";
 import { formatLocalDay, getLocalNowSnapshot, parseLocalDay } from "@shared/utils/time";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
+import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { getCustomFieldOptionLabel, normalizeReportDraftFields } from "@/lib/report-fields";
@@ -212,36 +214,32 @@ export function ReportsPage() {
     groupBy: [],
     totalsOnly: false,
   });
+  const pageResource = usePageResource<{ settings: CompanySettings; users: CompanyUserListItem[] }>({
+    enabled: Boolean(companySession),
+    deps: [companySession?.token, savedDraft, t],
+    load: async () => {
+      if (!companySession) {
+        return { settings: defaultSettings, users: [] };
+      }
 
-  useEffect(() => {
-    if (!companySession) return;
-    void Promise.all([
-      api.getSettings(companySession.token),
-      api.listUsers(companySession.token),
-    ]).then(([settingsResponse, usersResponse]) => {
-      const nextCustomFieldOptions = settingsResponse.settings.customFields.map((field) => ({
-        value: `custom:${field.id}`,
-        label: getCustomFieldOptionLabel(field),
-      }));
-      const allFieldValues = getAllFieldValues(baseFieldOptions, nextCustomFieldOptions);
-      setSettings(settingsResponse.settings);
-      setUsers(usersResponse.users);
-      setDraft((current) => {
-        const normalized = normalizeReportDraftFields(current, settingsResponse.settings);
+      try {
+        const [settingsResponse, usersResponse] = await Promise.all([
+          api.getSettings(companySession.token),
+          api.listUsers(companySession.token),
+        ]);
         return {
-          ...current,
-          userIds: current.userIds.length > 0 ? current.userIds : usersResponse.users.map((user) => user.id),
-          columns: savedDraft ? normalized.columns : allFieldValues,
-          groupBy: normalized.groupBy,
+          settings: settingsResponse.settings,
+          users: usersResponse.users,
         };
-      });
-    }).catch((error) =>
-      toast({
-        title: t("reports.loadFailed"),
-        description: error instanceof Error ? error.message : "Request failed",
-      }),
-    );
-  }, [companySession, savedDraft, t]);
+      } catch (error) {
+        toast({
+          title: t("reports.loadFailed"),
+          description: error instanceof Error ? error.message : "Request failed",
+        });
+        throw error;
+      }
+    }
+  });
 
   const periodOptions: ReportOption[] = [
     { value: "custom", label: t("reports.customDates") },
@@ -281,6 +279,29 @@ export function ReportsPage() {
 
   const selectedGroups = draft.groupBy.length > 0 ? draft.groupBy : [""];
   const userOptions = users.map((user) => ({ value: String(user.id), label: user.fullName }));
+
+  useEffect(() => {
+    if (!pageResource.data) {
+      return;
+    }
+
+    const nextCustomFieldOptions = pageResource.data.settings.customFields.map((field) => ({
+      value: `custom:${field.id}`,
+      label: getCustomFieldOptionLabel(field),
+    }));
+    const allFieldValues = getAllFieldValues(baseFieldOptions, nextCustomFieldOptions);
+    setSettings(pageResource.data.settings);
+    setUsers(pageResource.data.users);
+    setDraft((current) => {
+      const normalized = normalizeReportDraftFields(current, pageResource.data!.settings);
+      return {
+        ...current,
+        userIds: current.userIds.length > 0 ? current.userIds : pageResource.data!.users.map((user) => user.id),
+        columns: savedDraft ? normalized.columns : allFieldValues,
+        groupBy: normalized.groupBy,
+      };
+    });
+  }, [baseFieldOptions, pageResource.data, savedDraft]);
 
   function setGrouping(index: number, value: string) {
     setDraft((current) => {
@@ -340,6 +361,12 @@ export function ReportsPage() {
 
   return (
     <FormPage>
+      <PageLoadBoundary
+        loading={pageResource.isLoading}
+        refreshing={pageResource.isRefreshing}
+        overlayLabel={t("common.loading", { defaultValue: "Loading..." })}
+        skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
+      >
       <PageLabel title={t("reports.title")} description={t("reports.description")} />
       <FormPanel className="flex flex-col gap-6">
         <FormSection>
@@ -439,6 +466,7 @@ export function ReportsPage() {
           </Button>
         </FormActions>
       </FormPanel>
+      </PageLoadBoundary>
     </FormPage>
   );
 }

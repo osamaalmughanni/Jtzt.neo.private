@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CompanySettings, TabletCodeStatus } from "@shared/types/models";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
+import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatCompanyDateTime } from "@/lib/locale-format";
@@ -69,6 +71,32 @@ export function SettingsMenuPage() {
   const [tabletCodeInput, setTabletCodeInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [tabletSaving, setTabletSaving] = useState(false);
+  const pageResource = usePageResource<{ settings: CompanySettings; tabletCodeStatus: TabletCodeStatus }>({
+    enabled: Boolean(companySession),
+    deps: [companySession?.token, t],
+    load: async () => {
+      if (!companySession) {
+        return { settings: defaultSettings, tabletCodeStatus: defaultTabletCode };
+      }
+
+      try {
+        const [settingsResponse, tabletCodeResponse] = await Promise.all([
+          api.getSettings(companySession.token),
+          api.getTabletCodeStatus(companySession.token)
+        ]);
+        return {
+          settings: settingsResponse.settings,
+          tabletCodeStatus: tabletCodeResponse.tabletCode
+        };
+      } catch (error) {
+        toast({
+          title: t("settings.loadFailed"),
+          description: error instanceof Error ? error.message : "Request failed",
+        });
+        throw error;
+      }
+    }
+  });
   const preview = useMemo(() => getLocalePreview(settings.locale), [settings.locale]);
   const dateTimePreview = useMemo(() => getDateTimeFormatPreview(settings.locale, settings.dateTimeFormat, settings.timeZone), [settings.dateTimeFormat, settings.locale, settings.timeZone]);
   const firstDayOptions = [
@@ -88,15 +116,14 @@ export function SettingsMenuPage() {
   }
 
   useEffect(() => {
-    if (!companySession) return;
-    void api.getSettings(companySession.token).then((response) => setSettings(response.settings)).catch((error) =>
-      toast({
-        title: t("settings.loadFailed"),
-        description: error instanceof Error ? error.message : "Request failed",
-      }),
-    );
-    void refreshTabletCodeStatus().catch(() => undefined);
-  }, [companySession, t]);
+    if (!pageResource.data) {
+      return;
+    }
+
+    setSettings(pageResource.data.settings);
+    setTabletCodeStatus(pageResource.data.tabletCodeStatus);
+    setTabletCodeInput(pageResource.data.tabletCodeStatus.code ?? "");
+  }, [pageResource.data]);
 
   async function handleSave() {
     if (!companySession) return;
@@ -156,6 +183,12 @@ export function SettingsMenuPage() {
 
   return (
     <FormPage>
+      <PageLoadBoundary
+        loading={pageResource.isLoading}
+        refreshing={pageResource.isRefreshing}
+        overlayLabel={t("common.loading", { defaultValue: "Loading..." })}
+        skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
+      >
       <PageLabel title={t("settings.title")} description={t("settings.description")} />
       <FormPanel>
         <FormSection>
@@ -352,6 +385,7 @@ export function SettingsMenuPage() {
           </Button>
         </FormActions>
       </FormPanel>
+      </PageLoadBoundary>
     </FormPage>
   );
 }

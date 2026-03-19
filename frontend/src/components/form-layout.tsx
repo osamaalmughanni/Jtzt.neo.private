@@ -1,22 +1,23 @@
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { AppCombobox } from "@/components/app-combobox";
+import { Stack } from "@/components/stack";
 import type { ComboboxOption } from "@/components/ui/combobox";
 import { cn } from "@/lib/utils";
 
 export function FormPage({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex flex-col gap-4", className)}>{children}</div>;
+  return <Stack gap="xl" className={cn("min-h-full flex-1", className)}>{children}</Stack>;
 }
 
 export function FormPanel({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex flex-col gap-6 rounded-2xl border border-border bg-card p-5", className)}>{children}</div>;
+  return <Stack gap="lg" className={cn("rounded-2xl border border-border bg-card p-5", className)}>{children}</Stack>;
 }
 
 export function FormSection({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex flex-col gap-4", className)}>{children}</div>;
+  return <Stack gap="md" className={className}>{children}</Stack>;
 }
 
 export function FormFields({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex flex-col gap-4", className)}>{children}</div>;
+  return <Stack gap="md" className={className}>{children}</Stack>;
 }
 
 export function FieldLabel({ children }: { children: ReactNode }) {

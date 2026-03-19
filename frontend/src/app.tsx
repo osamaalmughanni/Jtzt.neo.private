@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "@/components/app-shell";
+import { AppRouteLoadingState } from "@/components/page-load-state";
 import { AdminGuard, CompanyAdminGuard, CompanyFullAccessGuard, CompanyGuard } from "@/components/route-guards";
 import { useAuth } from "@/lib/auth";
 import { AdminCompaniesPage } from "@/pages/admin-companies-page";
@@ -24,7 +25,7 @@ import { UserEditorPage } from "@/pages/user-editor-page";
 
 function SessionAwareHomeRedirect() {
   const { loading, adminSession, companySession } = useAuth();
-  if (loading) return null;
+  if (loading) return <AppRouteLoadingState />;
   if (adminSession) return <Navigate to="/admin/menu" replace />;
   if (companySession) {
     return <Navigate to={companySession.accessMode === "tablet" ? "/dashboard" : "/menu"} replace />;
@@ -34,7 +35,7 @@ function SessionAwareHomeRedirect() {
 
 function AdminRootRedirect() {
   const { loading, adminSession } = useAuth();
-  if (loading) return null;
+  if (loading) return <AppRouteLoadingState />;
   return <Navigate to={adminSession ? "/admin/menu" : "/admin/login"} replace />;
 }
 

@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CompanyCustomField, CompanyCustomFieldOption, CompanySettings, TimeEntryType } from "@shared/types/models";
+import { PageActionBar, PageActionBarActions, PageActionBarLead } from "@/components/page-action-bar";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormSection } from "@/components/form-layout";
+import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
+import { Stack } from "@/components/stack";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
@@ -52,6 +56,26 @@ export function FieldsPage() {
   const { companySession } = useAuth();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [saving, setSaving] = useState(false);
+  const pageResource = usePageResource<CompanySettings>({
+    enabled: Boolean(companySession),
+    deps: [companySession?.token, t],
+    load: async () => {
+      if (!companySession) {
+        return defaultSettings;
+      }
+
+      try {
+        const response = await api.getSettings(companySession.token);
+        return response.settings;
+      } catch (error) {
+        toast({
+          title: t("fields.loadFailed"),
+          description: error instanceof Error ? error.message : "Request failed",
+        });
+        throw error;
+      }
+    }
+  });
   const fieldTypeOptions = [
     { value: "text", label: t("fields.typeText") },
     { value: "number", label: t("fields.typeNumber") },
@@ -66,14 +90,10 @@ export function FieldsPage() {
   ];
 
   useEffect(() => {
-    if (!companySession) return;
-    void api.getSettings(companySession.token).then((response) => setSettings(response.settings)).catch((error) =>
-      toast({
-        title: t("fields.loadFailed"),
-        description: error instanceof Error ? error.message : "Request failed",
-      }),
-    );
-  }, [companySession, t]);
+    if (pageResource.data) {
+      setSettings(pageResource.data);
+    }
+  }, [pageResource.data]);
 
   function setField(index: number, nextField: CompanyCustomField) {
     setSettings((current) => ({
@@ -158,27 +178,35 @@ export function FieldsPage() {
 
   return (
     <FormPage>
-      <PageLabel title={t("fields.title")} description={t("fields.description")} />
-      <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-5">
-        <p className="text-sm text-muted-foreground">{t("fields.intro")}</p>
-        <Button variant="outline" onClick={() => setSettings((current) => ({ ...current, customFields: [...current.customFields, createField()] }))} type="button">
-          {t("fields.addField")}
-        </Button>
-      </div>
+      <PageLoadBoundary
+        loading={pageResource.isLoading}
+        refreshing={pageResource.isRefreshing}
+        overlayLabel={t("common.loading", { defaultValue: "Loading..." })}
+        skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
+      >
+        <PageLabel title={t("fields.title")} description={t("fields.description")} />
+        <PageActionBar>
+          <PageActionBarLead>{t("fields.intro")}</PageActionBarLead>
+          <PageActionBarActions>
+            <Button variant="outline" onClick={() => setSettings((current) => ({ ...current, customFields: [...current.customFields, createField()] }))} type="button">
+              {t("fields.addField")}
+            </Button>
+          </PageActionBarActions>
+        </PageActionBar>
 
-      <FormSection>
-        <div className="flex flex-col gap-4">
-          {settings.customFields.map((field, index) => (
-            <div key={field.id} className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5">
+        <FormSection>
+          <Stack gap="md">
+            {settings.customFields.map((field, index) => (
+              <Stack key={field.id} gap="md" className="rounded-2xl border border-border bg-card p-5">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-col gap-1">
+                <Stack gap="xs">
                   <p className="text-sm font-medium text-foreground">
                     {field.label.trim() || t("fields.field", { index: index + 1 })}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {field.type === "select" ? t("fields.selectWithOptions") : t("fields.typeValue", { value: field.type })}
                   </p>
-                </div>
+                </Stack>
                 <Button
                   variant="ghost"
                   onClick={() =>
@@ -238,7 +266,7 @@ export function FieldsPage() {
               </FormFields>
 
               {field.type === "select" ? (
-                <div className="flex flex-col gap-3">
+                <Stack gap="sm">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium text-foreground">{t("fields.options")}</p>
                     <Button
@@ -249,9 +277,9 @@ export function FieldsPage() {
                       {t("fields.addOption")}
                     </Button>
                   </div>
-                  <div className="flex flex-col gap-3">
+                  <Stack gap="sm">
                     {field.options.map((option, optionIndex) => (
-                      <div key={option.id} className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4">
+                      <Stack key={option.id} gap="sm" className="rounded-xl border border-border bg-background p-4">
                         <FormFields>
                           <Field label={t("fields.optionLabel")}>
                             <Input placeholder={t("fields.optionLabelPlaceholder")} value={option.label} onChange={(event) => setOption(index, optionIndex, { ...option, label: event.target.value })} />
@@ -269,27 +297,28 @@ export function FieldsPage() {
                             {t("fields.removeOption")}
                           </Button>
                         </div>
-                      </div>
+                      </Stack>
                     ))}
-                  </div>
-                </div>
+                  </Stack>
+                </Stack>
               ) : null}
-            </div>
-          ))}
+              </Stack>
+            ))}
 
-          {settings.customFields.length === 0 ? (
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <p className="text-sm text-muted-foreground">{t("fields.empty")}</p>
-            </div>
-          ) : null}
-        </div>
-      </FormSection>
+            {settings.customFields.length === 0 ? (
+              <div className="rounded-2xl border border-border bg-card p-5">
+                <p className="text-sm text-muted-foreground">{t("fields.empty")}</p>
+              </div>
+            ) : null}
+          </Stack>
+        </FormSection>
 
-      <FormActions>
-        <Button disabled={saving} onClick={() => void handleSave()} type="button">
-          {saving ? t("fields.saving") : t("fields.save")}
-        </Button>
-      </FormActions>
+        <FormActions>
+          <Button disabled={saving} onClick={() => void handleSave()} type="button">
+            {saving ? t("fields.saving") : t("fields.save")}
+          </Button>
+        </FormActions>
+      </PageLoadBoundary>
     </FormPage>
   );
 }

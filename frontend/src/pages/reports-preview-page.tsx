@@ -5,10 +5,12 @@ import type { ReportResponse } from "@shared/types/api";
 import type { CompanySettings } from "@shared/types/models";
 import { diffCalendarDays, enumerateLocalDays, formatMinutes, parseLocalDay } from "@shared/utils/time";
 import { FormPage, FormPanel } from "@/components/form-layout";
+import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { getEntryStateUi } from "@/lib/entry-state-ui";
@@ -294,42 +296,42 @@ export function ReportsPreviewPage() {
   const { companySession } = useAuth();
   const draftId = searchParams.get("draft");
   const draft = useMemo(() => loadReportDraft(draftId), [draftId]);
-  const [report, setReport] = useState<ReportResponse["report"] | null>(null);
-  const [settings, setSettings] = useState<CompanySettings | null>(null);
-  const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"table" | "gantt">("table");
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
+  const reportResource = usePageResource<{ report: ReportResponse["report"] | null; settings: CompanySettings | null }>({
+    enabled: Boolean(companySession) && Boolean(draft),
+    deps: [companySession?.token, draft, t],
+    load: async () => {
+      if (!companySession || !draft) {
+        return { report: null, settings: null };
+      }
 
-  useEffect(() => {
-    if (!companySession || !draft) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    void api
-      .getSettings(companySession.token)
-      .then(async (settingsResponse) => {
+      try {
+        const settingsResponse = await api.getSettings(companySession.token);
         const normalizedDraft = {
           ...draft,
           ...normalizeReportDraftFields(draft, settingsResponse.settings),
         };
         const reportResponse = await api.previewReport(companySession.token, normalizedDraft);
-        setSettings(settingsResponse.settings);
         const customFieldLabels = buildCustomFieldLabelLookup(settingsResponse.settings.customFields);
-        setReport({
-          ...reportResponse.report,
-          columns: resolveReportColumnsWithSettings(reportResponse.report.columns, customFieldLabels),
-        });
-      })
-      .catch((error) =>
+        return {
+          settings: settingsResponse.settings,
+          report: {
+            ...reportResponse.report,
+            columns: resolveReportColumnsWithSettings(reportResponse.report.columns, customFieldLabels),
+          }
+        };
+      } catch (error) {
         toast({
           title: t("reports.createFailed"),
           description: error instanceof Error ? error.message : "Request failed",
-        }),
-      )
-      .finally(() => setLoading(false));
-  }, [companySession, draft, t]);
+        });
+        throw error;
+      }
+    }
+  });
+  const report = reportResource.data?.report ?? null;
+  const settings = reportResource.data?.settings ?? null;
 
   const backTo = `/reports${draftId ? `?draft=${draftId}` : ""}`;
   const timelineDays = useMemo(() => (report ? listDays(report.startDate, report.endDate) : []), [report]);
@@ -374,10 +376,10 @@ export function ReportsPreviewPage() {
   }, [report]);
 
   useEffect(() => {
-    if (!draft && !loading) {
+    if (!draft && !reportResource.isLoading) {
       navigate("/reports", { replace: true });
     }
-  }, [draft, loading, navigate]);
+  }, [draft, navigate, reportResource.isLoading]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -404,10 +406,15 @@ export function ReportsPreviewPage() {
         className="relative left-1/2 w-full -translate-x-1/2 px-5 sm:px-8 lg:px-10"
         style={{ width: "min(120rem, calc(100vw - 2rem))" }}
       >
-        <FormPanel className="flex w-full flex-col gap-6">
-          {loading ? <p className="text-sm text-muted-foreground">{t("reports.creating")}</p> : null}
-          {report ? (
-            <>
+        <PageLoadBoundary
+        loading={reportResource.isLoading}
+        refreshing={reportResource.isRefreshing}
+        overlayLabel={t("reports.creating")}
+          skeleton={<PageLoadingState label={t("reports.creating")} minHeightClassName="min-h-[28rem]" />}
+        >
+          <FormPanel className="flex w-full flex-col gap-6">
+            {report ? (
+              <>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl border border-border bg-background p-4">
                   <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.period")}</p>
@@ -572,9 +579,10 @@ export function ReportsPreviewPage() {
                   </div>
                 </TabsContent>
               </Tabs>
-            </>
-          ) : null}
-        </FormPanel>
+              </>
+            ) : null}
+          </FormPanel>
+        </PageLoadBoundary>
       </div>
     </FormPage>
   );

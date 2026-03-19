@@ -5,6 +5,7 @@ import { getLocalNowSnapshot } from "@shared/utils/time";
 import type { UserContractInput } from "@shared/types/api";
 import type { UserRole } from "@shared/types/models";
 import { FormActions, FormFields, FormPage, FormPanel, FormSection, Field, FieldCombobox } from "@/components/form-layout";
+import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { usePageResource } from "@/hooks/use-page-resource";
 import { toast } from "@/lib/toast";
 
 interface UserEditorPageProps {
@@ -79,7 +81,6 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   const [settingsLocale, setSettingsLocale] = useState("en-GB");
   const [settingsTimeZone, setSettingsTimeZone] = useState("Europe/Vienna");
   const [form, setForm] = useState<UserFormState>(createEmptyForm);
-  const [loading, setLoading] = useState(mode === "edit");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const statusOptions = [
@@ -92,45 +93,73 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     { value: "employee", label: t("userEditor.employee") }
   ];
 
-  useEffect(() => {
-    if (!companySession) return;
-    void api.getSettings(companySession.token).then((response) => {
-      setSettingsLocale(response.settings.locale);
-      setSettingsTimeZone(response.settings.timeZone);
-    }).catch(() => undefined);
-  }, [companySession]);
+  const pageResource = usePageResource<{
+    settingsLocale: string;
+    settingsTimeZone: string;
+    form: UserFormState;
+  }>({
+    enabled: Boolean(companySession) && (mode === "create" || Boolean(userId)),
+    deps: [companySession?.token, mode, t, userId],
+    load: async () => {
+      if (!companySession) {
+        return {
+          settingsLocale: "en-GB",
+          settingsTimeZone: "Europe/Vienna",
+          form: createEmptyForm()
+        };
+      }
 
-  useEffect(() => {
-    if (mode !== "edit" || !companySession || !userId) return;
-    setLoading(true);
-    void api
-      .getUser(companySession.token, Number(userId))
-      .then((response) =>
-        setForm({
-          fullName: response.user.fullName,
-          username: response.user.username,
-          password: "",
-          role: response.user.role,
-          isActive: response.user.isActive,
-          pinCode: response.user.pinCode,
-          email: response.user.email ?? "",
-          contracts: response.user.contracts.map((contract) => ({
-            id: contract.id,
-            hoursPerWeek: contract.hoursPerWeek,
-            startDate: contract.startDate,
-            endDate: contract.endDate,
-            paymentPerHour: contract.paymentPerHour
-          }))
-        })
-      )
-      .catch((error) =>
+      try {
+        const settingsResponse = await api.getSettings(companySession.token);
+        if (mode !== "edit" || !userId) {
+          return {
+            settingsLocale: settingsResponse.settings.locale,
+            settingsTimeZone: settingsResponse.settings.timeZone,
+            form: createEmptyForm()
+          };
+        }
+
+        const userResponse = await api.getUser(companySession.token, Number(userId));
+        return {
+          settingsLocale: settingsResponse.settings.locale,
+          settingsTimeZone: settingsResponse.settings.timeZone,
+          form: {
+            fullName: userResponse.user.fullName,
+            username: userResponse.user.username,
+            password: "",
+            role: userResponse.user.role,
+            isActive: userResponse.user.isActive,
+            pinCode: userResponse.user.pinCode,
+            email: userResponse.user.email ?? "",
+            contracts: userResponse.user.contracts.map((contract) => ({
+              id: contract.id,
+              hoursPerWeek: contract.hoursPerWeek,
+              startDate: contract.startDate,
+              endDate: contract.endDate,
+              paymentPerHour: contract.paymentPerHour
+            }))
+          }
+        };
+      } catch (error) {
         toast({
           title: t("userEditor.loadFailed"),
           description: error instanceof Error ? error.message : "Request failed"
-        })
-      )
-      .finally(() => setLoading(false));
-  }, [companySession, mode, t, userId]);
+        });
+        throw error;
+      }
+    }
+  });
+  const loading = pageResource.isLoading;
+
+  useEffect(() => {
+    if (!pageResource.data) {
+      return;
+    }
+
+    setSettingsLocale(pageResource.data.settingsLocale);
+    setSettingsTimeZone(pageResource.data.settingsTimeZone);
+    setForm(pageResource.data.form);
+  }, [pageResource.data]);
 
   function setField<K extends keyof UserFormState>(key: K, value: UserFormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -242,21 +271,18 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
 
   return (
     <FormPage>
-      <PageBackAction to="/users" label={t("userEditor.back")} />
-      <PageLabel
-        title={mode === "create" ? t("userEditor.createTitle") : t("userEditor.editTitle")}
-        description={mode === "create" ? t("userEditor.createDescription") : t("userEditor.editDescription")}
-      />
-      <FormPanel className="flex flex-col gap-6">
-        {mode === "edit" && loading ? (
-          <div className="flex min-h-[20rem] flex-col gap-4">
-            <div className="h-10 rounded-xl bg-muted/60" />
-            <div className="h-10 rounded-xl bg-muted/60" />
-            <div className="h-10 rounded-xl bg-muted/60" />
-            <div className="h-10 rounded-xl bg-muted/60" />
-            <div className="h-28 rounded-2xl bg-muted/60" />
-          </div>
-        ) : (
+      <PageLoadBoundary
+        loading={pageResource.isLoading}
+        refreshing={pageResource.isRefreshing}
+        overlayLabel={t("userEditor.loading")}
+        skeleton={<PageLoadingState label={t("userEditor.loading")} />}
+      >
+        <PageBackAction to="/users" label={t("userEditor.back")} />
+        <PageLabel
+          title={mode === "create" ? t("userEditor.createTitle") : t("userEditor.editTitle")}
+          description={mode === "create" ? t("userEditor.createDescription") : t("userEditor.editDescription")}
+        />
+        <FormPanel className="flex flex-col gap-6">
           <>
 
             <FormSection>
@@ -403,13 +429,13 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
                   {companyIdentity?.user.id === Number(userId) ? t("userEditor.activeUser") : deleting ? t("userEditor.deleting") : t("userEditor.delete")}
                 </Button>
               ) : null}
-              <Button disabled={saving || loading} onClick={() => void handleSave()} type="button">
+              <Button disabled={saving || pageResource.isLoading} onClick={() => void handleSave()} type="button">
                 {saving ? t("userEditor.saving") : t("userEditor.save")}
               </Button>
             </FormActions>
           </>
-        )}
-      </FormPanel>
+        </FormPanel>
+      </PageLoadBoundary>
     </FormPage>
   );
 }

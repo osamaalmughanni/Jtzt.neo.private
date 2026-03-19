@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Download, ShieldPlus, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { CompanyRecord, SystemStats } from "@shared/types/models";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { usePageResource } from "@/hooks/use-page-resource";
 import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,44 +12,50 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { FileInput } from "@/components/ui/file-input";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 
 export function AdminCompaniesPage() {
   const { t } = useTranslation();
   const { adminSession } = useAuth();
-  const [companies, setCompanies] = useState<CompanyRecord[]>([]);
-  const [stats, setStats] = useState<SystemStats | null>(null);
   const [newAdmin, setNewAdmin] = useState({ companyId: "", username: "", password: "", fullName: "" });
   const [importingCompanyId, setImportingCompanyId] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [pendingDeleteCompany, setPendingDeleteCompany] = useState<CompanyRecord | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const companiesResource = usePageResource<{ companies: CompanyRecord[]; stats: SystemStats | null }>({
+    enabled: Boolean(adminSession),
+    deps: [adminSession?.token, t],
+    load: async () => {
+      if (!adminSession) {
+        return { companies: [], stats: null };
+      }
+
+      try {
+        const [companyResponse, statsResponse] = await Promise.all([
+          api.listCompanies(adminSession.token),
+          api.getSystemStats(adminSession.token)
+        ]);
+        return {
+          companies: companyResponse.companies,
+          stats: statsResponse.stats
+        };
+      } catch (error) {
+        toast({
+          title: t("adminCompanies.loadFailed"),
+          description: error instanceof Error ? error.message : "Request failed"
+        });
+        throw error;
+      }
+    }
+  });
+  const companies = companiesResource.data?.companies ?? [];
+  const stats = companiesResource.data?.stats ?? null;
   const statItems = [
     { label: t("adminCompanies.stats.companies"), value: stats?.companyCount ?? 0 },
     { label: t("adminCompanies.stats.admins"), value: stats?.adminCount ?? 0 },
     { label: t("adminCompanies.stats.users"), value: stats?.totalUsers ?? 0 },
     { label: t("adminCompanies.stats.activeTimers"), value: stats?.activeTimers ?? 0 }
   ];
-
-  async function load() {
-    if (!adminSession) return;
-    try {
-      const [companyResponse, statsResponse] = await Promise.all([
-        api.listCompanies(adminSession.token),
-        api.getSystemStats(adminSession.token)
-      ]);
-      setCompanies(companyResponse.companies);
-      setStats(statsResponse.stats);
-    } catch (error) {
-      toast({
-        title: t("adminCompanies.loadFailed"),
-        description: error instanceof Error ? error.message : "Request failed"
-      });
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, [adminSession]);
 
   async function removeCompany(companyId: string) {
     if (!adminSession) return;
@@ -57,7 +64,7 @@ export function AdminCompaniesPage() {
       await api.deleteCompany(adminSession.token, { companyId });
       setPendingDeleteCompany(null);
       toast({ title: t("adminCompanies.companyDeleted") });
-      await load();
+      await companiesResource.reload();
     } catch (error) {
       toast({
         title: t("adminCompanies.companyDeleteFailed"),
@@ -111,7 +118,7 @@ export function AdminCompaniesPage() {
       await api.importCompanySnapshot(adminSession.token, company.id, importFile);
       setImportFile(null);
       toast({ title: "Company snapshot imported" });
-      await load();
+      await companiesResource.reload();
     } catch (error) {
       toast({
         title: "Could not import company snapshot",
@@ -149,38 +156,44 @@ export function AdminCompaniesPage() {
         </DialogContent>
       </Dialog>
 
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b border-border/80 bg-muted/30">
-          <CardTitle>{t("adminCompanies.overviewTitle")}</CardTitle>
-          <CardDescription>{t("adminCompanies.overviewDescription")}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-5">
-          {statItems.map((item) => (
-            <div key={item.label} className="flex items-baseline gap-1.5 text-xs">
-              <p className="truncate text-[10px] text-muted-foreground">{item.label}</p>
-              <p className="text-sm font-semibold tracking-[-0.02em] text-foreground">{item.value}</p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <PageLoadBoundary
+        loading={companiesResource.isLoading}
+        refreshing={companiesResource.isRefreshing}
+        overlayLabel={t("common.loading", { defaultValue: "Loading..." })}
+        skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
+      >
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b border-border/80 bg-muted/30">
+            <CardTitle>{t("adminCompanies.overviewTitle")}</CardTitle>
+            <CardDescription>{t("adminCompanies.overviewDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-5">
+            {statItems.map((item) => (
+              <div key={item.label} className="flex items-baseline gap-1.5 text-xs">
+                <p className="truncate text-[10px] text-muted-foreground">{item.label}</p>
+                <p className="text-sm font-semibold tracking-[-0.02em] text-foreground">{item.value}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("adminCompanies.managementTitle")}</CardTitle>
-          <CardDescription>{t("adminCompanies.managementDescription")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {companies.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-5 py-10 text-center text-sm text-muted-foreground">
-              {t("adminCompanies.noCompanies")}
-            </div>
-          ) : (
-            <TooltipProvider delayDuration={120}>
-              {companies.map((company) => (
-                <div
-                  key={company.id}
-                  className="flex items-center gap-2 rounded-xl border border-border bg-muted/15 px-3 py-2"
-                >
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("adminCompanies.managementTitle")}</CardTitle>
+            <CardDescription>{t("adminCompanies.managementDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {companies.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-5 py-10 text-center text-sm text-muted-foreground">
+                {t("adminCompanies.noCompanies")}
+              </div>
+            ) : (
+              <TooltipProvider delayDuration={120}>
+                {companies.map((company) => (
+                  <div
+                    key={company.id}
+                    className="flex items-center gap-2 rounded-xl border border-border bg-muted/15 px-3 py-2"
+                  >
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-center gap-2">
                       <h3 className="truncate text-xs font-semibold tracking-[-0.02em] text-foreground sm:text-sm">{company.name}</h3>
@@ -287,12 +300,13 @@ export function AdminCompaniesPage() {
                       <TooltipContent>{t("common.delete")}</TooltipContent>
                     </Tooltip>
                   </div>
-                </div>
-              ))}
-            </TooltipProvider>
-          )}
-        </CardContent>
-      </Card>
+                  </div>
+                ))}
+              </TooltipProvider>
+            )}
+          </CardContent>
+        </Card>
+      </PageLoadBoundary>
     </div>
   );
 }

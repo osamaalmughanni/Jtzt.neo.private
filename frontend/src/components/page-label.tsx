@@ -16,7 +16,7 @@ export function PageLabel({
   descriptionClassName
 }: PageLabelProps) {
   return (
-    <div className={cn("min-w-0 flex flex-col gap-0.5", className)}>
+    <div className={cn("min-w-0 flex flex-col gap-1", className)}>
       <p className={cn("text-[1.35rem] font-semibold leading-tight tracking-[-0.03em] text-foreground", titleClassName)}>
         {title}
       </p>

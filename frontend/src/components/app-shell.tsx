@@ -98,7 +98,7 @@ export function AppShell({ mode }: AppShellProps) {
       <AppHeaderStateProvider>
         <div className="flex flex-1 flex-col gap-4">
           <AppHeader menuTo={menuTo} actions={tabletActions} scope={scope} />
-          <main className="flex flex-1 flex-col">
+          <main className="flex min-h-0 flex-1 flex-col">
             <Outlet />
           </main>
           <AppFooter context="app" />

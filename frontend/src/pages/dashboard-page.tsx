@@ -25,11 +25,14 @@ import {
   FormPage,
   FormSection,
 } from "@/components/form-layout";
+import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
+import { Stack } from "@/components/stack";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
+import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { getEntryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
@@ -292,27 +295,51 @@ export function DashboardPage() {
     setSearchParams(params, { replace: true });
   }
 
-  async function loadEntries() {
-    if (!companySession || !effectiveUserId) return;
+  const dashboardResource = usePageResource<{
+    settings: CompanySettings;
+    users: CompanyUserListItem[];
+    entries: TimeEntryView[];
+    summary: DashboardSummary;
+  }>({
+    enabled: Boolean(companySession) && Boolean(effectiveUserId),
+    deps: [canSwitchUser, companySession?.token, effectiveUserId, selectedDayKey, t],
+    load: async () => {
+      if (!companySession || !effectiveUserId) {
+        return {
+          settings: defaultSettings,
+          users: [],
+          entries: [],
+          summary: defaultSummary,
+        };
+      }
 
-    try {
-      const [entriesResponse, dashboardResponse] = await Promise.all([
-        api.listTimeEntries(companySession.token, {
-          from: formatLocalDay(startOfDay(selectedDate)),
-          to: formatLocalDay(endOfDay(selectedDate)),
-          targetUserId: canSwitchUser ? effectiveUserId : undefined,
-        }),
-        api.getDashboard(companySession.token, canSwitchUser ? effectiveUserId : undefined),
-      ]);
-      setEntries(entriesResponse.entries);
-      setSummary(dashboardResponse.summary);
-    } catch (error) {
-      toast({
-        title: t("dashboard.couldNotLoadRecords"),
-        description: error instanceof Error ? error.message : "Request failed",
-      });
+      try {
+        const [settingsResponse, usersResponse, entriesResponse, dashboardResponse] = await Promise.all([
+          api.getSettings(companySession.token),
+          canSwitchUser ? api.listUsers(companySession.token) : Promise.resolve({ users: [] }),
+          api.listTimeEntries(companySession.token, {
+            from: formatLocalDay(startOfDay(selectedDate)),
+            to: formatLocalDay(endOfDay(selectedDate)),
+            targetUserId: canSwitchUser ? effectiveUserId : undefined,
+          }),
+          api.getDashboard(companySession.token, canSwitchUser ? effectiveUserId : undefined),
+        ]);
+
+        return {
+          settings: settingsResponse.settings,
+          users: usersResponse.users,
+          entries: entriesResponse.entries,
+          summary: dashboardResponse.summary,
+        };
+      } catch (error) {
+        toast({
+          title: t("dashboard.couldNotLoadRecords"),
+          description: error instanceof Error ? error.message : "Request failed",
+        });
+        throw error;
+      }
     }
-  }
+  });
 
   useEffect(() => {
     if (!companyIdentity?.user.id) return;
@@ -327,36 +354,15 @@ export function DashboardPage() {
   }, [companyIdentity?.user.id, searchParams, setSearchParams, settings.timeZone]);
 
   useEffect(() => {
-    if (!companySession) return;
-
-    void api
-      .getSettings(companySession.token)
-      .then((response) => setSettings(response.settings))
-      .catch(() => undefined);
-
-    if (!canSwitchUser) {
-      setUsers([]);
+    if (!dashboardResource.data) {
       return;
     }
 
-    void api
-      .listUsers(companySession.token)
-      .then((response) => setUsers(response.users))
-      .catch((error) => {
-        if (companySession.accessMode === "tablet") {
-          return;
-        }
-        toast({
-          title: t("dashboard.couldNotLoadUsers"),
-          description:
-            error instanceof Error ? error.message : "Request failed",
-        });
-      });
-  }, [canSwitchUser, companySession]);
-
-  useEffect(() => {
-    void loadEntries();
-  }, [companySession, effectiveUserId, selectedDate]);
+    setSettings(dashboardResource.data.settings);
+    setUsers(dashboardResource.data.users);
+    setEntries(dashboardResource.data.entries);
+    setSummary(dashboardResource.data.summary);
+  }, [dashboardResource.data]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -374,7 +380,7 @@ export function DashboardPage() {
       });
       setPendingDeleteEntry(null);
       toast({ title: t("dashboard.recordDeleted") });
-      await loadEntries();
+      await dashboardResource.reload();
     } catch (error) {
       toast({
         title: t("dashboard.couldNotDeleteRecord"),
@@ -400,7 +406,7 @@ export function DashboardPage() {
       setTabletPunchOpen(false);
       setTabletPunchValues({});
       toast({ title: t("dashboard.timerStarted") });
-      await loadEntries();
+      await dashboardResource.reload();
     } catch (error) {
       toast({
         title: t("dashboard.couldNotStartTimer"),
@@ -416,7 +422,7 @@ export function DashboardPage() {
     try {
       await api.stopTimer(companySession.token, { entryId: summary.activeEntry.id });
       toast({ title: t("dashboard.timerStopped") });
-      await loadEntries();
+      await dashboardResource.reload();
     } catch (error) {
       toast({
         title: t("dashboard.couldNotStopTimer"),
@@ -461,7 +467,7 @@ export function DashboardPage() {
             <DialogTitle>{t("dashboard.requiredWorkFieldsTitle")}</DialogTitle>
             <DialogDescription>{t("dashboard.requiredWorkFieldsDescription")}</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4">
+          <Stack gap="md">
             {requiredTabletWorkFields.map((field) => (
               <Field key={field.id} label={field.label}>
                 <CustomFieldInput
@@ -481,7 +487,7 @@ export function DashboardPage() {
                 {t("dashboard.startWork")}
               </Button>
             </div>
-          </div>
+          </Stack>
         </DialogContent>
       </Dialog>
       <AppConfirmDialog
@@ -509,10 +515,17 @@ export function DashboardPage() {
           pendingDeleteEntry && void deleteEntry(pendingDeleteEntry.id)
         }
       />
+      <PageLoadBoundary
+        loading={dashboardResource.isLoading}
+        refreshing={dashboardResource.isRefreshing}
+        overlayLabel={t("common.loading", { defaultValue: "Loading..." })}
+        skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} minHeightClassName="min-h-[28rem]" />}
+      >
       <PageLabel
         title={t("dashboard.pageTitle")}
         description={t("dashboard.pageDescription")}
       />
+      <Stack gap="lg" className="min-h-full flex-1">
       {canSwitchUser ? (
         <div className="rounded-2xl border border-border bg-card p-5">
           <FormSection>
@@ -534,7 +547,7 @@ export function DashboardPage() {
       ) : null}
 
       <div className="rounded-2xl border border-border bg-card p-5">
-        <div className="flex flex-col gap-5">
+        <Stack gap="lg">
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
               <p className="text-sm text-muted-foreground">{selectedUserName}</p>
@@ -589,7 +602,7 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-border/70 pt-3">
+          <Stack gap="sm" className="border-t border-border/70 pt-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 <p className="text-sm font-medium text-foreground">{t("dashboard.balance")}</p>
@@ -613,17 +626,17 @@ export function DashboardPage() {
                 {t("dashboard.balanceBadge", { value: formatBalanceMinutes(activeContractStats.balanceMinutes) })}
               </Badge>
             </div>
-          </div>
-        </div>
+          </Stack>
+        </Stack>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5">
+      <Stack gap="sm" className="rounded-2xl border border-border bg-card p-5">
         <div>
           <p className="text-sm font-medium text-foreground">{t("dashboard.records")}</p>
         </div>
 
         <div className="overflow-visible">
-          <div className="flex flex-col gap-1.5">
+          <Stack gap="xs">
             {entries.map((entry) => {
               const canEdit =
                 bypassDayLimits ||
@@ -740,9 +753,9 @@ export function DashboardPage() {
                 {t("dashboard.noRecords")}
               </p>
             ) : null}
-          </div>
+          </Stack>
         </div>
-      </div>
+      </Stack>
 
       <div className="flex min-h-[8rem] flex-1 items-center justify-center">
         <div className="flex flex-col items-center gap-3">
@@ -803,6 +816,8 @@ export function DashboardPage() {
           ) : null}
         </div>
       </div>
+      </Stack>
+      </PageLoadBoundary>
     </FormPage>
   );
 }
