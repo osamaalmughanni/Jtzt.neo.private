@@ -32,6 +32,10 @@ externalRoutes.get("/", async (c) => {
     auth: {
       required: true,
       acceptedHeaders: ["X-API-Key", "Authorization: Bearer <key>"],
+      errorExample: {
+        status: 401,
+        body: { error: "API key required" },
+      },
     },
     endpoints: company
       ? [
@@ -50,26 +54,40 @@ externalRoutes.get("/", async (c) => {
   });
 });
 
+externalRoutes.get("/docs", async (c) => {
+  return c.json({
+    ok: true,
+    public: true,
+    docs: await companyApiService.getGeneratedDocs(c.get("db")),
+  });
+});
+
 externalRoutes.use("*", async (c, next) => {
   const apiKey = extractApiKey(c.req.header("X-API-Key")) || getBearerToken(c.req.header("Authorization"));
   if (!apiKey) {
-    return c.json({ error: "API key required" }, 401);
+    return c.json(
+      {
+        error: "API key required",
+        acceptedHeaders: ["X-API-Key", "Authorization: Bearer <key>"],
+        docs: "/api/external/docs",
+      },
+      401,
+    );
   }
 
   const company = await companyApiService.getCompanyByApiKey(c.get("db"), apiKey);
   if (!company) {
-    return c.json({ error: "Invalid API key" }, 401);
+    return c.json(
+      {
+        error: "Invalid API key",
+        docs: "/api/external/docs",
+      },
+      401,
+    );
   }
 
   c.set("externalCompany", company);
   await next();
-});
-
-externalRoutes.get("/docs", async (c) => {
-  return c.json({
-    ok: true,
-    docs: await companyApiService.getGeneratedDocs(c.get("db")),
-  });
 });
 
 externalRoutes.get("/schema", async (c) => {

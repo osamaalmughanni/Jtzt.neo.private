@@ -16,6 +16,21 @@ import type { AppRouteConfig } from "./context";
 export function createApp() {
   const app = new Hono<AppRouteConfig>();
 
+  app.use("/api/*", async (c, next) => {
+    const requestId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    c.header("X-Request-Id", requestId);
+    c.header("Access-Control-Allow-Origin", "*");
+    c.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key");
+    c.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    c.header("Access-Control-Expose-Headers", "X-Request-Id");
+
+    if (c.req.method === "OPTIONS") {
+      return c.body(null, 204);
+    }
+
+    await next();
+  });
+
   app.use("*", async (c, next) => {
     const config = resolveRuntimeConfig(c.env);
     const db = c.env.DB ? createD1Database(c.env.DB) : createNodeDatabase(config.nodeSqlitePath);
@@ -41,6 +56,17 @@ export function createApp() {
       env: config.appEnv,
       version: config.appVersion
     });
+  });
+
+  app.notFound((c) => {
+    return c.json(
+      {
+        error: "API route not found",
+        method: c.req.method,
+        path: c.req.path,
+      },
+      404,
+    );
   });
 
   app.onError((error, c) => {
