@@ -653,6 +653,18 @@ export const companyApiService = {
       endpoints: [
         {
           method: "GET",
+          path: "/api/external",
+          title: "Service index",
+          description: "Returns the authenticated service overview and, when a valid key is supplied, the current generated API documentation.",
+        },
+        {
+          method: "GET",
+          path: "/api/external/docs",
+          title: "Generated docs",
+          description: "Returns the current authenticated documentation payload built from the live schema.",
+        },
+        {
+          method: "GET",
           path: "/api/external/schema",
           title: "Live schema",
           description: "Discovers every company-scoped table and column directly from the current database.",

@@ -11,7 +11,42 @@ function getBearerToken(header: string | undefined) {
   return extractApiKey(header).replace(/^Bearer\s+/i, "");
 }
 
+async function resolveExternalCompany(c: any) {
+  const apiKey = extractApiKey(c.req.header("X-API-Key")) || getBearerToken(c.req.header("Authorization"));
+  if (!apiKey) {
+    return null;
+  }
+
+  return companyApiService.getCompanyByApiKey(c.get("db"), apiKey);
+}
+
 export const externalRoutes = new Hono<AppRouteConfig>();
+
+externalRoutes.get("/", async (c) => {
+  const company = await resolveExternalCompany(c);
+
+  return c.json({
+    service: "jtzt-company-api",
+    auth: {
+      required: true,
+      acceptedHeaders: ["X-API-Key", "Authorization: Bearer <key>"],
+    },
+    endpoints: company
+      ? [
+          "GET /api/external",
+          "GET /api/external/docs",
+          "GET /api/external/schema",
+          "POST /api/external/query",
+          "POST /api/external/mutate",
+        ]
+      : [
+          "GET /api/external",
+          "GET /api/external/docs",
+        ],
+    company: company ? { id: company.id, name: company.name } : null,
+    docs: company ? await companyApiService.getGeneratedDocs(c.get("db")) : null,
+  });
+});
 
 externalRoutes.use("*", async (c, next) => {
   const apiKey = extractApiKey(c.req.header("X-API-Key")) || getBearerToken(c.req.header("Authorization"));
@@ -26,6 +61,10 @@ externalRoutes.use("*", async (c, next) => {
 
   c.set("externalCompany", company);
   await next();
+});
+
+externalRoutes.get("/docs", async (c) => {
+  return c.json(await companyApiService.getGeneratedDocs(c.get("db")));
 });
 
 externalRoutes.get("/schema", async (c) => {
