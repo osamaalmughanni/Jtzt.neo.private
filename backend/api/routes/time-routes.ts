@@ -1,15 +1,15 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { countEffectiveLeaveDays, diffCalendarDays } from "../../../shared/utils/time";
+import { diffCalendarDays } from "../../../shared/utils/time";
 import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
 import type { CompanyTokenPayload } from "../../auth/jwt";
 import { settingsService } from "../../services/settings-service";
 import { timeService } from "../../services/time-service";
 import {
   calculateLeaveCompensation,
+  calculateExpectedContractMinutesForRange,
+  calculateRecordedMinutesForRange,
   calculateWorkDurationMinutes,
-  enumerateDayRange,
-  getExpectedContractMinutesForDay,
   getMonthRange,
   getWeekRange
 } from "../../services/time-entry-metrics-service";
@@ -168,8 +168,14 @@ async function enforceIntersectingRecords(
   }
 }
 
-async function enrichEntryWithDayMetrics(db: AppDatabase, companyId: string, entry: Awaited<ReturnType<typeof timeService.getEntryById>>) {
+async function enrichEntryWithDayMetrics(
+  db: AppDatabase,
+  companyId: string,
+  entry: Awaited<ReturnType<typeof timeService.getEntryById>>,
+  contracts?: Awaited<ReturnType<typeof userService.listUserContracts>>
+) {
   const settings = await settingsService.getSettings(db, companyId);
+  const resolvedContracts = contracts ?? await userService.listUserContracts(db, companyId, entry.userId);
   if (entry.entryType === "work") {
     const totalDayCount = entry.endDate ? Math.max(1, diffCalendarDays(entry.endDate, entry.entryDate) + 1) : 1;
     return {
@@ -198,16 +204,17 @@ async function enrichEntryWithDayMetrics(db: AppDatabase, companyId: string, ent
   const holidaySet = new Set(holidays.flatMap((response) => response.holidays).map((holiday) => holiday.date));
   return {
     ...entry,
-    ...countEffectiveLeaveDays(startDay, endDay, holidaySet)
+    ...calculateLeaveCompensation(entry.entryType, startDay, endDay, holidaySet, resolvedContracts)
   };
 }
 
 async function enrichEntriesWithDayMetrics(
   db: AppDatabase,
   companyId: string,
-  entries: Awaited<ReturnType<typeof timeService.listEntries>>
+  entries: Awaited<ReturnType<typeof timeService.listEntries>>,
+  contractsByUser?: Map<number, Awaited<ReturnType<typeof userService.listUserContracts>>>
 ) {
-  return Promise.all(entries.map((entry) => enrichEntryWithDayMetrics(db, companyId, entry)));
+  return Promise.all(entries.map((entry) => enrichEntryWithDayMetrics(db, companyId, entry, contractsByUser?.get(entry.userId))));
 }
 
 async function getHolidaySetForRange(db: AppDatabase, companyId: string, country: string, startDay: string, endDay: string) {
@@ -223,65 +230,50 @@ async function getHolidaySetForRange(db: AppDatabase, companyId: string, country
   return new Set(responses.flatMap((response) => response.holidays).map((holiday) => holiday.date));
 }
 
-async function buildDashboardSummary(db: AppDatabase, companyId: string, userId: number) {
+async function buildDashboardSummary(db: AppDatabase, companyId: string, userId: number, targetDay?: string) {
   const settings = await settingsService.getSettings(db, companyId);
-  const todayDay = (await settingsService.getBusinessNowSnapshot(db, companyId)).localDay;
-  const fullWeekRange = getWeekRange(todayDay, settings.firstDayOfWeek);
-  const fullMonthRange = getMonthRange(todayDay);
-  const weekRange = { startDay: fullWeekRange.startDay, endDay: todayDay };
-  const monthRange = { startDay: fullMonthRange.startDay, endDay: todayDay };
+  const businessToday = (await settingsService.getBusinessNowSnapshot(db, companyId)).localDay;
+  const focusDay = targetDay && /^\d{4}-\d{2}-\d{2}$/.test(targetDay) ? targetDay : businessToday;
+  const fullWeekRange = getWeekRange(focusDay, settings.firstDayOfWeek);
+  const fullMonthRange = getMonthRange(focusDay);
+  const weekRange = { startDay: fullWeekRange.startDay, endDay: focusDay };
+  const monthRange = { startDay: fullMonthRange.startDay, endDay: focusDay };
   const contracts = await userService.listUserContracts(db, companyId, userId);
   const allEntries = await timeService.listEntries(db, companyId, userId, {});
   const currentContract =
-    contracts.find((contract) => contract.startDate <= todayDay && (contract.endDate === null || contract.endDate >= todayDay)) ?? null;
-  const historyStartDay = [...contracts.map((contract) => contract.startDate), ...allEntries.map((entry) => entry.entryDate), todayDay].sort(
+    contracts.find((contract) => contract.startDate <= focusDay && (contract.endDate === null || contract.endDate >= focusDay)) ?? null;
+  const historyStartDay = [...contracts.map((contract) => contract.startDate), ...allEntries.map((entry) => entry.entryDate), focusDay].sort(
     (left, right) => left.localeCompare(right)
   )[0];
-  const holidaySet = await getHolidaySetForRange(db, companyId, settings.country, historyStartDay, todayDay);
+  const holidaySet = await getHolidaySetForRange(db, companyId, settings.country, historyStartDay, focusDay);
 
-  const todayEntries = await timeService.listEntries(db, companyId, userId, { from: todayDay, to: todayDay });
+  const todayEntries = await timeService.listEntries(db, companyId, userId, { from: focusDay, to: focusDay });
   const weekEntries = await timeService.listEntries(db, companyId, userId, { from: weekRange.startDay, to: weekRange.endDay });
   const monthEntries = await timeService.listEntries(db, companyId, userId, { from: monthRange.startDay, to: monthRange.endDay });
   const activeEntry = await timeService.getActiveEntry(db, companyId, userId);
-
-  function getRecordedMinutes(entries: Awaited<ReturnType<typeof timeService.listEntries>>, startDay: string, endDay: string) {
-    return entries.reduce((sum, entry) => {
-      if (entry.entryType === "work") {
-        return sum + calculateWorkDurationMinutes(entry.startTime, entry.endTime, settings);
-      }
-
-      const clampedStart = entry.entryDate < startDay ? startDay : entry.entryDate;
-      const entryEndDay = entry.endDate ?? entry.entryDate;
-      const clampedEnd = entryEndDay > endDay ? endDay : entryEndDay;
-      return sum + calculateLeaveCompensation(entry.entryType, clampedStart, clampedEnd, holidaySet, contracts).durationMinutes;
-    }, 0);
-  }
-
-  function getExpectedMinutes(startDay: string, endDay: string) {
-    return enumerateDayRange(startDay, endDay).reduce((sum, day) => sum + getExpectedContractMinutesForDay(day, holidaySet, contracts), 0);
-  }
-
-  const todayRecordedMinutes = getRecordedMinutes(todayEntries, todayDay, todayDay);
-  const weekRecordedMinutes = getRecordedMinutes(weekEntries, weekRange.startDay, weekRange.endDay);
-  const monthRecordedMinutes = getRecordedMinutes(monthEntries, monthRange.startDay, monthRange.endDay);
-  const todayExpectedMinutes = getExpectedMinutes(todayDay, todayDay);
-  const weekExpectedMinutes = getExpectedMinutes(weekRange.startDay, weekRange.endDay);
-  const monthExpectedMinutes = getExpectedMinutes(monthRange.startDay, monthRange.endDay);
-  const totalRecordedMinutes = getRecordedMinutes(allEntries, historyStartDay, todayDay);
-  const totalExpectedMinutes = getExpectedMinutes(historyStartDay, todayDay);
+  const contractsByUser = new Map([[userId, contracts]]);
+  const todayRecordedMinutes = calculateRecordedMinutesForRange(todayEntries, focusDay, focusDay, settings, holidaySet, contracts);
+  const weekRecordedMinutes = calculateRecordedMinutesForRange(weekEntries, weekRange.startDay, weekRange.endDay, settings, holidaySet, contracts);
+  const monthRecordedMinutes = calculateRecordedMinutesForRange(monthEntries, monthRange.startDay, monthRange.endDay, settings, holidaySet, contracts);
+  const todayExpectedMinutes = calculateExpectedContractMinutesForRange(focusDay, focusDay, holidaySet, contracts);
+  const weekExpectedMinutes = calculateExpectedContractMinutesForRange(weekRange.startDay, weekRange.endDay, holidaySet, contracts);
+  const monthExpectedMinutes = calculateExpectedContractMinutesForRange(monthRange.startDay, monthRange.endDay, holidaySet, contracts);
+  const totalRecordedMinutes = calculateRecordedMinutesForRange(allEntries, historyStartDay, focusDay, settings, holidaySet, contracts);
+  const totalExpectedMinutes = calculateExpectedContractMinutesForRange(historyStartDay, focusDay, holidaySet, contracts);
 
   return {
     todayMinutes: todayRecordedMinutes,
     weekMinutes: weekRecordedMinutes,
-    activeEntry: activeEntry ? await enrichEntryWithDayMetrics(db, companyId, activeEntry) : null,
-    recentEntries: await enrichEntriesWithDayMetrics(db, companyId, allEntries.slice(0, 5)),
+    activeEntry: activeEntry ? await enrichEntryWithDayMetrics(db, companyId, activeEntry, contracts) : null,
+    recentEntries: await enrichEntriesWithDayMetrics(db, companyId, allEntries.slice(0, 5), contractsByUser),
     contractStats: {
       currentContract: currentContract
         ? {
             hoursPerWeek: currentContract.hoursPerWeek,
             paymentPerHour: currentContract.paymentPerHour,
             startDate: currentContract.startDate,
-            endDate: currentContract.endDate
+            endDate: currentContract.endDate,
+            schedule: currentContract.schedule
           }
         : null,
       totalBalanceMinutes: totalRecordedMinutes - totalExpectedMinutes,
@@ -363,7 +355,7 @@ timeRoutes.post("/entry", async (c) => {
     return c.json({ error: "End date must be on or after start date" }, 400);
   }
   const createdEntry = await timeService.createManualEntry(db, session.companyId, targetUserId, body);
-  return c.json({ entry: await enrichEntryWithDayMetrics(db, session.companyId, createdEntry) });
+  return c.json({ entry: await enrichEntryWithDayMetrics(db, session.companyId, createdEntry, await userService.listUserContracts(db, session.companyId, targetUserId)) });
 });
 
 timeRoutes.post("/stop", async (c) => {
@@ -389,7 +381,14 @@ timeRoutes.get("/list", async (c) => {
     from: c.req.query("from"),
     to: c.req.query("to")
   });
-  return c.json({ entries: await enrichEntriesWithDayMetrics(db, session.companyId, entries) });
+  return c.json({
+    entries: await enrichEntriesWithDayMetrics(
+      db,
+      session.companyId,
+      entries,
+      new Map([[targetUserId, await userService.listUserContracts(db, session.companyId, targetUserId)]])
+    )
+  });
 });
 
 timeRoutes.get("/entry/:entryId", async (c) => {
@@ -407,7 +406,7 @@ timeRoutes.get("/entry/:entryId", async (c) => {
   if (entry.userId !== targetUserId) {
     return c.json({ error: "Time entry not found" }, 404);
   }
-  return c.json({ entry: await enrichEntryWithDayMetrics(db, session.companyId, entry) });
+  return c.json({ entry: await enrichEntryWithDayMetrics(db, session.companyId, entry, await userService.listUserContracts(db, session.companyId, targetUserId)) });
 });
 
 timeRoutes.put("/entry", async (c) => {
@@ -443,7 +442,7 @@ timeRoutes.put("/entry", async (c) => {
     return c.json({ error: "End date must be on or after start date" }, 400);
   }
   const updatedEntry = await timeService.updateEntry(db, session.companyId, targetUserId, body);
-  return c.json({ entry: await enrichEntryWithDayMetrics(db, session.companyId, updatedEntry) });
+  return c.json({ entry: await enrichEntryWithDayMetrics(db, session.companyId, updatedEntry, await userService.listUserContracts(db, session.companyId, targetUserId)) });
 });
 
 timeRoutes.delete("/entry", async (c) => {
@@ -469,5 +468,5 @@ timeRoutes.get("/dashboard", async (c) => {
     return c.json({ error: "Manager access required" }, 403);
   }
 
-  return c.json({ summary: await buildDashboardSummary(c.get("db"), session.companyId, targetUserId) });
+  return c.json({ summary: await buildDashboardSummary(c.get("db"), session.companyId, targetUserId, c.req.query("targetDay") ?? undefined) });
 });

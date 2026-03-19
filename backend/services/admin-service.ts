@@ -2,9 +2,11 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { HTTPException } from "hono/http-exception";
 import type { CompanySnapshot, CreateCompanyAdminInput, CreateCompanyInput, DeleteCompanyInput } from "../../shared/types/api";
-import { mapCompanySettings, mapCompanyUser, mapProject, mapTask, mapTimeEntry, mapUserContract } from "../db/mappers";
+import { mapCompanySettings, mapCompanyUser, mapProject, mapTask, mapTimeEntry, mapUserContract, mapUserContractScheduleDay } from "../db/mappers";
 import type { AppDatabase } from "../runtime/types";
 import { systemService } from "./system-service";
+import { createLegacyContractSchedule } from "./user-contract-schedule";
+import { createDefaultOvertimeSettings } from "../../shared/utils/overtime";
 
 function createCompanyId() {
   return crypto.randomUUID();
@@ -24,6 +26,7 @@ async function deleteCompanyData(db: AppDatabase, companyId: string) {
     { sql: "DELETE FROM tasks WHERE company_id = ?", params: [companyId] },
     { sql: "DELETE FROM projects WHERE company_id = ?", params: [companyId] },
     { sql: "DELETE FROM time_entries WHERE company_id = ?", params: [companyId] },
+    { sql: "DELETE FROM user_contract_schedule_days WHERE contract_id IN (SELECT id FROM user_contracts WHERE company_id = ?)", params: [companyId] },
     { sql: "DELETE FROM user_contracts WHERE company_id = ?", params: [companyId] },
     { sql: "DELETE FROM public_holiday_cache WHERE company_id = ?", params: [companyId] },
     { sql: "DELETE FROM company_settings WHERE company_id = ?", params: [companyId] },
@@ -105,8 +108,9 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         tablet_idle_timeout_seconds,
         auto_break_after_minutes,
         auto_break_duration_minutes,
+        overtime_settings_json,
         custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         snapshot.settings.currency,
@@ -122,6 +126,7 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         snapshot.settings.tabletIdleTimeoutSeconds,
         snapshot.settings.autoBreakAfterMinutes,
         snapshot.settings.autoBreakDurationMinutes,
+        JSON.stringify((snapshot.settings as { overtime?: unknown }).overtime ?? createDefaultOvertimeSettings()),
         JSON.stringify(snapshot.settings.customFields)
       ]
     );
@@ -161,7 +166,7 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
   for (const contract of snapshot.userContracts) {
     const userId = userIdMap.get(contract.userId);
     if (!userId) continue;
-    await db.run(
+    const result = await db.run(
       `INSERT INTO user_contracts (
         company_id,
         user_id,
@@ -173,6 +178,21 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [companyId, userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, contract.createdAt]
     );
+    const contractId = Number(result.lastRowId);
+    const schedule = Array.isArray((contract as { schedule?: unknown }).schedule) ? contract.schedule : createLegacyContractSchedule(contract.hoursPerWeek);
+    for (const day of schedule) {
+      await db.run(
+        `INSERT INTO user_contract_schedule_days (
+          contract_id,
+          weekday,
+          is_working_day,
+          start_time,
+          end_time,
+          minutes
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [contractId, day.weekday, day.isWorkingDay ? 1 : 0, day.startTime, day.endTime, day.minutes]
+      );
+    }
   }
 
   for (const task of snapshot.tasks) {
@@ -411,10 +431,45 @@ export const adminService = {
         createdAt: user.createdAt
       }));
 
-    const userContracts = (await db.all(
+    const contractRows = await db.all(
       "SELECT id, user_id, hours_per_week, start_date, end_date, payment_per_hour, created_at FROM user_contracts WHERE company_id = ? ORDER BY id ASC",
       [companyId]
-    )).map(mapUserContract);
+    ) as Array<{
+      id: number;
+      user_id: number;
+      hours_per_week: number;
+      start_date: string;
+      end_date: string | null;
+      payment_per_hour: number;
+      created_at: string;
+    }>;
+    const scheduleRows = await db.all(
+      `SELECT
+        contract_id,
+        weekday,
+        is_working_day,
+        start_time,
+        end_time,
+        minutes
+       FROM user_contract_schedule_days
+       WHERE contract_id IN (SELECT id FROM user_contracts WHERE company_id = ?)
+       ORDER BY contract_id ASC, weekday ASC`,
+      [companyId]
+    ) as Array<{
+      contract_id: number;
+      weekday: number;
+      is_working_day: number;
+      start_time: string | null;
+      end_time: string | null;
+      minutes: number;
+    }>;
+    const contractScheduleById = new Map<number, ReturnType<typeof mapUserContractScheduleDay>[]>();
+    for (const row of scheduleRows) {
+      const next = contractScheduleById.get(row.contract_id) ?? [];
+      next.push(mapUserContractScheduleDay(row));
+      contractScheduleById.set(row.contract_id, next);
+    }
+    const userContracts = contractRows.map((contract) => mapUserContract(contract, contractScheduleById.get(contract.id) ?? []));
 
     const timeEntries = (await db.all(
       `SELECT

@@ -1,5 +1,14 @@
 import type { CompanySettings, TimeEntryType, UserContract } from "../../shared/types/models";
-import { countEffectiveLeaveDays, diffMinutes, enumerateLocalDays, formatLocalDay, isWeekendDay, parseLocalDay } from "../../shared/utils/time";
+import { diffMinutes, enumerateLocalDays, formatLocalDay, parseLocalDay, isWeekendDay } from "../../shared/utils/time";
+import { getContractScheduledMinutesForDay } from "./user-contract-schedule";
+
+type ContractAwareEntry = {
+  entryType: TimeEntryType;
+  entryDate: string;
+  endDate: string | null;
+  startTime: string | null;
+  endTime: string | null;
+};
 
 function resolveContractForDay(contracts: UserContract[], day: string) {
   let match: UserContract | null = null;
@@ -15,8 +24,8 @@ function resolveContractForDay(contracts: UserContract[], day: string) {
   return match;
 }
 
-function getContractDailyMinutes(contract: UserContract) {
-  return Math.max(0, Math.round((contract.hoursPerWeek / 5) * 60));
+function getContractDailyMinutes(contract: UserContract, day: string) {
+  return Math.max(0, getContractScheduledMinutesForDay(contract, day));
 }
 
 export function calculateWorkDurationMinutes(startTime: string | null, endTime: string | null, settings: Pick<CompanySettings, "autoBreakAfterMinutes" | "autoBreakDurationMinutes">) {
@@ -55,11 +64,17 @@ export function calculateLeaveCompensation(
   holidayDays: Set<string>,
   contracts: UserContract[],
 ) {
-  const baseMetrics = countEffectiveLeaveDays(startDay, endDay, holidayDays);
+  const days = enumerateLocalDays(startDay, endDay);
+  let effectiveDayCount = 0;
+  let excludedHolidayCount = 0;
+  let excludedWeekendCount = 0;
 
   if (entryType === "work") {
     return {
-      ...baseMetrics,
+      totalDayCount: days.length,
+      effectiveDayCount,
+      excludedHolidayCount,
+      excludedWeekendCount,
       durationMinutes: 0,
       costAmount: 0,
     };
@@ -68,30 +83,46 @@ export function calculateLeaveCompensation(
   let durationMinutes = 0;
   let costAmount = 0;
 
-  for (const day of enumerateLocalDays(startDay, endDay)) {
-    if (holidayDays.has(day) || isWeekendDay(day)) {
+  for (const day of days) {
+    const holiday = holidayDays.has(day);
+    if (holiday) {
+      excludedHolidayCount += 1;
       continue;
     }
 
     const contract = resolveContractForDay(contracts, day);
     if (!contract) {
+      if (isWeekendDay(day)) {
+        excludedWeekendCount += 1;
+      }
       continue;
     }
 
-    const dailyMinutes = getContractDailyMinutes(contract);
+    const dailyMinutes = getContractDailyMinutes(contract, day);
+    if (dailyMinutes <= 0) {
+      if (isWeekendDay(day)) {
+        excludedWeekendCount += 1;
+      }
+      continue;
+    }
+
+    effectiveDayCount += 1;
     durationMinutes += dailyMinutes;
     costAmount += (dailyMinutes / 60) * contract.paymentPerHour;
   }
 
   return {
-    ...baseMetrics,
+    totalDayCount: days.length,
+    effectiveDayCount,
+    excludedHolidayCount,
+    excludedWeekendCount,
     durationMinutes,
     costAmount: Math.round(costAmount * 100) / 100,
   };
 }
 
 export function getExpectedContractMinutesForDay(day: string, holidayDays: Set<string>, contracts: UserContract[]) {
-  if (holidayDays.has(day) || isWeekendDay(day)) {
+  if (holidayDays.has(day)) {
     return 0;
   }
 
@@ -100,7 +131,40 @@ export function getExpectedContractMinutesForDay(day: string, holidayDays: Set<s
     return 0;
   }
 
-  return getContractDailyMinutes(contract);
+  return getContractDailyMinutes(contract, day);
+}
+
+export function entryOverlapsRange(entry: Pick<ContractAwareEntry, "entryDate" | "endDate">, startDay: string, endDay: string) {
+  const entryEndDay = entry.endDate ?? entry.entryDate;
+  return entry.entryDate <= endDay && entryEndDay >= startDay;
+}
+
+export function calculateExpectedContractMinutesForRange(startDay: string, endDay: string, holidayDays: Set<string>, contracts: UserContract[]) {
+  return enumerateDayRange(startDay, endDay).reduce((sum, day) => sum + getExpectedContractMinutesForDay(day, holidayDays, contracts), 0);
+}
+
+export function calculateRecordedMinutesForRange(
+  entries: ContractAwareEntry[],
+  startDay: string,
+  endDay: string,
+  settings: Pick<CompanySettings, "autoBreakAfterMinutes" | "autoBreakDurationMinutes">,
+  holidayDays: Set<string>,
+  contracts: UserContract[]
+) {
+  return entries.reduce((sum, entry) => {
+    if (!entryOverlapsRange(entry, startDay, endDay)) {
+      return sum;
+    }
+
+    if (entry.entryType === "work") {
+      return sum + calculateWorkDurationMinutes(entry.startTime, entry.endTime, settings);
+    }
+
+    const clampedStart = entry.entryDate < startDay ? startDay : entry.entryDate;
+    const entryEndDay = entry.endDate ?? entry.entryDate;
+    const clampedEnd = entryEndDay > endDay ? endDay : entryEndDay;
+    return sum + calculateLeaveCompensation(entry.entryType, clampedStart, clampedEnd, holidayDays, contracts).durationMinutes;
+  }, 0);
 }
 
 export function enumerateDayRange(startDay: string, endDay: string) {

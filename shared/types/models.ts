@@ -1,6 +1,12 @@
 export type UserRole = "employee" | "manager" | "admin";
 export type TimeEntryType = "work" | "vacation" | "sick_leave";
 export type CompanyCustomFieldType = "text" | "number" | "date" | "boolean" | "select";
+export type ContractWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type OvertimeCompensationType = "cash" | "time_off" | "cash_or_time_off";
+export type OvertimePayoutDecisionMode = "company" | "employee" | "conditional";
+export type OvertimeConflictResolution = "stack" | "highest_only";
+export type OvertimeRuleTriggerKind = "daily_overtime" | "weekly_overtime" | "sunday_or_holiday" | "night_shift" | "daily_after_hours" | "weekly_after_hours";
+export type OvertimePresetId = "at_default" | "de_default" | "fr_35h" | "eu_custom";
 
 export interface CompanyCustomFieldOption {
   id: string;
@@ -16,6 +22,33 @@ export interface CompanyCustomField {
   required: boolean;
   placeholder: string | null;
   options: CompanyCustomFieldOption[];
+}
+
+export interface CompanyOvertimeRule {
+  id: string;
+  category: "standard_overtime" | "sunday_holiday" | "night_shift" | "special";
+  triggerKind: OvertimeRuleTriggerKind;
+  afterHours: number | null;
+  windowStart: string | null;
+  windowEnd: string | null;
+  multiplierPercent: number;
+  compensationType: OvertimeCompensationType;
+}
+
+export interface CompanyOvertimeSettings {
+  version: 1;
+  presetId: OvertimePresetId;
+  countryCode: string | null;
+  title: string;
+  dailyOvertimeThresholdHours: number;
+  weeklyOvertimeThresholdHours: number;
+  averagingEnabled: boolean;
+  averagingWeeks: number;
+  rules: CompanyOvertimeRule[];
+  payoutDecisionMode: OvertimePayoutDecisionMode;
+  employeeChoiceAfterDailyHours: number | null;
+  employeeChoiceAfterWeeklyHours: number | null;
+  conflictResolution: OvertimeConflictResolution;
 }
 
 export interface CompanyRecord {
@@ -44,6 +77,14 @@ export interface CompanyUser {
   createdAt: string;
 }
 
+export interface UserContractScheduleDay {
+  weekday: ContractWeekday;
+  isWorkingDay: boolean;
+  startTime: string | null;
+  endTime: string | null;
+  minutes: number;
+}
+
 export interface UserContract {
   id: number;
   userId: number;
@@ -51,6 +92,7 @@ export interface UserContract {
   startDate: string;
   endDate: string | null;
   paymentPerHour: number;
+  schedule: UserContractScheduleDay[];
   createdAt: string;
 }
 
@@ -118,6 +160,7 @@ export interface DashboardSummary {
       paymentPerHour: number;
       startDate: string;
       endDate: string | null;
+      schedule: UserContractScheduleDay[];
     } | null;
     totalBalanceMinutes: number;
     today: {
@@ -171,6 +214,7 @@ export interface CompanySettings {
   autoBreakAfterMinutes: number;
   autoBreakDurationMinutes: number;
   customFields: CompanyCustomField[];
+  overtime: CompanyOvertimeSettings;
 }
 
 export interface TabletCodeStatus {

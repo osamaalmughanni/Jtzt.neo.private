@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { getLocalNowSnapshot } from "@shared/utils/time";
+import { diffClockTimeMinutes, getLocalNowSnapshot } from "@shared/utils/time";
 import type { UserContractInput } from "@shared/types/api";
-import type { UserRole } from "@shared/types/models";
+import type { ContractWeekday, UserContractScheduleDay, UserRole } from "@shared/types/models";
 import { FormActions, FormFields, FormPage, FormPanel, FormSection, Field, FieldCombobox } from "@/components/form-layout";
 import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
@@ -33,8 +33,46 @@ interface UserFormState {
   contracts: UserContractInput[];
 }
 
+const CONTRACT_WEEKDAYS: ContractWeekday[] = [1, 2, 3, 4, 5, 6, 7];
+const DEFAULT_START_TIME = "09:00";
+const DEFAULT_END_TIME = "17:00";
+
+function buildScheduleDay(weekday: ContractWeekday, isWorkingDay: boolean, startTime: string | null, endTime: string | null): UserContractScheduleDay {
+  const minutes = isWorkingDay && startTime && endTime ? diffClockTimeMinutes(startTime, endTime) ?? 0 : 0;
+  return {
+    weekday,
+    isWorkingDay,
+    startTime: isWorkingDay ? startTime : null,
+    endTime: isWorkingDay ? endTime : null,
+    minutes
+  };
+}
+
+function computeScheduleHoursPerWeek(schedule: UserContractScheduleDay[]) {
+  const totalMinutes = schedule.reduce((sum, day) => sum + day.minutes, 0);
+  return Math.round((totalMinutes / 60) * 100) / 100;
+}
+
+function normalizeContract(contract: UserContractInput): UserContractInput {
+  const schedule = [...contract.schedule]
+    .sort((left, right) => left.weekday - right.weekday)
+    .map((day) => buildScheduleDay(day.weekday, day.isWorkingDay, day.startTime, day.endTime));
+
+  return {
+    ...contract,
+    schedule,
+    hoursPerWeek: computeScheduleHoursPerWeek(schedule)
+  };
+}
+
+function createDefaultSchedule() {
+  return CONTRACT_WEEKDAYS.map((weekday) =>
+    buildScheduleDay(weekday, weekday <= 5, weekday <= 5 ? DEFAULT_START_TIME : null, weekday <= 5 ? DEFAULT_END_TIME : null)
+  );
+}
+
 function createEmptyContract(): UserContractInput {
-  return { hoursPerWeek: 40, startDate: "", endDate: null, paymentPerHour: 0 };
+  return normalizeContract({ hoursPerWeek: 40, startDate: "", endDate: null, paymentPerHour: 0, schedule: createDefaultSchedule() });
 }
 
 function createEmptyForm(): UserFormState {
@@ -52,11 +90,19 @@ function createEmptyForm(): UserFormState {
 
 function validateContracts(contracts: UserContractInput[], t: (key: string) => string, timeZone: string) {
   if (contracts.length > 100) throw new Error(t("userEditor.contractMax"));
-  const sorted = [...contracts].sort((left, right) => left.startDate.localeCompare(right.startDate));
+  const sorted = [...contracts].map(normalizeContract).sort((left, right) => left.startDate.localeCompare(right.startDate));
   for (let index = 0; index < sorted.length; index += 1) {
     const contract = sorted[index];
     if (!contract.startDate) throw new Error(t("userEditor.contractStartRequired"));
     if (contract.endDate !== null && contract.startDate > contract.endDate) throw new Error(t("userEditor.contractEndAfterStart"));
+    if (!contract.schedule.some((day) => day.isWorkingDay && day.minutes > 0)) throw new Error(t("userEditor.workingDayRequired"));
+
+    for (const day of contract.schedule) {
+      if (!day.isWorkingDay) continue;
+      if (!day.startTime || !day.endTime) throw new Error(t("userEditor.dayTimeRequired"));
+      if ((diffClockTimeMinutes(day.startTime, day.endTime) ?? 0) <= 0) throw new Error(t("userEditor.dayTimeOrder"));
+    }
+
     const previous = sorted[index - 1];
     if (previous && contract.startDate <= (previous.endDate ?? "9999-12-31")) throw new Error(t("userEditor.contractsOverlap"));
   }
@@ -72,6 +118,282 @@ function getContractStatus(contract: UserContractInput, t: (key: string) => stri
   if (contract.startDate > today) return t("userEditor.upcoming");
   if (contract.endDate === null || contract.endDate >= today) return t("userEditor.current");
   return t("userEditor.past");
+}
+
+function formatHours(hours: number) {
+  return hours.toFixed(2).replace(/\.00$/, "");
+}
+
+function CompactTimeInput({
+  value,
+  disabled,
+  onChange
+}: {
+  value: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Input
+      type="time"
+      value={value}
+      disabled={disabled}
+      className="h-11 min-w-[7.25rem] text-sm font-medium"
+      onChange={(event) => onChange(event.target.value)}
+    />
+  );
+}
+
+function UserIdentityFields({
+  form,
+  mode,
+  statusOptions,
+  roleOptions,
+  onFieldChange,
+  t
+}: {
+  form: UserFormState;
+  mode: "create" | "edit";
+  statusOptions: Array<{ value: string; label: string }>;
+  roleOptions: Array<{ value: string; label: string }>;
+  onFieldChange: <K extends keyof UserFormState>(key: K, value: UserFormState[K]) => void;
+  t: (key: string) => string;
+}) {
+  return (
+    <>
+      <FormSection>
+        <FormFields className="flex flex-col gap-4">
+          <Field label={t("userEditor.name")}>
+            <Input placeholder="Jane Doe" value={form.fullName} onChange={(event) => onFieldChange("fullName", event.target.value)} />
+          </Field>
+          <Field label={t("userEditor.email")}>
+            <Input placeholder="jane@company.com" type="email" value={form.email} onChange={(event) => onFieldChange("email", event.target.value)} />
+          </Field>
+          <Field label={t("userEditor.status")}>
+            <FieldCombobox
+              label="status"
+              value={form.isActive ? "active" : "inactive"}
+              onValueChange={(value) => onFieldChange("isActive", value === "active")}
+              items={statusOptions}
+            />
+          </Field>
+        </FormFields>
+      </FormSection>
+
+      <FormSection>
+        <FormFields className="flex flex-col gap-4">
+          <Field label={t("userEditor.username")}>
+            <Input placeholder="jane" value={form.username} onChange={(event) => onFieldChange("username", event.target.value)} />
+          </Field>
+          <Field label={t("userEditor.pin")}>
+            <Input
+              inputMode="numeric"
+              maxLength={4}
+              placeholder="0000"
+              value={form.pinCode}
+              onChange={(event) => onFieldChange("pinCode", event.target.value.replace(/\D/g, "").slice(0, 4))}
+            />
+          </Field>
+          <Field label={t("userEditor.password")}>
+            <Input
+              type="password"
+              placeholder={mode === "edit" ? t("userEditor.passwordPlaceholderEdit") : t("userEditor.passwordPlaceholderCreate")}
+              value={form.password}
+              onChange={(event) => onFieldChange("password", event.target.value)}
+            />
+          </Field>
+          <Field label={t("userEditor.role")}>
+            <FieldCombobox
+              label="role"
+              value={form.role}
+              onValueChange={(value) => onFieldChange("role", value as UserRole)}
+              items={roleOptions}
+            />
+          </Field>
+        </FormFields>
+      </FormSection>
+    </>
+  );
+}
+
+function ContractCard({
+  contract,
+  index,
+  settingsLocale,
+  settingsTimeZone,
+  weekdayLabels,
+  onSetField,
+  onToggleDay,
+  onUpdateDayTime,
+  onRemove,
+  t
+}: {
+  contract: UserContractInput;
+  index: number;
+  settingsLocale: string;
+  settingsTimeZone: string;
+  weekdayLabels: Record<ContractWeekday, string>;
+  onSetField: (index: number, key: "startDate" | "endDate" | "paymentPerHour", value: string | number | null) => void;
+  onToggleDay: (index: number, weekday: ContractWeekday, checked: boolean) => void;
+  onUpdateDayTime: (index: number, weekday: ContractWeekday, key: "startTime" | "endTime", value: string) => void;
+  onRemove: (index: number) => void;
+  t: (key: string, options?: Record<string, string | number>) => string;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-background p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="text-sm font-medium text-foreground">{t("userEditor.contract", { index: index + 1 })}</p>
+          <span className="rounded-full border border-border bg-muted px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            {getContractStatus(contract, t, settingsTimeZone)}
+          </span>
+          <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-700">
+            {t("userEditor.hoursPerWeekValue", { value: formatHours(contract.hoursPerWeek) })}
+          </span>
+        </div>
+        <Button variant="ghost" className="h-8 px-2" onClick={() => onRemove(index)} type="button">
+          {t("userEditor.remove")}
+        </Button>
+      </div>
+
+      <div className="grid gap-3 border-t border-border/70 pt-3 md:grid-cols-2 xl:grid-cols-5">
+        <Field label={t("userEditor.currentContract")}>
+          <div className="flex h-11 items-center justify-between rounded-md bg-muted/30 px-3">
+            <span className="text-sm text-foreground">{t("userEditor.currentContractShort")}</span>
+            <Switch
+              checked={contract.endDate === null}
+              onCheckedChange={(checked) =>
+                onSetField(index, "endDate", checked ? null : getLocalNowSnapshot(new Date(), settingsTimeZone).localDay)
+              }
+            />
+          </div>
+        </Field>
+        <Field label={t("userEditor.hoursPerWeek")}>
+          <Input type="number" value={contract.hoursPerWeek} disabled className="disabled:cursor-default disabled:opacity-100" />
+        </Field>
+        <Field label={t("userEditor.startDate")}>
+          <DateInput value={contract.startDate} locale={settingsLocale} onChange={(value) => onSetField(index, "startDate", value)} />
+        </Field>
+        {contract.endDate === null ? null : (
+          <Field label={t("userEditor.endDate")}>
+            <DateInput value={contract.endDate ?? ""} locale={settingsLocale} onChange={(value) => onSetField(index, "endDate", value || null)} />
+          </Field>
+        )}
+        <Field label={t("userEditor.paymentPerHour")}>
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="25"
+            value={contract.paymentPerHour}
+            onChange={(event) => onSetField(index, "paymentPerHour", Number(event.target.value))}
+          />
+        </Field>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-border/70 pt-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{t("userEditor.schedule")}</p>
+            <p className="text-xs text-muted-foreground">{t("userEditor.scheduleDescriptionCompact")}</p>
+          </div>
+          <span className="text-[11px] font-medium text-muted-foreground">{t("userEditor.autoCalculated")}</span>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {contract.schedule.map((day) => (
+            <div
+              key={`${contract.id ?? "new"}-${day.weekday}`}
+              className="flex flex-col gap-2"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">{weekdayLabels[day.weekday]}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="whitespace-nowrap text-[11px] font-medium text-muted-foreground">
+                    {day.isWorkingDay && day.minutes > 0 ? t("userEditor.dayHoursShort", { value: formatHours(day.minutes / 60) }) : t("userEditor.offShort")}
+                  </span>
+                  <Switch checked={day.isWorkingDay} onCheckedChange={(checked) => onToggleDay(index, day.weekday, checked)} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 max-[520px]:grid-cols-1">
+                <CompactTimeInput
+                  value={day.startTime ?? ""}
+                  disabled={!day.isWorkingDay}
+                  onChange={(value) => onUpdateDayTime(index, day.weekday, "startTime", value)}
+                />
+                <CompactTimeInput
+                  value={day.endTime ?? ""}
+                  disabled={!day.isWorkingDay}
+                  onChange={(value) => onUpdateDayTime(index, day.weekday, "endTime", value)}
+                />
+              </div>
+              {day.weekday === 7 ? null : <div className="border-t border-border/60" />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UserContractsSection({
+  contracts,
+  settingsLocale,
+  settingsTimeZone,
+  weekdayLabels,
+  onAdd,
+  onSetField,
+  onToggleDay,
+  onUpdateDayTime,
+  onRemove,
+  t
+}: {
+  contracts: UserContractInput[];
+  settingsLocale: string;
+  settingsTimeZone: string;
+  weekdayLabels: Record<ContractWeekday, string>;
+  onAdd: () => void;
+  onSetField: (index: number, key: "startDate" | "endDate" | "paymentPerHour", value: string | number | null) => void;
+  onToggleDay: (index: number, weekday: ContractWeekday, checked: boolean) => void;
+  onUpdateDayTime: (index: number, weekday: ContractWeekday, key: "startTime" | "endTime", value: string) => void;
+  onRemove: (index: number) => void;
+  t: (key: string, options?: Record<string, string | number>) => string;
+}) {
+  return (
+    <FormSection>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-foreground">{t("userEditor.contracts")}</p>
+          <p className="text-xs text-muted-foreground">{t("userEditor.contractsDescription")}</p>
+        </div>
+        <Button variant="outline" className="h-8 px-3" onClick={onAdd} type="button">
+          {t("userEditor.addContract")}
+        </Button>
+      </div>
+
+      {contracts.length === 0 ? <p className="text-sm text-muted-foreground">{t("userEditor.noContracts")}</p> : null}
+
+      <div className="flex flex-col gap-3">
+        {contracts.map((contract, index) => (
+          <ContractCard
+            key={`${contract.id ?? "new"}-${index}`}
+            contract={contract}
+            index={index}
+            settingsLocale={settingsLocale}
+            settingsTimeZone={settingsTimeZone}
+            weekdayLabels={weekdayLabels}
+            onSetField={onSetField}
+            onToggleDay={onToggleDay}
+            onUpdateDayTime={onUpdateDayTime}
+            onRemove={onRemove}
+            t={t}
+          />
+        ))}
+      </div>
+    </FormSection>
+  );
 }
 
 export function UserEditorPage({ mode }: UserEditorPageProps) {
@@ -93,6 +415,18 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     { value: "manager", label: t("userEditor.manager") },
     { value: "employee", label: t("userEditor.employee") }
   ];
+  const weekdayLabels = useMemo<Record<ContractWeekday, string>>(
+    () => ({
+      1: t("settings.monday"),
+      2: t("settings.tuesday"),
+      3: t("settings.wednesday"),
+      4: t("settings.thursday"),
+      5: t("settings.friday"),
+      6: t("settings.saturday"),
+      7: t("settings.sunday")
+    }),
+    [t]
+  );
 
   const pageResource = usePageResource<{
     settingsLocale: string;
@@ -132,13 +466,16 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
             isActive: userResponse.user.isActive,
             pinCode: userResponse.user.pinCode,
             email: userResponse.user.email ?? "",
-            contracts: userResponse.user.contracts.map((contract) => ({
-              id: contract.id,
-              hoursPerWeek: contract.hoursPerWeek,
-              startDate: contract.startDate,
-              endDate: contract.endDate,
-              paymentPerHour: contract.paymentPerHour
-            }))
+            contracts: userResponse.user.contracts.map((contract) =>
+              normalizeContract({
+                id: contract.id,
+                hoursPerWeek: contract.hoursPerWeek,
+                startDate: contract.startDate,
+                endDate: contract.endDate,
+                paymentPerHour: contract.paymentPerHour,
+                schedule: contract.schedule
+              })
+            )
           }
         };
       } catch (error) {
@@ -150,13 +487,9 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
       }
     }
   });
-  const loading = pageResource.isLoading;
 
   useEffect(() => {
-    if (!pageResource.data) {
-      return;
-    }
-
+    if (!pageResource.data) return;
     setSettingsLocale(pageResource.data.settingsLocale);
     setSettingsTimeZone(pageResource.data.settingsTimeZone);
     setForm(pageResource.data.form);
@@ -166,13 +499,50 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  function setContractField(index: number, key: keyof UserContractInput, value: number | string | null) {
+  function updateContract(index: number, updater: (contract: UserContractInput) => UserContractInput) {
     setForm((current) => ({
       ...current,
-      contracts: current.contracts.map((contract, contractIndex) =>
-        contractIndex === index ? { ...contract, [key]: value } : contract
-      )
+      contracts: current.contracts.map((contract, contractIndex) => (contractIndex === index ? normalizeContract(updater(contract)) : contract))
     }));
+  }
+
+  function setContractField(index: number, key: "startDate" | "endDate" | "paymentPerHour", value: string | number | null) {
+    updateContract(index, (contract) => ({ ...contract, [key]: value }));
+  }
+
+  function setContractScheduleDay(index: number, weekday: ContractWeekday, updater: (day: UserContractScheduleDay) => UserContractScheduleDay) {
+    updateContract(index, (contract) => ({
+      ...contract,
+      schedule: contract.schedule.map((day) => (day.weekday === weekday ? updater(day) : day))
+    }));
+  }
+
+  function getSuggestedDayTiming(contract: UserContractInput, weekday: ContractWeekday) {
+    const activeDay = contract.schedule.find((day) => day.weekday !== weekday && day.isWorkingDay && day.startTime && day.endTime);
+    return {
+      startTime: activeDay?.startTime ?? DEFAULT_START_TIME,
+      endTime: activeDay?.endTime ?? DEFAULT_END_TIME
+    };
+  }
+
+  function toggleContractDay(index: number, weekday: ContractWeekday, checked: boolean) {
+    updateContract(index, (contract) => {
+      const suggestion = getSuggestedDayTiming(contract, weekday);
+      return {
+        ...contract,
+        schedule: contract.schedule.map((day) =>
+          day.weekday !== weekday
+            ? day
+            : buildScheduleDay(weekday, checked, checked ? suggestion.startTime : null, checked ? suggestion.endTime : null)
+        )
+      };
+    });
+  }
+
+  function updateContractDayTime(index: number, weekday: ContractWeekday, key: "startTime" | "endTime", value: string) {
+    setContractScheduleDay(index, weekday, (day) =>
+      buildScheduleDay(day.weekday, day.isWorkingDay, key === "startTime" ? value : day.startTime, key === "endTime" ? value : day.endTime)
+    );
   }
 
   function addContract() {
@@ -181,19 +551,6 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
       return;
     }
     setForm((current) => ({ ...current, contracts: [...current.contracts, createEmptyContract()] }));
-  }
-
-  function addCurrentContract() {
-    const today = getLocalNowSnapshot(new Date(), settingsTimeZone).localDay;
-    setForm((current) => ({
-      ...current,
-      contracts: [
-        ...current.contracts.map((contract) =>
-          contract.endDate === null ? { ...contract, endDate: today } : contract
-        ),
-        { ...createEmptyContract(), startDate: today, endDate: null }
-      ]
-    }));
   }
 
   function removeContract(index: number) {
@@ -224,13 +581,17 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
         isActive: form.isActive,
         pinCode: form.pinCode.trim(),
         email: form.email.trim() || null,
-        contracts: form.contracts.map((contract) => ({
-          id: contract.id,
-          hoursPerWeek: Number(contract.hoursPerWeek),
-          startDate: contract.startDate,
-          endDate: contract.endDate,
-          paymentPerHour: Number(contract.paymentPerHour)
-        }))
+        contracts: form.contracts.map((contract) => {
+          const normalized = normalizeContract(contract);
+          return {
+            id: normalized.id,
+            hoursPerWeek: normalized.hoursPerWeek,
+            startDate: normalized.startDate,
+            endDate: normalized.endDate,
+            paymentPerHour: Number(normalized.paymentPerHour),
+            schedule: normalized.schedule
+          };
+        })
       };
 
       if (mode === "create") {
@@ -288,141 +649,29 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
         refreshing={pageResource.isRefreshing}
         skeleton={<PageLoadingState label={t("userEditor.loading")} />}
       >
-        <FormPanel className="flex flex-col gap-6">
+        <FormPanel className="flex flex-col gap-5">
           <>
+            <UserIdentityFields
+              form={form}
+              mode={mode}
+              statusOptions={statusOptions}
+              roleOptions={roleOptions}
+              onFieldChange={setField}
+              t={t}
+            />
 
-            <FormSection>
-              <FormFields>
-                <Field label={t("userEditor.name")}>
-                  <Input placeholder="Jane Doe" value={form.fullName} onChange={(event) => setField("fullName", event.target.value)} />
-                </Field>
-                <Field label={t("userEditor.email")}>
-                  <Input placeholder="jane@company.com" type="email" value={form.email} onChange={(event) => setField("email", event.target.value)} />
-                </Field>
-                <Field label={t("userEditor.status")}>
-                  <FieldCombobox
-                    label="status"
-                    value={form.isActive ? "active" : "inactive"}
-                    onValueChange={(value) => setField("isActive", value === "active")}
-                    items={statusOptions}
-                  />
-                </Field>
-              </FormFields>
-            </FormSection>
-
-            <FormSection>
-              <FormFields>
-                <Field label={t("userEditor.username")}>
-                  <Input placeholder="jane" value={form.username} onChange={(event) => setField("username", event.target.value)} />
-                </Field>
-                <Field label={t("userEditor.pin")}>
-                  <Input
-                    inputMode="numeric"
-                    maxLength={4}
-                    placeholder="0000"
-                    value={form.pinCode}
-                    onChange={(event) => setField("pinCode", event.target.value.replace(/\D/g, "").slice(0, 4))}
-                  />
-                </Field>
-                <Field label={t("userEditor.password")}>
-                  <Input
-                    type="password"
-                    placeholder={mode === "edit" ? t("userEditor.passwordPlaceholderEdit") : t("userEditor.passwordPlaceholderCreate")}
-                    value={form.password}
-                    onChange={(event) => setField("password", event.target.value)}
-                  />
-                </Field>
-                <Field label={t("userEditor.role")}>
-                  <FieldCombobox
-                    label="role"
-                    value={form.role}
-                    onValueChange={(value) => setField("role", value as UserRole)}
-                    items={roleOptions}
-                  />
-                </Field>
-              </FormFields>
-            </FormSection>
-
-            <FormSection>
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-foreground">{t("userEditor.contracts")}</p>
-                <div className="flex gap-2">
-                  <Button variant="ghost" onClick={addCurrentContract} type="button">
-                    {t("userEditor.newCurrent")}
-                  </Button>
-                  <Button variant="outline" onClick={addContract} type="button">
-                    {t("userEditor.addContract")}
-                  </Button>
-                </div>
-              </div>
-
-              {form.contracts.length === 0 ? <p className="text-sm text-muted-foreground">{t("userEditor.noContracts")}</p> : null}
-
-              <div className="flex flex-col gap-4">
-                {form.contracts.map((contract, index) => (
-                  <div key={`${contract.id ?? "new"}-${index}`} className="flex flex-col gap-4 rounded-2xl border border-border bg-background p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-foreground">{t("userEditor.contract", { index: index + 1 })}</p>
-                        <span className="rounded-full border border-border bg-muted px-2 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                          {getContractStatus(contract, t, settingsTimeZone)}
-                        </span>
-                      </div>
-                        <Button variant="ghost" onClick={() => removeContract(index)} type="button">
-                          {t("userEditor.remove")}
-                        </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {contract.startDate || t("userEditor.noStartDate")} {contract.endDate ? `${t("userEditor.to")} ${contract.endDate}` : t("userEditor.openEnd")}
-                    </p>
-                    <FormFields>
-                      <Field label={t("userEditor.currentContract")}>
-                        <div className="flex items-center justify-between rounded-xl border border-border bg-muted/40 px-3 py-3">
-                          <div className="flex flex-col gap-1">
-                            <p className="text-sm text-foreground">{t("userEditor.currentContractLabel")}</p>
-                            <p className="text-xs text-muted-foreground">{t("userEditor.currentContractDescription")}</p>
-                          </div>
-                          <Switch
-                            checked={contract.endDate === null}
-                            onCheckedChange={(checked) =>
-                              setContractField(index, "endDate", checked ? null : getLocalNowSnapshot(new Date(), settingsTimeZone).localDay)
-                            }
-                          />
-                        </div>
-                      </Field>
-                      <Field label={t("userEditor.hoursPerWeek")}>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.5"
-                          placeholder="40"
-                          value={contract.hoursPerWeek}
-                          onChange={(event) => setContractField(index, "hoursPerWeek", Number(event.target.value))}
-                        />
-                      </Field>
-                      <Field label={t("userEditor.startDate")}>
-                        <DateInput value={contract.startDate} locale={settingsLocale} onChange={(value) => setContractField(index, "startDate", value)} />
-                      </Field>
-                      {contract.endDate === null ? null : (
-                        <Field label={t("userEditor.endDate")}>
-                          <DateInput value={contract.endDate ?? ""} locale={settingsLocale} onChange={(value) => setContractField(index, "endDate", value || null)} />
-                        </Field>
-                      )}
-                      <Field label={t("userEditor.paymentPerHour")}>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="25"
-                          value={contract.paymentPerHour}
-                          onChange={(event) => setContractField(index, "paymentPerHour", Number(event.target.value))}
-                        />
-                      </Field>
-                    </FormFields>
-                  </div>
-                ))}
-              </div>
-            </FormSection>
+            <UserContractsSection
+              contracts={form.contracts}
+              settingsLocale={settingsLocale}
+              settingsTimeZone={settingsTimeZone}
+              weekdayLabels={weekdayLabels}
+              onAdd={addContract}
+              onSetField={setContractField}
+              onToggleDay={toggleContractDay}
+              onUpdateDayTime={updateContractDayTime}
+              onRemove={removeContract}
+              t={t}
+            />
 
             <FormActions>
               {mode === "edit" ? (

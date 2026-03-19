@@ -64,6 +64,21 @@ CREATE TABLE IF NOT EXISTS user_contracts (
 CREATE INDEX IF NOT EXISTS idx_user_contracts_company_user
 ON user_contracts (company_id, user_id, start_date);
 
+CREATE TABLE IF NOT EXISTS user_contract_schedule_days (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  contract_id INTEGER NOT NULL,
+  weekday INTEGER NOT NULL CHECK(weekday BETWEEN 1 AND 7),
+  is_working_day INTEGER NOT NULL DEFAULT 0,
+  start_time TEXT,
+  end_time TEXT,
+  minutes INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY (contract_id) REFERENCES user_contracts(id) ON DELETE CASCADE,
+  UNIQUE(contract_id, weekday)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_contract_schedule_days_contract
+ON user_contract_schedule_days (contract_id, weekday);
+
 CREATE TABLE IF NOT EXISTS time_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   company_id TEXT NOT NULL,
@@ -101,6 +116,7 @@ CREATE TABLE IF NOT EXISTS company_settings (
   tablet_idle_timeout_seconds INTEGER NOT NULL DEFAULT 10,
   auto_break_after_minutes INTEGER NOT NULL DEFAULT 300,
   auto_break_duration_minutes INTEGER NOT NULL DEFAULT 30,
+  overtime_settings_json TEXT NOT NULL DEFAULT '{}',
   custom_fields_json TEXT NOT NULL DEFAULT '[]',
   FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
 );

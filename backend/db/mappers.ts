@@ -1,5 +1,6 @@
 import type {
   CompanyCustomField,
+  CompanyOvertimeSettings,
   CompanySettings,
   CompanyRecord,
   CompanyUser,
@@ -10,9 +11,12 @@ import type {
   ProjectRecord,
   TaskRecord,
   TimeEntryRecord,
-  TimeEntryView
+  TimeEntryView,
+  UserContractScheduleDay
 } from "../../shared/types/models";
 import { diffCalendarDays, diffMinutes } from "../../shared/utils/time";
+import { normalizeOvertimeSettings } from "../../shared/utils/overtime";
+import { buildUserContract } from "../services/user-contract-schedule";
 
 function normalizeEntryType(value: unknown) {
   if (value === "work" || value === "vacation" || value === "sick_leave") {
@@ -81,7 +85,21 @@ export function mapCompanyUserListItem(row: any): CompanyUserListItem {
   };
 }
 
-export function mapUserContract(row: any) {
+export function mapUserContractScheduleDay(row: any): UserContractScheduleDay {
+  return {
+    weekday: row.weekday,
+    isWorkingDay: Boolean(row.is_working_day),
+    startTime: row.start_time ?? null,
+    endTime: row.end_time ?? null,
+    minutes: Number(row.minutes ?? 0)
+  };
+}
+
+export function mapUserContract(row: any, schedule: UserContractScheduleDay[] = []) {
+  if (schedule.length > 0) {
+    return buildUserContract(row, schedule);
+  }
+
   return {
     id: row.id,
     userId: row.user_id,
@@ -89,6 +107,7 @@ export function mapUserContract(row: any) {
     startDate: row.start_date,
     endDate: row.end_date,
     paymentPerHour: row.payment_per_hour,
+    schedule: [],
     createdAt: row.created_at
   };
 }
@@ -182,7 +201,8 @@ export function mapCompanySettings(row: any): CompanySettings {
     tabletIdleTimeoutSeconds: row.tablet_idle_timeout_seconds ?? 10,
     autoBreakAfterMinutes: row.auto_break_after_minutes ?? 300,
     autoBreakDurationMinutes: row.auto_break_duration_minutes ?? 30,
-    customFields: normalizeCustomFields(row.custom_fields_json)
+    customFields: normalizeCustomFields(row.custom_fields_json),
+    overtime: normalizeOvertimeSettings(parseJsonValue<CompanyOvertimeSettings | null>(row.overtime_settings_json, null))
   };
 }
 

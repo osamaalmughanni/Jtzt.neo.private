@@ -19,6 +19,7 @@ import { ReportsPage } from "@/pages/reports-page";
 import { ReportsPreviewPage } from "@/pages/reports-preview-page";
 import { ApiAccessPage } from "@/pages/api-access-page";
 import { SettingsMenuPage } from "@/pages/settings-menu-page";
+import { OvertimeSettingsPage } from "@/pages/overtime-settings-page";
 import { TabletCodePage } from "@/pages/tablet-code-page";
 import { TabletPinPage } from "@/pages/tablet-pin-page";
 import { FieldsPage } from "@/pages/fields-page";
@@ -62,6 +63,7 @@ export function App() {
               <Route path="/users/:userId/edit" element={<UserEditorPage mode="edit" />} />
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/settings" element={<SettingsMenuPage />} />
+              <Route path="/settings/overtime" element={<OvertimeSettingsPage />} />
               <Route path="/api-access" element={<ApiAccessPage />} />
             </Route>
           </Route>

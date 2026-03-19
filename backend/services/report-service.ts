@@ -4,6 +4,8 @@ import type { CompanyCustomField, TimeEntryType, UserContract } from "../../shar
 import { calculateLeaveCompensation, calculateWorkCostAmount, calculateWorkDurationMinutes } from "./time-entry-metrics-service";
 import { settingsService } from "./settings-service";
 import type { AppDatabase } from "../runtime/types";
+import { mapUserContractScheduleDay } from "../db/mappers";
+import { buildUserContract } from "./user-contract-schedule";
 
 type ReportRow = {
   id: number;
@@ -210,19 +212,39 @@ export const reportService = {
       payment_per_hour: number;
       created_at: string;
     }>;
+    const contractScheduleRows = contractRows.length === 0
+      ? []
+      : await db.all(
+          `SELECT
+            contract_id,
+            weekday,
+            is_working_day,
+            start_time,
+            end_time,
+            minutes
+           FROM user_contract_schedule_days
+           WHERE contract_id IN (${contractRows.map(() => "?").join(", ")})
+           ORDER BY contract_id ASC, weekday ASC`,
+          contractRows.map((row) => row.id)
+        ) as Array<{
+          contract_id: number;
+          weekday: number;
+          is_working_day: number;
+          start_time: string | null;
+          end_time: string | null;
+          minutes: number;
+        }>;
 
     const contractsByUser = new Map<number, ContractRow[]>();
+    const scheduleByContract = new Map<number, ReturnType<typeof mapUserContractScheduleDay>[]>();
+    for (const row of contractScheduleRows) {
+      const next = scheduleByContract.get(row.contract_id) ?? [];
+      next.push(mapUserContractScheduleDay(row));
+      scheduleByContract.set(row.contract_id, next);
+    }
     for (const row of contractRows) {
       const next = contractsByUser.get(row.user_id) ?? [];
-      next.push({
-        id: row.id,
-        userId: row.user_id,
-        hoursPerWeek: row.hours_per_week,
-        startDate: row.start_date,
-        endDate: row.end_date,
-        paymentPerHour: row.payment_per_hour,
-        createdAt: row.created_at
-      });
+      next.push(buildUserContract(row, scheduleByContract.get(row.id) ?? []));
       contractsByUser.set(row.user_id, next);
     }
 

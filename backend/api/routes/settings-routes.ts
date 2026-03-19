@@ -21,6 +21,32 @@ const updateSettingsSchema = z.object({
   tabletIdleTimeoutSeconds: z.number().int().min(0).max(86400),
   autoBreakAfterMinutes: z.number().int().min(0).max(1440),
   autoBreakDurationMinutes: z.number().int().min(0).max(1440),
+  overtime: z.object({
+    version: z.literal(1),
+    presetId: z.enum(["at_default", "de_default", "fr_35h", "eu_custom"]),
+    countryCode: z.string().length(2).nullable(),
+    title: z.string().min(1).max(120),
+    dailyOvertimeThresholdHours: z.number().min(0).max(24),
+    weeklyOvertimeThresholdHours: z.number().min(0).max(168),
+    averagingEnabled: z.boolean(),
+    averagingWeeks: z.number().int().min(1).max(52),
+    rules: z.array(
+      z.object({
+        id: z.string().min(1).max(100),
+        category: z.enum(["standard_overtime", "sunday_holiday", "night_shift", "special"]),
+        triggerKind: z.enum(["daily_overtime", "weekly_overtime", "sunday_or_holiday", "night_shift", "daily_after_hours", "weekly_after_hours"]),
+        afterHours: z.number().min(0).max(168).nullable(),
+        windowStart: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+        windowEnd: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+        multiplierPercent: z.number().min(0).max(500),
+        compensationType: z.enum(["cash", "time_off", "cash_or_time_off"])
+      })
+    ).max(32),
+    payoutDecisionMode: z.enum(["company", "employee", "conditional"]),
+    employeeChoiceAfterDailyHours: z.number().min(0).max(24).nullable(),
+    employeeChoiceAfterWeeklyHours: z.number().min(0).max(168).nullable(),
+    conflictResolution: z.enum(["stack", "highest_only"])
+  }),
   customFields: z.array(
     z.object({
       id: z.string().min(1).max(100),
@@ -49,6 +75,10 @@ const tabletCodeSchema = z.object({
   code: z.string().min(1).max(64)
 });
 
+const overtimeSettingsSchema = z.object({
+  overtime: updateSettingsSchema.shape.overtime
+});
+
 export const settingsRoutes = new Hono<AppRouteConfig>();
 
 settingsRoutes.use("*", authMiddleware, requireCompanyUser);
@@ -70,6 +100,25 @@ settingsRoutes.put("/", requireCompanyAdmin, async (c) => {
 
   const body = updateSettingsSchema.parse(await c.req.json());
   return c.json({ settings: await settingsService.updateSettings(c.get("db"), session.companyId, body) });
+});
+
+settingsRoutes.get("/overtime", requireCompanyAdmin, async (c) => {
+  const session = c.get("session");
+  if (session.actorType !== "company_user") {
+    return c.json({ error: "Company login required" }, 403);
+  }
+
+  return c.json({ overtime: await settingsService.getOvertimeSettings(c.get("db"), session.companyId) });
+});
+
+settingsRoutes.put("/overtime", requireCompanyAdmin, async (c) => {
+  const session = c.get("session");
+  if (session.actorType !== "company_user") {
+    return c.json({ error: "Company login required" }, 403);
+  }
+
+  const body = overtimeSettingsSchema.parse(await c.req.json());
+  return c.json({ overtime: await settingsService.updateOvertimeSettings(c.get("db"), session.companyId, body) });
 });
 
 settingsRoutes.get("/holidays", async (c) => {

@@ -1,6 +1,7 @@
 import { HTTPException } from "hono/http-exception";
-import type { UpdateSettingsInput } from "../../shared/types/api";
+import type { UpdateOvertimeSettingsInput, UpdateSettingsInput } from "../../shared/types/api";
 import { getLocalNowSnapshot, normalizeTimeZone } from "../../shared/utils/time";
+import { createDefaultOvertimeSettings, normalizeOvertimeSettings } from "../../shared/utils/overtime";
 import { mapCompanySettings } from "../db/mappers";
 import type { AppDatabase } from "../runtime/types";
 
@@ -25,8 +26,9 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
         tablet_idle_timeout_seconds,
         auto_break_after_minutes,
         auto_break_duration_minutes,
+        overtime_settings_json,
         custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(company_id) DO NOTHING`,
     [
       companyId,
@@ -43,6 +45,7 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
       10,
       300,
       30,
+      JSON.stringify(createDefaultOvertimeSettings()),
       "[]"
     ]
   );
@@ -100,6 +103,7 @@ export const settingsService = {
            tablet_idle_timeout_seconds = ?,
            auto_break_after_minutes = ?,
            auto_break_duration_minutes = ?,
+           overtime_settings_json = ?,
            custom_fields_json = ?
          WHERE company_id = ?`,
       [
@@ -116,6 +120,7 @@ export const settingsService = {
         input.tabletIdleTimeoutSeconds,
         input.autoBreakAfterMinutes,
         input.autoBreakDurationMinutes,
+        JSON.stringify(normalizeOvertimeSettings(input.overtime)),
         JSON.stringify(input.customFields),
         companyId
       ]
@@ -200,5 +205,22 @@ export const settingsService = {
   async getBusinessNowSnapshot(db: AppDatabase, companyId: string, now = new Date()) {
     const settings = await this.getSettings(db, companyId);
     return getLocalNowSnapshot(now, settings.timeZone);
+  },
+
+  async getOvertimeSettings(db: AppDatabase, companyId: string) {
+    const settings = await this.getSettings(db, companyId);
+    return settings.overtime;
+  },
+
+  async updateOvertimeSettings(db: AppDatabase, companyId: string, input: UpdateOvertimeSettingsInput) {
+    await ensureSettingsRow(db, companyId);
+    await db.run(
+      `UPDATE company_settings
+         SET overtime_settings_json = ?
+       WHERE company_id = ?`,
+      [JSON.stringify(normalizeOvertimeSettings(input.overtime)), companyId]
+    );
+
+    return this.getOvertimeSettings(db, companyId);
   }
 };

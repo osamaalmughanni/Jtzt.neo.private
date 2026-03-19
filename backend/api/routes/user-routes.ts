@@ -11,7 +11,24 @@ const contractSchema = z.object({
   hoursPerWeek: z.number().min(0),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-  paymentPerHour: z.number().min(0)
+  paymentPerHour: z.number().min(0),
+  schedule: z.array(
+    z.object({
+      weekday: z.union([
+        z.literal(1),
+        z.literal(2),
+        z.literal(3),
+        z.literal(4),
+        z.literal(5),
+        z.literal(6),
+        z.literal(7)
+      ]),
+      isWorkingDay: z.boolean(),
+      startTime: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+      endTime: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+      minutes: z.number().int().min(0)
+    })
+  ).length(7)
 });
 
 const createUserSchema = z.object({

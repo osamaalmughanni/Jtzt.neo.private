@@ -8,6 +8,7 @@ import type {
   PublicHolidayRecord,
   TimeEntryType,
 } from "@shared/types/models";
+import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import {
   combineLocalDayAndTimeToIsoInTimeZone,
   countEffectiveLeaveDays,
@@ -46,6 +47,7 @@ const defaultSettings: CompanySettings = {
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
   customFields: [],
+  overtime: createDefaultOvertimeSettings(),
 };
 
 function canManageOtherUsers(role: string | undefined) {

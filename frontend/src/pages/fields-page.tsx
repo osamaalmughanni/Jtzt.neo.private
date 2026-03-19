@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CompanyCustomField, CompanyCustomFieldOption, CompanySettings, TimeEntryType } from "@shared/types/models";
+import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import { PageActionBar, PageActionBarActions, PageActionButton } from "@/components/page-action-bar";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormSection } from "@/components/form-layout";
 import { PageIntro } from "@/components/page-intro";
@@ -30,6 +31,7 @@ const defaultSettings: CompanySettings = {
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
   customFields: [],
+  overtime: createDefaultOvertimeSettings(),
 };
 
 function createField(): CompanyCustomField {

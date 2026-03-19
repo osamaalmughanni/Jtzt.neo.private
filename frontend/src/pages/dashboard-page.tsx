@@ -9,6 +9,7 @@ import type {
   DashboardSummary,
   TimeEntryView,
 } from "@shared/types/models";
+import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import {
   diffCalendarDays,
   diffMinutes,
@@ -55,6 +56,7 @@ const defaultSettings: CompanySettings = {
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
   customFields: [],
+  overtime: createDefaultOvertimeSettings(),
 };
 
 const defaultSummary: DashboardSummary = {
@@ -323,7 +325,7 @@ export function DashboardPage() {
             to: formatLocalDay(endOfDay(selectedDate)),
             targetUserId: canSwitchUser ? effectiveUserId : undefined,
           }),
-          api.getDashboard(companySession.token, canSwitchUser ? effectiveUserId : undefined),
+          api.getDashboard(companySession.token, canSwitchUser ? effectiveUserId : undefined, selectedDayKey),
         ]);
 
         return {

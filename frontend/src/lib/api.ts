@@ -16,6 +16,7 @@ import type {
   DeleteCompanyInput,
   HolidayResponse,
   LoginResponse,
+  OvertimeSettingsResponse,
   RegisterCompanyInput,
   ReportRequestInput,
   ReportResponse,
@@ -25,6 +26,7 @@ import type {
   SystemStatsResponse,
   TimeListResponse,
   UpdateSettingsInput,
+  UpdateOvertimeSettingsInput,
   UpdateTabletCodeInput,
   UpdateTabletCodeResponse,
   UpdateUserInput,
@@ -152,9 +154,10 @@ export const api = {
     });
   },
 
-  getDashboard(token: string, targetUserId?: number) {
+  getDashboard(token: string, targetUserId?: number, targetDay?: string) {
     const params = new URLSearchParams();
     if (targetUserId) params.set("targetUserId", String(targetUserId));
+    if (targetDay) params.set("targetDay", targetDay);
     const suffix = params.toString() ? `?${params.toString()}` : "";
     return request<DashboardResponse>(`/api/time/dashboard${suffix}`, {
       headers: { Authorization: `Bearer ${token}` }
@@ -265,6 +268,20 @@ export const api = {
 
   updateSettings(token: string, input: UpdateSettingsInput) {
     return request<SettingsResponse>("/api/settings", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  getOvertimeSettings(token: string) {
+    return request<OvertimeSettingsResponse>("/api/settings/overtime", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  updateOvertimeSettings(token: string, input: UpdateOvertimeSettingsInput) {
+    return request<OvertimeSettingsResponse>("/api/settings/overtime", {
       method: "PUT",
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify(input)

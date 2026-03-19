@@ -1,8 +1,9 @@
 import bcrypt from "bcryptjs";
 import { HTTPException } from "hono/http-exception";
 import type { CreateUserInput, UpdateUserInput, UserContractInput } from "../../shared/types/api";
-import { mapCompanyUserDetail, mapCompanyUserListItem, mapUserContract } from "../db/mappers";
+import { mapCompanyUserDetail, mapCompanyUserListItem, mapUserContract, mapUserContractScheduleDay } from "../db/mappers";
 import type { AppDatabase } from "../runtime/types";
+import { buildContractInputWithDerivedHours } from "./user-contract-schedule";
 
 function normalizeOptionalText(value: string | null) {
   const normalized = value?.trim() ?? "";
@@ -48,7 +49,12 @@ function validateContracts(contracts: UserContractInput[], todayDay: string) {
     throw new HTTPException(400, { message: "A user can have at most 100 contracts" });
   }
 
-  const sorted = [...contracts].sort((a, b) => a.startDate.localeCompare(b.startDate));
+  const normalizedContracts = contracts.map((contract) =>
+    buildContractInputWithDerivedHours(contract, (message) => {
+      throw new HTTPException(400, { message });
+    })
+  );
+  const sorted = [...normalizedContracts].sort((a, b) => a.startDate.localeCompare(b.startDate));
 
   for (let index = 0; index < sorted.length; index += 1) {
     const contract = sorted[index];
@@ -56,7 +62,7 @@ function validateContracts(contracts: UserContractInput[], todayDay: string) {
       throw new HTTPException(400, { message: "Contract end date must be after the start date" });
     }
 
-    if (contract.hoursPerWeek < 0 || contract.paymentPerHour < 0) {
+    if (contract.paymentPerHour < 0) {
       throw new HTTPException(400, { message: "Contract values cannot be negative" });
     }
 
@@ -74,14 +80,26 @@ function validateContracts(contracts: UserContractInput[], todayDay: string) {
   if (!hasCurrentContract) {
     throw new HTTPException(400, { message: "A current active contract is required" });
   }
+
+  return sorted;
 }
 
 async function saveContracts(db: AppDatabase, companyId: string, userId: number, contracts: UserContractInput[], todayDay: string) {
-  validateContracts(contracts, todayDay);
+  const normalizedContracts = validateContracts(contracts, todayDay);
+  const contractIds = await db.all<{ id: number }>("SELECT id FROM user_contracts WHERE company_id = ? AND user_id = ?", [companyId, userId]);
   const statements = [
+    ...contractIds.map((row) => ({
+      sql: "DELETE FROM user_contract_schedule_days WHERE contract_id = ?",
+      params: [row.id] as const
+    })),
     { sql: "DELETE FROM user_contracts WHERE company_id = ? AND user_id = ?", params: [companyId, userId] as const },
-    ...contracts.map((contract) => ({
-      sql: `INSERT INTO user_contracts (
+  ];
+  await db.batch(statements.map((statement) => ({ sql: statement.sql, params: [...statement.params] })));
+
+  for (const contract of normalizedContracts) {
+    const createdAt = new Date().toISOString();
+    const result = await db.run(
+      `INSERT INTO user_contracts (
         company_id,
         user_id,
         hours_per_week,
@@ -90,10 +108,23 @@ async function saveContracts(db: AppDatabase, companyId: string, userId: number,
         payment_per_hour,
         created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      params: [companyId, userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, new Date().toISOString()]
-    }))
-  ];
-  await db.batch(statements.map((statement) => ({ sql: statement.sql, params: [...statement.params] })));
+      [companyId, userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, createdAt]
+    );
+    const contractId = Number(result.lastRowId);
+    for (const day of contract.schedule) {
+      await db.run(
+        `INSERT INTO user_contract_schedule_days (
+          contract_id,
+          weekday,
+          is_working_day,
+          start_time,
+          end_time,
+          minutes
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [contractId, day.weekday, day.isWorkingDay ? 1 : 0, day.startTime, day.endTime, day.minutes]
+      );
+    }
+  }
 }
 
 export const userService = {
@@ -128,7 +159,7 @@ export const userService = {
   },
 
   async listUserContracts(db: AppDatabase, companyId: string, userId: number) {
-    return (await db.all(
+    const contracts = await db.all(
       `SELECT
         id,
         user_id,
@@ -141,7 +172,50 @@ export const userService = {
       WHERE company_id = ? AND user_id = ?
       ORDER BY start_date ASC`,
       [companyId, userId]
-    )).map(mapUserContract);
+    ) as Array<{
+      id: number;
+      user_id: number;
+      hours_per_week: number;
+      start_date: string;
+      end_date: string | null;
+      payment_per_hour: number;
+      created_at: string;
+    }>;
+
+    if (contracts.length === 0) {
+      return [];
+    }
+
+    const placeholders = contracts.map(() => "?").join(", ");
+    const scheduleRows = await db.all(
+      `SELECT
+        contract_id,
+        weekday,
+        is_working_day,
+        start_time,
+        end_time,
+        minutes
+      FROM user_contract_schedule_days
+      WHERE contract_id IN (${placeholders})
+      ORDER BY contract_id ASC, weekday ASC`,
+      contracts.map((contract) => contract.id)
+    ) as Array<{
+      contract_id: number;
+      weekday: number;
+      is_working_day: number;
+      start_time: string | null;
+      end_time: string | null;
+      minutes: number;
+    }>;
+
+    const scheduleByContract = new Map<number, ReturnType<typeof mapUserContractScheduleDay>[]>();
+    for (const row of scheduleRows) {
+      const next = scheduleByContract.get(row.contract_id) ?? [];
+      next.push(mapUserContractScheduleDay(row));
+      scheduleByContract.set(row.contract_id, next);
+    }
+
+    return contracts.map((contract) => mapUserContract(contract, scheduleByContract.get(contract.id) ?? []));
   },
 
   async createUser(db: AppDatabase, companyId: string, input: CreateUserInput, todayDay: string) {
@@ -152,7 +226,6 @@ export const userService = {
 
     await ensureUniquePin(db, companyId, input.pinCode);
     validateContracts(input.contracts, todayDay);
-
     const result = await db.run(
       `INSERT INTO users (
         company_id,
@@ -201,7 +274,6 @@ export const userService = {
     await ensureAdminRoleWillRemainAsync(db, companyId, input.userId, input.role);
     await ensureUniquePin(db, companyId, input.pinCode, input.userId);
     validateContracts(input.contracts, todayDay);
-
     const passwordHash =
       input.password && input.password.trim().length > 0
         ? bcrypt.hashSync(input.password, 10)

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { CompanySettings, TabletCodeStatus } from "@shared/types/models";
+import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
@@ -29,6 +31,7 @@ const defaultSettings: CompanySettings = {
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
   customFields: [],
+  overtime: createDefaultOvertimeSettings(),
 };
 
 const defaultTabletCode: TabletCodeStatus = {
@@ -380,6 +383,18 @@ export function SettingsMenuPage() {
                 {t("settings.regenerate")}
               </Button>
             </div>
+          </div>
+        </FormSection>
+
+        <FormSection>
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-muted/20 p-4">
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium text-foreground">Overtime Management</p>
+              <p className="text-sm text-muted-foreground">Open the preset-driven overtime dashboard for country rules, premiums, payout choice, and overlap handling.</p>
+            </div>
+            <Button asChild type="button" variant="outline">
+              <Link to="/settings/overtime">Manage Overtime</Link>
+            </Button>
           </div>
         </FormSection>
 

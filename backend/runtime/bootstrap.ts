@@ -79,6 +79,80 @@ async function ensureTimeEntriesSchema(db: AppDatabase) {
   `);
 }
 
+async function ensureUserContractScheduleSchema(db: AppDatabase) {
+  const scheduleColumns = await db.all<{ name: string }>(
+    "SELECT name FROM pragma_table_info('user_contract_schedule_days')",
+  );
+  if (scheduleColumns.length === 0) {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS user_contract_schedule_days (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        contract_id INTEGER NOT NULL,
+        weekday INTEGER NOT NULL CHECK(weekday BETWEEN 1 AND 7),
+        is_working_day INTEGER NOT NULL DEFAULT 0,
+        start_time TEXT,
+        end_time TEXT,
+        minutes INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (contract_id) REFERENCES user_contracts(id) ON DELETE CASCADE,
+        UNIQUE(contract_id, weekday)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_user_contract_schedule_days_contract
+      ON user_contract_schedule_days (contract_id, weekday);
+    `);
+  }
+
+  const scheduleCount = await db.first<{ count: number }>("SELECT COUNT(*) as count FROM user_contract_schedule_days");
+  const contractCount = await db.first<{ count: number }>("SELECT COUNT(*) as count FROM user_contracts");
+  const expectedRows = (contractCount?.count ?? 0) * 7;
+  if ((scheduleCount?.count ?? 0) >= expectedRows) {
+    return;
+  }
+
+  await db.exec(`
+    WITH RECURSIVE weekdays(day) AS (
+      SELECT 1
+      UNION ALL
+      SELECT day + 1 FROM weekdays WHERE day < 7
+    )
+    INSERT INTO user_contract_schedule_days (
+      contract_id,
+      weekday,
+      is_working_day,
+      start_time,
+      end_time,
+      minutes
+    )
+    SELECT
+      uc.id,
+      weekdays.day,
+      CASE
+        WHEN weekdays.day <= 5 AND ROUND(uc.hours_per_week * 60.0 / 5.0) > 0 THEN 1
+        ELSE 0
+      END,
+      CASE
+        WHEN weekdays.day <= 5 AND ROUND(uc.hours_per_week * 60.0 / 5.0) > 0 THEN '09:00'
+        ELSE NULL
+      END,
+      CASE
+        WHEN weekdays.day <= 5 AND ROUND(uc.hours_per_week * 60.0 / 5.0) > 0 THEN time('09:00', printf('+%d minutes', CAST(ROUND(uc.hours_per_week * 60.0 / 5.0) AS INTEGER)))
+        ELSE NULL
+      END,
+      CASE
+        WHEN weekdays.day <= 5 AND ROUND(uc.hours_per_week * 60.0 / 5.0) > 0 THEN CAST(ROUND(uc.hours_per_week * 60.0 / 5.0) AS INTEGER)
+        ELSE 0
+      END
+    FROM user_contracts uc
+    CROSS JOIN weekdays
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM user_contract_schedule_days existing
+      WHERE existing.contract_id = uc.id
+        AND existing.weekday = weekdays.day
+    );
+  `);
+}
+
 export async function ensureBootstrapState(db: AppDatabase, config: RuntimeConfig) {
   const key = getRuntimeKey(config);
   if (initializedKeys.has(key)) {
@@ -86,6 +160,7 @@ export async function ensureBootstrapState(db: AppDatabase, config: RuntimeConfi
   }
 
   await ensureTimeEntriesSchema(db);
+  await ensureUserContractScheduleSchema(db);
 
   const companyColumns = await db.all<{ name: string }>(
     "SELECT name FROM pragma_table_info('companies')",
@@ -96,6 +171,14 @@ export async function ensureBootstrapState(db: AppDatabase, config: RuntimeConfi
   }
   if (!companyColumnNames.has("api_key_created_at")) {
     await db.exec("ALTER TABLE companies ADD COLUMN api_key_created_at TEXT");
+  }
+
+  const settingsColumns = await db.all<{ name: string }>(
+    "SELECT name FROM pragma_table_info('company_settings')",
+  );
+  const settingsColumnNames = new Set(settingsColumns.map((column) => column.name));
+  if (!settingsColumnNames.has("overtime_settings_json")) {
+    await db.exec("ALTER TABLE company_settings ADD COLUMN overtime_settings_json TEXT NOT NULL DEFAULT '{}'");
   }
 
   const row = await db.first<{ count: number }>("SELECT COUNT(*) as count FROM admins");

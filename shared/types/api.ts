@@ -5,13 +5,14 @@ import type {
   CompanyUserDetail,
   CompanyUserListItem,
   CompanyUserProfile,
+  CompanyOvertimeSettings,
   DashboardSummary,
   PublicHolidayRecord,
   SystemStats,
   TabletCodeStatus,
   TimeEntryView
 } from "./models";
-import type { TimeEntryType, UserRole, UserContract } from "./models";
+import type { TimeEntryType, UserRole, UserContract, UserContractScheduleDay } from "./models";
 
 export interface CompanyLoginInput {
   companyName: string;
@@ -110,6 +111,7 @@ export interface UserContractInput {
   startDate: string;
   endDate: string | null;
   paymentPerHour: number;
+  schedule: UserContractScheduleDay[];
 }
 
 export interface CreateUserInput {
@@ -212,6 +214,7 @@ export interface CompanySnapshot {
     autoBreakAfterMinutes: number;
     autoBreakDurationMinutes: number;
     customFields: CompanyCustomField[];
+    overtime: CompanyOvertimeSettings;
   } | null;
   users: Array<{
     id: number;
@@ -275,6 +278,10 @@ export interface SettingsResponse {
   settings: CompanySettings;
 }
 
+export interface OvertimeSettingsResponse {
+  overtime: CompanyOvertimeSettings;
+}
+
 export interface UpdateSettingsInput {
   currency: string;
   locale: string;
@@ -290,6 +297,11 @@ export interface UpdateSettingsInput {
   autoBreakAfterMinutes: number;
   autoBreakDurationMinutes: number;
   customFields: CompanyCustomField[];
+  overtime: CompanyOvertimeSettings;
+}
+
+export interface UpdateOvertimeSettingsInput {
+  overtime: CompanyOvertimeSettings;
 }
 
 export interface HolidayResponse {

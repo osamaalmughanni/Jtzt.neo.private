@@ -73,6 +73,22 @@ export function isValidClockTime(value: string): boolean {
   return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
 }
 
+export function diffClockTimeMinutes(startTime: string, endTime: string): number | null {
+  if (!isValidClockTime(startTime) || !isValidClockTime(endTime)) {
+    return null;
+  }
+
+  const [startHours, startMinutes] = startTime.split(":").map(Number);
+  const [endHours, endMinutes] = endTime.split(":").map(Number);
+  const startTotal = startHours * 60 + startMinutes;
+  const endTotal = endHours * 60 + endMinutes;
+  if (endTotal <= startTotal) {
+    return null;
+  }
+
+  return endTotal - startTotal;
+}
+
 export function normalizeTimeZone(value?: string | null) {
   const candidate = value?.trim();
   if (!candidate) {
@@ -197,6 +213,11 @@ export function isWeekendDay(day: string): boolean {
   const parsed = parsePlainDate(day);
   if (!parsed) return false;
   return parsed.dayOfWeek === 6 || parsed.dayOfWeek === 7;
+}
+
+export function getIsoDayOfWeek(day: string): number | null {
+  const parsed = parsePlainDate(day);
+  return parsed ? parsed.dayOfWeek : null;
 }
 
 export function countEffectiveLeaveDays(startDay: string, endDay: string, holidayDays: Set<string>): {

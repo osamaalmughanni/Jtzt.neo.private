@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { CompanySettings, CompanyUserListItem } from "@shared/types/models";
 import type { ReportRequestInput } from "@shared/types/api";
+import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import { formatLocalDay, getLocalNowSnapshot, parseLocalDay } from "@shared/utils/time";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageIntro } from "@/components/page-intro";
@@ -35,6 +36,7 @@ const defaultSettings: CompanySettings = {
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
   customFields: [],
+  overtime: createDefaultOvertimeSettings(),
 };
 
 type ReportOption = { value: string; label: string };
