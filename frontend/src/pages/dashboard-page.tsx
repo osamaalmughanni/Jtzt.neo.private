@@ -639,9 +639,7 @@ export function DashboardPage() {
     <FormPage className="min-h-0 flex-none">
       <PageDock>
         <div className="flex min-h-[5rem] flex-col items-center justify-center">
-          {dashboardResource.isLoading ? (
-            <div className="h-16 w-16 rounded-[999px] border border-border bg-muted/40" />
-          ) : isTabletMode ? (
+          {dashboardResource.isLoading ? null : isTabletMode ? (
             <>
               {dockShowsStop || dockShowsPlay ? (
                 <Button
