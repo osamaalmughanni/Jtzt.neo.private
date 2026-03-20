@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { ZodError } from "zod";
 import { adminRoutes } from "./routes/admin-routes";
 import { authRoutes } from "./routes/auth-routes";
 import { externalRoutes } from "./routes/external-routes";
@@ -78,12 +79,47 @@ export function createApp() {
   });
 
   app.onError((error, c) => {
+    const config = c.get("config");
+    const requestId = c.res.headers.get("X-Request-Id") ?? null;
+    const errorName = error instanceof Error ? error.name : "UnknownError";
+    const basePayload = {
+      requestId,
+      method: c.req.method,
+      path: c.req.path,
+      runtime: config.runtime,
+      env: config.appEnv,
+      errorName,
+    };
+
     if (error instanceof HTTPException) {
-      return c.json({ error: error.message }, error.status);
+      const cause = error.cause;
+      const details =
+        cause instanceof ZodError
+          ? cause.flatten()
+          : cause instanceof Error
+            ? cause.message
+            : cause ?? null;
+      return c.json(
+        {
+          error: error.message,
+          ...basePayload,
+          details,
+          ...(config.appEnv !== "production" && cause instanceof Error ? { debugMessage: cause.message, stack: cause.stack } : {}),
+        },
+        error.status
+      );
     }
 
-    console.error(error);
-    return c.json({ error: "Internal server error" }, 500);
+    console.error(`[${requestId ?? "no-request-id"}] ${c.req.method} ${c.req.path}`, error);
+    return c.json(
+      {
+        error: "Internal server error",
+        ...basePayload,
+        debugMessage: error instanceof Error ? error.message : String(error),
+        ...(config.appEnv !== "production" && error instanceof Error ? { stack: error.stack } : {}),
+      },
+      500
+    );
   });
 
   return app;

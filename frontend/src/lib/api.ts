@@ -44,13 +44,51 @@ import type {
 } from "@shared/types/api";
 import type { TimeEntryView } from "@shared/types/models";
 
+export interface ApiErrorPayload {
+  error?: string;
+  requestId?: string;
+  method?: string;
+  path?: string;
+  runtime?: string;
+  env?: string;
+  details?: unknown;
+  debugMessage?: string;
+  stack?: string;
+}
+
 export class ApiRequestError extends Error {
   status: number;
+  path: string;
+  method: string;
+  requestId: string | null;
+  runtime: string | null;
+  env: string | null;
+  responseText: string;
+  payload: ApiErrorPayload | null;
 
-  constructor(message: string, status: number) {
+  constructor(
+    message: string,
+    status: number,
+    options: {
+      path: string;
+      method: string;
+      requestId?: string | null;
+      runtime?: string | null;
+      env?: string | null;
+      responseText?: string;
+      payload?: ApiErrorPayload | null;
+    }
+  ) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
+    this.path = options.path;
+    this.method = options.method;
+    this.requestId = options.requestId ?? null;
+    this.runtime = options.runtime ?? null;
+    this.env = options.env ?? null;
+    this.responseText = options.responseText ?? "";
+    this.payload = options.payload ?? null;
   }
 }
 
@@ -84,8 +122,91 @@ function writeD1Bookmark(value: string | null) {
   window.localStorage.setItem(D1_BOOKMARK_STORAGE_KEY, value);
 }
 
+function parseJsonSafely<T>(value: string): T | null {
+  if (!value.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
+function getRequestMethod(init?: RequestInit) {
+  return init?.method?.toUpperCase() ?? "GET";
+}
+
+async function parseJsonResponse<T>(response: Response, path: string, method: string): Promise<T> {
+  const text = await response.text();
+  const parsed = parseJsonSafely<T>(text);
+  if (parsed !== null) {
+    return parsed;
+  }
+
+  throw new ApiRequestError("The server returned a non-JSON success response.", response.status, {
+    path,
+    method,
+    requestId: response.headers.get("X-Request-Id"),
+    responseText: text,
+  });
+}
+
+async function buildApiRequestError(response: Response, path: string, method: string) {
+  const responseText = await response.text();
+  const payload = parseJsonSafely<ApiErrorPayload>(responseText);
+  const message = payload?.error?.trim() || response.statusText || "Request failed";
+  return new ApiRequestError(message, response.status, {
+    path,
+    method,
+    requestId: response.headers.get("X-Request-Id"),
+    runtime: payload?.runtime ?? null,
+    env: payload?.env ?? null,
+    responseText,
+    payload,
+  });
+}
+
+export function describeApiError(error: unknown, fallback = "Request failed") {
+  if (error instanceof ApiRequestError) {
+    const lines = [
+      `${error.message} (${error.status})`,
+      `${error.method} ${error.path}`,
+    ];
+
+    if (error.requestId) {
+      lines.push(`Request ID: ${error.requestId}`);
+    }
+    if (error.runtime || error.env) {
+      lines.push(`Runtime: ${error.runtime ?? "unknown"}${error.env ? ` / ${error.env}` : ""}`);
+    }
+
+    const detailText =
+      typeof error.payload?.details === "string"
+        ? error.payload.details
+        : error.payload?.details
+          ? JSON.stringify(error.payload.details)
+          : error.payload?.debugMessage || "";
+    if (detailText) {
+      lines.push(detailText);
+    } else if (error.responseText && !error.payload?.error) {
+      lines.push(error.responseText.slice(0, 500));
+    }
+
+    return lines.join("\n");
+  }
+
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+
+  return fallback;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const bookmark = readD1Bookmark();
+  const method = getRequestMethod(init);
   const response = await fetch(path, {
     headers: buildDefaultHeaders({
       ...(init?.headers ?? {}),
@@ -97,11 +218,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   writeD1Bookmark(response.headers.get("X-D1-Bookmark"));
 
   if (!response.ok) {
-    const error = (await response.json().catch(() => ({ error: "Request failed" }))) as { error?: string };
-    throw new ApiRequestError(error.error ?? "Request failed", response.status);
+    throw await buildApiRequestError(response, path, method);
   }
 
-  return response.json() as Promise<T>;
+  return parseJsonResponse<T>(response, path, method);
 }
 
 export const api = {
@@ -372,11 +492,10 @@ export const api = {
     });
 
     if (!response.ok) {
-      const error = (await response.json().catch(() => ({ error: "Request failed" }))) as { error?: string };
-      throw new Error(error.error ?? "Request failed");
+      throw await buildApiRequestError(response, "/api/admin/companies/create/import", "POST");
     }
 
-    return response.json() as Promise<{ company: unknown }>;
+    return parseJsonResponse<{ company: unknown }>(response, "/api/admin/companies/create/import", "POST");
   },
 
   deleteCompany(token: string, input: DeleteCompanyInput) {
@@ -424,13 +543,13 @@ export const api = {
   },
 
   async downloadCompanySnapshot(token: string, companyId: string) {
-    const response = await fetch(`/api/admin/companies/${companyId}/export`, {
+    const path = `/api/admin/companies/${companyId}/export`;
+    const response = await fetch(path, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
     if (!response.ok) {
-      const error = (await response.json().catch(() => ({ error: "Request failed" }))) as { error?: string };
-      throw new Error(error.error ?? "Request failed");
+      throw await buildApiRequestError(response, path, "GET");
     }
 
     return {
@@ -446,17 +565,17 @@ export const api = {
     const formData = new FormData();
     formData.set("file", file);
 
-    const response = await fetch(`/api/admin/companies/${companyId}/import`, {
+    const path = `/api/admin/companies/${companyId}/import`;
+    const response = await fetch(path, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData
     });
 
     if (!response.ok) {
-      const error = (await response.json().catch(() => ({ error: "Request failed" }))) as { error?: string };
-      throw new Error(error.error ?? "Request failed");
+      throw await buildApiRequestError(response, path, "POST");
     }
 
-    return response.json() as Promise<{ company: unknown }>;
+    return parseJsonResponse<{ company: unknown }>(response, path, "POST");
   }
 };

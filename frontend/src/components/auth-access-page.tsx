@@ -20,7 +20,7 @@ import { deriveEncryptionProof, generateKdfSalt } from "@/lib/crypto";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { downloadSecureRecoveryKit } from "@/lib/recovery-kit";
-import { toast } from "@/lib/toast";
+import { toast, toastError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 const SECURE_MODE_ITERATIONS = 210000;
@@ -224,9 +224,10 @@ export function AuthAccessPage() {
       await loginCompany(response.session);
       navigate("/dashboard");
     } catch (error) {
-      toast({
+      toastError({
         title: t("auth.signInFailed"),
-        description: error instanceof Error ? error.message : "Login failed",
+        error,
+        fallback: "Login failed",
       });
     }
   }
@@ -283,9 +284,10 @@ export function AuthAccessPage() {
       await loginCompany(response.session);
       navigate("/dashboard");
     } catch (error) {
-      toast({
+      toastError({
         title: t("auth.companyRegistrationFailed"),
-        description: error instanceof Error ? error.message : "Request failed",
+        error,
+        fallback: "Request failed",
       });
     } finally {
       setRegisterSubmitting(false);
@@ -310,9 +312,10 @@ export function AuthAccessPage() {
       });
       navigate("/tablet/pin");
     } catch (error) {
-      toast({
+      toastError({
         title: copy.tabletAccessFailed,
-        description: error instanceof Error ? error.message : "Request failed",
+        error,
+        fallback: "Request failed",
       });
     }
   }
@@ -323,9 +326,10 @@ export function AuthAccessPage() {
       await loginAdmin(response.session);
       navigate("/admin");
     } catch (error) {
-      toast({
+      toastError({
         title: t("auth.signInFailed"),
-        description: error instanceof Error ? error.message : "Login failed",
+        error,
+        fallback: "Login failed",
       });
     }
   }
