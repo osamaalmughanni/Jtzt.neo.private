@@ -1,7 +1,9 @@
-import { Briefcase, FirstAidKit, UmbrellaSimple } from "phosphor-react";
+import { Briefcase, ClockCounterClockwise, FirstAidKit, UmbrellaSimple } from "phosphor-react";
 import type { TimeEntryType } from "@shared/types/models";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface EntryTypeTabItem {
   value: TimeEntryType;
@@ -24,22 +26,17 @@ function getEntryTypeIcon(entryType: TimeEntryType) {
     return UmbrellaSimple;
   }
 
+  if (entryType === "time_off_in_lieu") {
+    return ClockCounterClockwise;
+  }
+
   return FirstAidKit;
 }
 
-function getEntryTypeTriggerClassName(entryType: TimeEntryType) {
-  if (entryType === "work") {
-    return "data-[state=active]:border-emerald-500/30 data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-700 dark:data-[state=active]:border-emerald-400/30 dark:data-[state=active]:bg-emerald-400/15 dark:data-[state=active]:text-emerald-200";
-  }
-
-  if (entryType === "vacation") {
-    return "data-[state=active]:border-sky-500/30 data-[state=active]:bg-sky-500/15 data-[state=active]:text-sky-700 dark:data-[state=active]:border-sky-400/30 dark:data-[state=active]:bg-sky-400/15 dark:data-[state=active]:text-sky-200";
-  }
-
-  return "data-[state=active]:border-rose-500/30 data-[state=active]:bg-rose-500/15 data-[state=active]:text-rose-700 dark:data-[state=active]:border-rose-400/30 dark:data-[state=active]:bg-rose-400/15 dark:data-[state=active]:text-rose-200";
-}
-
 export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProps) {
+  const { t } = useTranslation();
+  const entryStateUi = getEntryStateUi(t);
+
   return (
     <Tabs value={value} onValueChange={(nextValue) => onValueChange(nextValue as TimeEntryType)}>
       <div className="py-1">
@@ -56,7 +53,7 @@ export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProp
                   className={cn(
                     "group rounded-2xl border border-border bg-muted/60 px-3 py-2 text-muted-foreground shadow-none transition-all duration-200 ease-out",
                     "data-[state=active]:px-4 data-[state=active]:shadow-sm disabled:pointer-events-none disabled:opacity-40",
-                    getEntryTypeTriggerClassName(item.value),
+                    entryStateUi[item.value].activeTriggerClassName,
                   )}
                 >
                   <span className="flex items-center">

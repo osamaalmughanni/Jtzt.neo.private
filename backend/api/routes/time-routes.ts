@@ -5,7 +5,9 @@ import { evaluateTimeEntryPolicy, getRangeEndDay } from "../../../shared/utils/t
 import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
 import type { CompanyTokenPayload } from "../../auth/jwt";
 import { settingsService } from "../../services/settings-service";
+import { timeOffInLieuService } from "../../services/time-off-in-lieu-service";
 import { timeService } from "../../services/time-service";
+import { vacationBalanceService } from "../../services/vacation-balance-service";
 import {
   calculateLeaveCompensation,
   calculateExpectedContractMinutesForRange,
@@ -33,7 +35,7 @@ const stopTimerSchema = z.object({
 const updateEntrySchema = z.object({
   entryId: z.number(),
   targetUserId: z.number().optional(),
-  entryType: z.enum(["work", "vacation", "sick_leave"]),
+  entryType: z.enum(["work", "vacation", "sick_leave", "time_off_in_lieu"]),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   startTime: z.string().nullable(),
@@ -44,7 +46,7 @@ const updateEntrySchema = z.object({
 
 const createManualEntrySchema = z.object({
   targetUserId: z.number().optional(),
-  entryType: z.enum(["work", "vacation", "sick_leave"]),
+  entryType: z.enum(["work", "vacation", "sick_leave", "time_off_in_lieu"]),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   startTime: z.string().nullable(),
@@ -72,7 +74,7 @@ function hasCustomFieldValue(value: string | number | boolean | undefined) {
 async function validateCustomFields(
   db: AppDatabase,
   companyId: string,
-  entryType: "work" | "vacation" | "sick_leave",
+  entryType: "work" | "vacation" | "sick_leave" | "time_off_in_lieu",
   values: Record<string, string | number | boolean>
 ) {
   const settings = await settingsService.getSettings(db, companyId);
@@ -129,7 +131,7 @@ async function enforceIntersectingRecords(
   userId: number,
   settings: Awaited<ReturnType<typeof settingsService.getSettings>>,
   candidate: {
-    entryType: "work" | "vacation" | "sick_leave";
+    entryType: "work" | "vacation" | "sick_leave" | "time_off_in_lieu";
     startDate: string;
     endDate?: string | null;
     startTime: string | null;
@@ -165,7 +167,7 @@ async function enforceHolidayRecordRule(
   companyId: string,
   settings: Awaited<ReturnType<typeof settingsService.getSettings>>,
   candidate: {
-    entryType: "work" | "vacation" | "sick_leave";
+    entryType: "work" | "vacation" | "sick_leave" | "time_off_in_lieu";
     startDate: string;
     endDate?: string | null;
   }
@@ -187,6 +189,58 @@ async function enforceHolidayRecordRule(
           ? holiday.name
           : holiday.date;
     throw new Error(`Records on public holidays are disabled (${holidayName}, ${holiday.date})`);
+  }
+}
+
+async function enforceEntryTypeSeparation(
+  db: AppDatabase,
+  companyId: string,
+  userId: number,
+  candidate: {
+    entryType: "work" | "vacation" | "sick_leave" | "time_off_in_lieu";
+    startDate: string;
+    endDate?: string | null;
+  },
+  excludeEntryId?: number,
+) {
+  const endDay = getRangeEndDay(candidate.startDate, candidate.endDate);
+  if (candidate.entryType === "work") {
+    const hasNonWorkEntry = await timeService.hasNonWorkEntryOnRange(
+      db,
+      companyId,
+      userId,
+      candidate.startDate,
+      endDay,
+      excludeEntryId,
+    );
+    if (hasNonWorkEntry) {
+      throw new Error("Working time is not allowed on days that already contain vacation, sick leave, or time off in lieu");
+    }
+    return;
+  }
+
+  const hasWorkEntry = await timeService.hasWorkEntryOnRange(
+    db,
+    companyId,
+    userId,
+    candidate.startDate,
+    endDay,
+    excludeEntryId,
+  );
+  if (hasWorkEntry) {
+    throw new Error("Leave and time-off records are not allowed on days that already contain working time");
+  }
+
+  const hasOtherNonWorkEntry = await timeService.hasNonWorkEntryOnRange(
+    db,
+    companyId,
+    userId,
+    candidate.startDate,
+    endDay,
+    excludeEntryId,
+  );
+  if (hasOtherNonWorkEntry) {
+    throw new Error("Vacation, sick leave, and time off in lieu cannot overlap on the same day or range");
   }
 }
 
@@ -217,6 +271,55 @@ function getPolicyErrorMessage(reason: ReturnType<typeof evaluateTimeEntryPolicy
     return "Work records on public holidays are disabled";
   }
   return "Record rule violation";
+}
+
+async function enforceTimeOffInLieuBalance(
+  db: AppDatabase,
+  companyId: string,
+  userId: number,
+  candidate: {
+    entryType: "work" | "vacation" | "sick_leave" | "time_off_in_lieu";
+    startDate: string;
+    endDate?: string | null;
+  },
+  excludeEntryId?: number,
+) {
+  if (candidate.entryType !== "time_off_in_lieu") {
+    return;
+  }
+
+  const requestedMinutes = await timeOffInLieuService.getRequestedMinutes(db, companyId, userId, candidate.startDate, candidate.endDate);
+  const balance = await timeOffInLieuService.getBalance(db, companyId, userId, excludeEntryId);
+  if (requestedMinutes > balance.availableMinutes) {
+    throw new Error(
+      `Time off in lieu balance is too low (requested ${requestedMinutes} minutes, available ${Math.max(0, balance.availableMinutes)} minutes)`,
+    );
+  }
+}
+
+async function enforceVacationBalance(
+  db: AppDatabase,
+  companyId: string,
+  userId: number,
+  candidate: {
+    entryType: "work" | "vacation" | "sick_leave" | "time_off_in_lieu";
+    startDate: string;
+    endDate?: string | null;
+  },
+  excludeEntryId?: number,
+) {
+  if (candidate.entryType !== "vacation") {
+    return;
+  }
+
+  const referenceDay = (await settingsService.getBusinessNowSnapshot(db, companyId)).localDay;
+  const requestedDays = await vacationBalanceService.getRequestedDays(db, companyId, userId, candidate.startDate, candidate.endDate);
+  const balance = await vacationBalanceService.getBalance(db, companyId, userId, referenceDay, excludeEntryId);
+  if (requestedDays > Math.max(0, balance.availableDays)) {
+    throw new Error(
+      `Vacation balance is too low (requested ${requestedDays.toFixed(2)} day(s), available ${Math.max(0, balance.availableDays).toFixed(2)} day(s))`,
+    );
+  }
 }
 
 async function enrichEntryWithDayMetrics(
@@ -311,6 +414,8 @@ async function buildDashboardSummary(db: AppDatabase, companyId: string, userId:
   const monthExpectedMinutes = calculateExpectedContractMinutesForRange(monthRange.startDay, monthRange.endDay, holidaySet, contracts);
   const totalRecordedMinutes = calculateRecordedMinutesForRange(allEntries, historyStartDay, focusDay, settings, holidaySet, contracts);
   const totalExpectedMinutes = calculateExpectedContractMinutesForRange(historyStartDay, focusDay, holidaySet, contracts);
+  const timeOffInLieuBalance = await timeOffInLieuService.getBalance(db, companyId, userId);
+  const vacationBalance = await vacationBalanceService.getBalance(db, companyId, userId, businessToday);
 
   return {
     todayMinutes: todayRecordedMinutes,
@@ -342,7 +447,9 @@ async function buildDashboardSummary(db: AppDatabase, companyId: string, userId:
         expectedMinutes: monthExpectedMinutes,
         recordedMinutes: monthRecordedMinutes,
         balanceMinutes: monthRecordedMinutes - monthExpectedMinutes
-      }
+      },
+      vacation: vacationBalance,
+      timeOffInLieu: timeOffInLieuBalance
     }
   };
 }
@@ -359,6 +466,11 @@ timeRoutes.post("/start", async (c) => {
       entryType: "work",
       startDate: snapshot.localDay,
       endDate: null
+    });
+    await enforceEntryTypeSeparation(db, session.companyId, session.userId, {
+      entryType: "work",
+      startDate: snapshot.localDay,
+      endDate: null,
     });
     await enforceSingleRecordPerDay(db, session.companyId, session.userId, settings, snapshot.localDay);
     await enforceIntersectingRecords(db, session.companyId, session.userId, settings, {
@@ -414,6 +526,11 @@ timeRoutes.post("/entry", async (c) => {
       startDate: body.startDate,
       endDate: body.endDate
     });
+    await enforceEntryTypeSeparation(db, session.companyId, targetUserId, {
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate,
+    });
     await enforceSingleRecordPerDay(db, session.companyId, targetUserId, settings, body.startDate, body.endDate);
     await enforceIntersectingRecords(db, session.companyId, targetUserId, settings, {
       entryType: body.entryType,
@@ -421,6 +538,16 @@ timeRoutes.post("/entry", async (c) => {
       endDate: body.endDate,
       startTime: body.startTime,
       endTime: body.endTime
+    });
+    await enforceTimeOffInLieuBalance(db, session.companyId, targetUserId, {
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate
+    });
+    await enforceVacationBalance(db, session.companyId, targetUserId, {
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate
     });
     await validateCustomFields(db, session.companyId, body.entryType, body.customFieldValues);
   } catch (error) {
@@ -485,6 +612,63 @@ timeRoutes.get("/entry/:entryId", async (c) => {
   return c.json({ entry: await enrichEntryWithDayMetrics(db, session.companyId, entry, await userService.listUserContracts(db, session.companyId, targetUserId)) });
 });
 
+timeRoutes.get("/time-off-in-lieu/balance", async (c) => {
+  const session = getCompanySession(c.get("session"));
+  const db = c.get("db");
+
+  let targetUserId: number;
+  try {
+    const rawTargetUserId = c.req.query("targetUserId");
+    targetUserId = resolveTargetUserId(session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
+  } catch {
+    return c.json({ error: "Manager access required" }, 403);
+  }
+
+  const excludeEntryIdValue = c.req.query("excludeEntryId");
+  const excludeEntryId = excludeEntryIdValue ? Number(excludeEntryIdValue) : undefined;
+  const startDate = c.req.query("startDate");
+  const endDate = c.req.query("endDate");
+  const balance = await timeOffInLieuService.getBalance(db, session.companyId, targetUserId, excludeEntryId);
+  const requestedMinutes =
+    startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate)
+      ? await timeOffInLieuService.getRequestedMinutes(db, session.companyId, targetUserId, startDate, endDate)
+      : undefined;
+
+  return c.json({
+    balance,
+    requestedMinutes,
+  });
+});
+
+timeRoutes.get("/vacation/balance", async (c) => {
+  const session = getCompanySession(c.get("session"));
+  const db = c.get("db");
+
+  let targetUserId: number;
+  try {
+    const rawTargetUserId = c.req.query("targetUserId");
+    targetUserId = resolveTargetUserId(session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
+  } catch {
+    return c.json({ error: "Manager access required" }, 403);
+  }
+
+  const excludeEntryIdValue = c.req.query("excludeEntryId");
+  const excludeEntryId = excludeEntryIdValue ? Number(excludeEntryIdValue) : undefined;
+  const startDate = c.req.query("startDate");
+  const endDate = c.req.query("endDate");
+  const referenceDay = (await settingsService.getBusinessNowSnapshot(db, session.companyId)).localDay;
+  const balance = await vacationBalanceService.getBalance(db, session.companyId, targetUserId, referenceDay, excludeEntryId);
+  const requestedDays =
+    startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate)
+      ? await vacationBalanceService.getRequestedDays(db, session.companyId, targetUserId, startDate, endDate)
+      : undefined;
+
+  return c.json({
+    balance,
+    requestedDays,
+  });
+});
+
 timeRoutes.put("/entry", async (c) => {
   const session = getCompanySession(c.get("session"));
   const db = c.get("db");
@@ -521,6 +705,11 @@ timeRoutes.put("/entry", async (c) => {
       startDate: body.startDate,
       endDate: body.endDate
     });
+    await enforceEntryTypeSeparation(db, session.companyId, targetUserId, {
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate,
+    }, body.entryId);
     await enforceSingleRecordPerDay(db, session.companyId, targetUserId, settings, body.startDate, body.endDate, body.entryId);
     await enforceIntersectingRecords(db, session.companyId, targetUserId, settings, {
       entryType: body.entryType,
@@ -528,6 +717,16 @@ timeRoutes.put("/entry", async (c) => {
       endDate: body.endDate,
       startTime: body.startTime,
       endTime: body.endTime
+    }, body.entryId);
+    await enforceTimeOffInLieuBalance(db, session.companyId, targetUserId, {
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate
+    }, body.entryId);
+    await enforceVacationBalance(db, session.companyId, targetUserId, {
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate
     }, body.entryId);
     await validateCustomFields(db, session.companyId, body.entryType, body.customFieldValues);
   } catch (error) {

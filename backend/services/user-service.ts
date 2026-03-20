@@ -65,6 +65,9 @@ function validateContracts(contracts: UserContractInput[], todayDay: string) {
     if (contract.paymentPerHour < 0) {
       throw new HTTPException(400, { message: "Contract values cannot be negative" });
     }
+    if (contract.annualVacationDays < 0) {
+      throw new HTTPException(400, { message: "Annual vacation days cannot be negative" });
+    }
 
     const previous = sorted[index - 1];
     const previousEndDate = previous?.endDate ?? "9999-12-31";
@@ -106,9 +109,10 @@ async function saveContracts(db: AppDatabase, companyId: string, userId: number,
         start_date,
         end_date,
         payment_per_hour,
+        annual_vacation_days,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [companyId, userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, createdAt]
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [companyId, userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, contract.annualVacationDays, createdAt]
     );
     const contractId = Number(result.lastRowId);
     for (const day of contract.schedule) {
@@ -167,6 +171,7 @@ export const userService = {
         start_date,
         end_date,
         payment_per_hour,
+        annual_vacation_days,
         created_at
       FROM user_contracts
       WHERE company_id = ? AND user_id = ?
@@ -179,6 +184,7 @@ export const userService = {
       start_date: string;
       end_date: string | null;
       payment_per_hour: number;
+      annual_vacation_days: number;
       created_at: string;
     }>;
 

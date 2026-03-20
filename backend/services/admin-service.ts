@@ -194,9 +194,10 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         start_date,
         end_date,
         payment_per_hour,
+        annual_vacation_days,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [companyId, userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, contract.createdAt]
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [companyId, userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, contract.annualVacationDays, contract.createdAt]
     );
     const contractId = Number(result.lastRowId);
     const schedule = Array.isArray((contract as { schedule?: unknown }).schedule) ? contract.schedule : createLegacyContractSchedule(contract.hoursPerWeek);
@@ -540,7 +541,7 @@ export const adminService = {
       }));
 
     const contractRows = await db.all(
-      "SELECT id, user_id, hours_per_week, start_date, end_date, payment_per_hour, created_at FROM user_contracts WHERE company_id = ? ORDER BY id ASC",
+      "SELECT id, user_id, hours_per_week, start_date, end_date, payment_per_hour, annual_vacation_days, created_at FROM user_contracts WHERE company_id = ? ORDER BY id ASC",
       [companyId]
     ) as Array<{
       id: number;
@@ -549,6 +550,7 @@ export const adminService = {
       start_date: string;
       end_date: string | null;
       payment_per_hour: number;
+      annual_vacation_days: number;
       created_at: string;
     }>;
     const scheduleRows = await db.all(

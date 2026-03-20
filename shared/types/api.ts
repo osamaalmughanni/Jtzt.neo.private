@@ -72,6 +72,24 @@ export interface DeleteTimeEntryInput {
   targetUserId?: number | null;
 }
 
+export interface TimeOffInLieuBalanceResponse {
+  balance: {
+    earnedMinutes: number;
+    bookedMinutes: number;
+    availableMinutes: number;
+  };
+  requestedMinutes?: number;
+}
+
+export interface VacationBalanceResponse {
+  balance: {
+    entitledDays: number;
+    usedDays: number;
+    availableDays: number;
+  };
+  requestedDays?: number;
+}
+
 export interface CreateManualTimeEntryInput {
   targetUserId?: number | null;
   entryType: TimeEntryType;
@@ -111,6 +129,7 @@ export interface UserContractInput {
   startDate: string;
   endDate: string | null;
   paymentPerHour: number;
+  annualVacationDays: number;
   schedule: UserContractScheduleDay[];
 }
 
@@ -338,7 +357,7 @@ export interface ReportRequestInput {
 export interface ReportColumnDefinition {
   key: string;
   label: string;
-  kind: "text" | "date" | "datetime" | "duration" | "currency" | "number" | "overtime_state" | "overtime_timeline" | "overtime_receipt" | "overtime_rule";
+  kind: "text" | "date" | "datetime" | "duration" | "currency" | "number" | "overtime_state" | "overtime_timeline";
 }
 
 export interface ReportOvertimeSegment {
@@ -347,22 +366,11 @@ export interface ReportOvertimeSegment {
   label: string;
 }
 
-export interface ReportOvertimeReceiptLine {
-  label: string;
-  minutes: number;
-  valueMinutes: number | null;
-  detail: string;
-}
-
-export interface ReportOvertimeTrace {
-  title: string;
-  detail: string;
-}
-
 export interface ReportOvertimeMeta {
   state: "base_only" | "daily_overtime" | "weekly_overtime" | "employee_choice" | "needs_review";
   stateLabel: string;
   reviewState: "none" | "overtime_only" | "needs_review";
+  targetMinutes: number;
   workedMinutes: number;
   paidMinutes: number;
   breakMinutes: number;
@@ -371,10 +379,12 @@ export interface ReportOvertimeMeta {
   employeeChoiceMinutes: number;
   weeklyOvertimeMinutes: number;
   weeklyOnlyOvertimeMinutes: number;
+  overtimeMinutes: number;
+  premiumPercent: number;
+  premiumCreditMinutes: number;
+  timeOffInLieuCreditMinutes: number;
   equivalentValueMinutes: number;
   segments: ReportOvertimeSegment[];
-  receiptLines: ReportOvertimeReceiptLine[];
-  traces: ReportOvertimeTrace[];
   summary: string;
 }
 
@@ -412,6 +422,30 @@ export interface ReportResponse {
       startTime: string | null;
       endTime: string | null;
       notes: string | null;
+    }>;
+    vacationOverview: Array<{
+      userId: number;
+      userName: string;
+      role: string;
+      entitledDays: number;
+      usedDays: number;
+      availableDays: number;
+      currentContractVacationDays: number | null;
+      currentWorkYearStart: string | null;
+      currentWorkYearEnd: string | null;
+      nextFullEntitlementDate: string | null;
+      inInitialAccrualPhase: boolean;
+      periods: Array<{
+        entryId: number;
+        startDate: string;
+        endDate: string;
+        notes: string | null;
+        days: number;
+      }>;
+      monthBreakdown: Array<{
+        label: string;
+        days: number;
+      }>;
     }>;
   };
 }

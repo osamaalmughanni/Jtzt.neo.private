@@ -91,6 +91,7 @@ export function FieldsPage() {
   const targetOptions: Array<{ value: TimeEntryType; label: string }> = [
     { value: "work", label: t("fields.targetWork") },
     { value: "vacation", label: t("fields.targetVacation") },
+    { value: "time_off_in_lieu", label: t("fields.targetTimeOffInLieu") },
     { value: "sick_leave", label: t("fields.targetSickLeave") },
   ];
 

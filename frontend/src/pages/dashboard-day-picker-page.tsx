@@ -40,7 +40,7 @@ export function DashboardDayPickerPage() {
   const [settingsLocale, setSettingsLocale] = useState("en-GB");
   const [settingsCountry, setSettingsCountry] = useState("AT");
   const [holidays, setHolidays] = useState<PublicHolidayRecord[]>([]);
-  const [dayStates, setDayStates] = useState<Record<string, "work" | "sick_leave" | "vacation" | "mixed">>({});
+  const [dayStates, setDayStates] = useState<Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">>({});
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDayParam(searchParams.get("day"))));
   const selectedDate = parseDayParam(searchParams.get("day"));
   const userId = searchParams.get("user") ?? String(companyIdentity?.user.id ?? "");
@@ -51,7 +51,7 @@ export function DashboardDayPickerPage() {
     settingsLocale: string;
     settingsCountry: string;
     holidays: PublicHolidayRecord[];
-    dayStates: Record<string, "work" | "sick_leave" | "vacation" | "mixed">;
+    dayStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">;
   }>({
     enabled: Boolean(companySession) && !Number.isNaN(numericUserId) && numericUserId > 0,
     deps: [companySession?.token, numericUserId, settingsCountry, visibleMonth.getFullYear(), visibleMonth.getMonth(), t],
@@ -75,7 +75,7 @@ export function DashboardDayPickerPage() {
         })
       ]);
 
-      const nextStates: Record<string, "work" | "sick_leave" | "vacation" | "mixed"> = {};
+      const nextStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed"> = {};
       for (const entry of entriesResponse.entries) {
         const entryDays = enumerateDays(entry.entryDate, entry.endDate ?? entry.entryDate);
         for (const entryDay of entryDays) {
@@ -134,6 +134,8 @@ export function DashboardDayPickerPage() {
                         ? t("dayPicker.sickLeaveDescription")
                         : selectedDayState === "vacation"
                           ? t("dayPicker.vacationDescription")
+                          : selectedDayState === "time_off_in_lieu"
+                            ? t("dayPicker.timeOffInLieuDescription")
                           : selectedDayState === "mixed"
                             ? t("dayPicker.mixedDescription")
                             : t("dayPicker.defaultDescription")
@@ -155,6 +157,10 @@ export function DashboardDayPickerPage() {
           <div className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 ${entryStateUi.vacation.badgeClassName}`}>
             <span className={`h-2 w-2 rounded-full ${entryStateUi.vacation.dotClassName}`} />
             <span>{entryStateUi.vacation.label}</span>
+          </div>
+          <div className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 ${entryStateUi.time_off_in_lieu.badgeClassName}`}>
+            <span className={`h-2 w-2 rounded-full ${entryStateUi.time_off_in_lieu.dotClassName}`} />
+            <span>{entryStateUi.time_off_in_lieu.label}</span>
           </div>
           <div className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 ${entryStateUi.sick_leave.badgeClassName}`}>
             <span className={`h-2 w-2 rounded-full ${entryStateUi.sick_leave.dotClassName}`} />

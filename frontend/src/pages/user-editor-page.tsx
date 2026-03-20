@@ -73,7 +73,7 @@ function createDefaultSchedule() {
 }
 
 function createEmptyContract(): UserContractInput {
-  return normalizeContract({ hoursPerWeek: 40, startDate: "", endDate: null, paymentPerHour: 0, schedule: createDefaultSchedule() });
+  return normalizeContract({ hoursPerWeek: 40, startDate: "", endDate: null, paymentPerHour: 0, annualVacationDays: 25, schedule: createDefaultSchedule() });
 }
 
 function createEmptyForm(): UserFormState {
@@ -234,7 +234,7 @@ function ContractCard({
   settingsLocale: string;
   settingsTimeZone: string;
   weekdayLabels: Record<ContractWeekday, string>;
-  onSetField: (index: number, key: "startDate" | "endDate" | "paymentPerHour", value: string | number | null) => void;
+  onSetField: (index: number, key: "startDate" | "endDate" | "paymentPerHour" | "annualVacationDays", value: string | number | null) => void;
   onToggleDay: (index: number, weekday: ContractWeekday, checked: boolean) => void;
   onUpdateDayTime: (index: number, weekday: ContractWeekday, key: "startTime" | "endTime", value: string) => void;
   onRemove: (index: number) => void;
@@ -256,6 +256,9 @@ function ContractCard({
             </span>
             <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-700">
               {t("userEditor.hoursPerWeekValue", { value: formatHours(contract.hoursPerWeek) })}
+            </span>
+            <span className="rounded-full bg-sky-500/10 px-2 py-1 text-[10px] font-medium text-sky-700">
+              {t("userEditor.vacationDaysValue", { value: formatHours(contract.annualVacationDays) })}
             </span>
           </div>
         </div>
@@ -295,6 +298,16 @@ function ContractCard({
             placeholder="25"
             value={contract.paymentPerHour}
             onChange={(event) => onSetField(index, "paymentPerHour", Number(event.target.value))}
+          />
+        </Field>
+        <Field label={t("userEditor.annualVacationDays")}>
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="25"
+            value={contract.annualVacationDays}
+            onChange={(event) => onSetField(index, "annualVacationDays", Number(event.target.value))}
           />
         </Field>
       </div>
@@ -363,7 +376,7 @@ function UserContractsSection({
   settingsTimeZone: string;
   weekdayLabels: Record<ContractWeekday, string>;
   onAdd: () => void;
-  onSetField: (index: number, key: "startDate" | "endDate" | "paymentPerHour", value: string | number | null) => void;
+  onSetField: (index: number, key: "startDate" | "endDate" | "paymentPerHour" | "annualVacationDays", value: string | number | null) => void;
   onToggleDay: (index: number, weekday: ContractWeekday, checked: boolean) => void;
   onUpdateDayTime: (index: number, weekday: ContractWeekday, key: "startTime" | "endTime", value: string) => void;
   onRemove: (index: number) => void;
@@ -481,6 +494,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
                 startDate: contract.startDate,
                 endDate: contract.endDate,
                 paymentPerHour: contract.paymentPerHour,
+                annualVacationDays: contract.annualVacationDays,
                 schedule: contract.schedule
               })
             )
@@ -514,7 +528,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     }));
   }
 
-  function setContractField(index: number, key: "startDate" | "endDate" | "paymentPerHour", value: string | number | null) {
+  function setContractField(index: number, key: "startDate" | "endDate" | "paymentPerHour" | "annualVacationDays", value: string | number | null) {
     updateContract(index, (contract) => ({ ...contract, [key]: value }));
   }
 
@@ -597,6 +611,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
             startDate: normalized.startDate,
             endDate: normalized.endDate,
             paymentPerHour: Number(normalized.paymentPerHour),
+            annualVacationDays: Number(normalized.annualVacationDays),
             schedule: normalized.schedule
           };
         })

@@ -12,6 +12,7 @@ const contractSchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   paymentPerHour: z.number().min(0),
+  annualVacationDays: z.number().min(0),
   schedule: z.array(
     z.object({
       weekday: z.union([

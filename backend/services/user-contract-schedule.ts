@@ -120,6 +120,7 @@ export function buildUserContract(row: {
   start_date: string;
   end_date: string | null;
   payment_per_hour: number;
+  annual_vacation_days?: number | null;
   created_at: string;
 }, schedule: UserContractScheduleDay[]): UserContract {
   const normalized = normalizeContractSchedule(schedule.length === 7 ? schedule : createLegacyContractSchedule(row.hours_per_week), (message) => {
@@ -133,6 +134,7 @@ export function buildUserContract(row: {
     startDate: row.start_date,
     endDate: row.end_date,
     paymentPerHour: row.payment_per_hour,
+    annualVacationDays: Number(row.annual_vacation_days ?? 25),
     schedule: normalized.schedule,
     createdAt: row.created_at
   };

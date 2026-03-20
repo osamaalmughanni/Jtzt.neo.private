@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS user_contracts (
   start_date TEXT NOT NULL,
   end_date TEXT,
   payment_per_hour REAL NOT NULL,
+  annual_vacation_days REAL NOT NULL DEFAULT 25,
   created_at TEXT NOT NULL,
   FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -92,7 +93,7 @@ CREATE TABLE IF NOT EXISTS time_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   company_id TEXT NOT NULL,
   user_id INTEGER NOT NULL,
-  entry_type TEXT NOT NULL DEFAULT 'work' CHECK(entry_type IN ('work', 'vacation', 'sick_leave')),
+  entry_type TEXT NOT NULL DEFAULT 'work' CHECK(entry_type IN ('work', 'vacation', 'sick_leave', 'time_off_in_lieu')),
   entry_date TEXT NOT NULL,
   end_date TEXT,
   start_time TEXT NOT NULL,

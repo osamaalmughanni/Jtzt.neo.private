@@ -1,9 +1,11 @@
 import { HTTPException } from "hono/http-exception";
 import type { ReportColumnDefinition, ReportRequestInput, ReportRowMeta } from "../../shared/types/api";
 import type { CompanyCustomField, TimeEntryType, UserContract } from "../../shared/types/models";
+import { diffCalendarDays, enumerateLocalDays } from "../../shared/utils/time";
 import { calculateLeaveCompensation, calculateWorkCostAmount, calculateWorkDurationMinutes } from "./time-entry-metrics-service";
 import { aggregateOvertimeMeta, buildOvertimeReportMeta } from "./overtime-report-service";
 import { settingsService } from "./settings-service";
+import { vacationBalanceService } from "./vacation-balance-service";
 import type { AppDatabase } from "../runtime/types";
 import { mapUserContractScheduleDay } from "../db/mappers";
 import { buildUserContract } from "./user-contract-schedule";
@@ -37,9 +39,7 @@ const baseColumns: Record<string, ReportColumnDefinition> = {
   entries: { key: "entries", label: "Entries", kind: "number" },
   month: { key: "month", label: "Month", kind: "text" },
   overtime_state: { key: "overtime_state", label: "Overtime State", kind: "overtime_state" },
-  overtime_timeline: { key: "overtime_timeline", label: "Overtime Timeline", kind: "overtime_timeline" },
-  overtime_receipt: { key: "overtime_receipt", label: "Overtime Breakdown", kind: "overtime_receipt" },
-  overtime_rule: { key: "overtime_rule", label: "Rule Trace", kind: "overtime_rule" }
+  overtime_timeline: { key: "overtime_timeline", label: "Overtime Timeline", kind: "overtime_timeline" }
 };
 
 function normalizeLookupValue(value: string) {
@@ -85,6 +85,7 @@ function normalizeRole(role: string) {
 function getTypeLabel(entryType: TimeEntryType) {
   if (entryType === "work") return "Working";
   if (entryType === "vacation") return "Vacation";
+  if (entryType === "time_off_in_lieu") return "Time off in lieu";
   return "Sick leave";
 }
 
@@ -129,6 +130,94 @@ function clampDayRange(startDay: string, endDay: string, reportStartDay: string,
   };
 }
 
+function getVacationDurationDays(startDate: string, endDate: string) {
+  return diffCalendarDays(endDate, startDate) + 1;
+}
+
+function getMonthKeyLabel(day: string, locale: string) {
+  const parsed = new Date(`${day}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return day;
+  }
+  return new Intl.DateTimeFormat(locale || "en-GB", { month: "short", year: "numeric" }).format(parsed);
+}
+
+async function buildVacationOverview(
+  db: AppDatabase,
+  companyId: string,
+  rows: ReportRow[],
+  locale: string,
+  referenceDay: string,
+) {
+  const grouped = new Map<number, {
+    userId: number;
+    userName: string;
+    role: string;
+    periods: Array<{
+      entryId: number;
+      startDate: string;
+      endDate: string;
+      notes: string | null;
+      days: number;
+    }>;
+    monthTotals: Map<string, number>;
+  }>();
+
+  for (const row of rows) {
+    if (row.entry_type !== "vacation") {
+      continue;
+    }
+
+    const current = grouped.get(row.user_id) ?? {
+      userId: row.user_id,
+      userName: row.full_name,
+      role: normalizeRole(row.role),
+      periods: [],
+      monthTotals: new Map<string, number>(),
+    };
+    const endDate = row.end_date ?? row.entry_date;
+    const days = getVacationDurationDays(row.entry_date, endDate);
+    current.periods.push({
+      entryId: row.id,
+      startDate: row.entry_date,
+      endDate,
+      notes: row.notes ?? null,
+      days,
+    });
+
+    for (const day of enumerateLocalDays(row.entry_date, endDate)) {
+      const monthKey = getMonthKeyLabel(day, locale);
+      current.monthTotals.set(monthKey, (current.monthTotals.get(monthKey) ?? 0) + 1);
+    }
+
+    grouped.set(row.user_id, current);
+  }
+
+  const users = Array.from(grouped.values());
+  return Promise.all(users.map(async (user) => {
+    const balance = await vacationBalanceService.getReportOverview(db, companyId, user.userId, referenceDay);
+    return {
+      userId: user.userId,
+      userName: user.userName,
+      role: user.role,
+      entitledDays: balance.entitledDays,
+      usedDays: balance.usedDays,
+      availableDays: balance.availableDays,
+      currentContractVacationDays: balance.currentContractVacationDays,
+      currentWorkYearStart: balance.currentWorkYearStart,
+      currentWorkYearEnd: balance.currentWorkYearEnd,
+      nextFullEntitlementDate: balance.nextFullEntitlementDate,
+      inInitialAccrualPhase: balance.inInitialAccrualPhase,
+      periods: user.periods.sort((left, right) => left.startDate.localeCompare(right.startDate)),
+      monthBreakdown: Array.from(user.monthTotals.entries())
+        .map(([label, days]) => ({ label, days }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    };
+  })).then((rows) =>
+    rows.sort((left, right) => right.availableDays - left.availableDays || left.userName.localeCompare(right.userName))
+  );
+}
+
 function getCustomFieldDisplayValue(field: CompanyCustomField | undefined, rawValue: string | number | boolean | null) {
   if (!field || rawValue === null) return rawValue;
   if (field.type === "boolean" && typeof rawValue === "boolean") return rawValue ? "Yes" : "No";
@@ -157,7 +246,7 @@ function getEntryValue(entry: ReportRow, key: string, customFields: CompanyCusto
   if (key === "note") return entry.notes ?? "";
   if (key === "month") return getMonthKey(entry.entry_date);
   if (key === "cost") return 0;
-  if (key === "overtime_state" || key === "overtime_timeline" || key === "overtime_receipt" || key === "overtime_rule") return null;
+  if (key === "overtime_state" || key === "overtime_timeline") return null;
   return null;
 }
 
@@ -204,6 +293,7 @@ export const reportService = {
         start_date,
         end_date,
         payment_per_hour,
+        annual_vacation_days,
         created_at
        FROM user_contracts
        WHERE company_id = ?
@@ -216,6 +306,7 @@ export const reportService = {
       start_date: string;
       end_date: string | null;
       payment_per_hour: number;
+      annual_vacation_days: number;
       created_at: string;
     }>;
     const contractScheduleRows = contractRows.length === 0
@@ -293,6 +384,8 @@ export const reportService = {
       { entryCount: 0, durationMinutes: 0, cost: 0 }
     );
 
+    const vacationOverview = await buildVacationOverview(db, companyId, rows, settings.locale, input.endDate);
+
     if (!grouped) {
       const columns = input.columns.map((key) => getColumnDefinition(key, settings.customFields)).filter((value): value is ReportColumnDefinition => value !== null);
       const detailRows = rows.map((row) => {
@@ -305,14 +398,6 @@ export const reportService = {
           }
           if (column.key === "overtime_timeline") {
             next[column.key] = overtimeMeta?.summary ?? null;
-            continue;
-          }
-          if (column.key === "overtime_receipt") {
-            next[column.key] = overtimeMeta?.receiptLines.map((line) => line.label).join(", ") ?? null;
-            continue;
-          }
-          if (column.key === "overtime_rule") {
-            next[column.key] = overtimeMeta?.traces.map((line) => line.title).join(", ") ?? null;
             continue;
           }
           next[column.key] = normalizeReportValue(entryValue(row, column.key));
@@ -348,7 +433,8 @@ export const reportService = {
           startTime: row.start_time,
           endTime: row.end_time,
           notes: row.notes ?? null
-        }))
+        })),
+        vacationOverview,
       };
     }
 
@@ -374,7 +460,7 @@ export const reportService = {
       }
     }
 
-    const overtimeColumnKeys = input.columns.filter((key) => key === "overtime_state" || key === "overtime_timeline" || key === "overtime_receipt" || key === "overtime_rule");
+    const overtimeColumnKeys = input.columns.filter((key) => key === "overtime_state" || key === "overtime_timeline");
     const columnKeys = [...effectiveGroupBy, "entries", ...(input.columns.includes("duration") ? ["duration"] : []), ...(input.columns.includes("cost") ? ["cost"] : []), ...overtimeColumnKeys].filter(
       (key, index, array) => array.indexOf(key) === index
     );
@@ -391,8 +477,6 @@ export const reportService = {
       if (columnKeys.includes("cost")) next.cost = bucket.cost;
       if (columnKeys.includes("overtime_state")) next.overtime_state = overtimeMeta?.stateLabel ?? null;
       if (columnKeys.includes("overtime_timeline")) next.overtime_timeline = overtimeMeta?.summary ?? null;
-      if (columnKeys.includes("overtime_receipt")) next.overtime_receipt = overtimeMeta?.receiptLines.map((line) => line.label).join(", ") ?? null;
-      if (columnKeys.includes("overtime_rule")) next.overtime_rule = overtimeMeta?.traces.map((line) => line.title).join(", ") ?? null;
       groupedRowMeta.push({
         entryId: null,
         userId: bucket.userIds.length === 1 ? bucket.userIds[0] : null,
@@ -424,7 +508,8 @@ export const reportService = {
         startTime: row.start_time,
         endTime: row.end_time,
         notes: row.notes ?? null
-      }))
+      })),
+      vacationOverview,
     };
   }
 };

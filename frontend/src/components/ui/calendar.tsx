@@ -41,7 +41,7 @@ export function Calendar({
   className?: string;
   locale?: string;
   holidayDates?: string[];
-  dayStates?: Record<string, "work" | "sick_leave" | "vacation" | "mixed">;
+  dayStates?: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">;
   onMonthChange?: (date: Date) => void;
   compact?: boolean;
   disableDate?: (date: Date) => boolean;
@@ -140,16 +140,18 @@ export function Calendar({
             <button
               key={isoDate}
               className={cn(
-                "flex items-center justify-center rounded-xl border tabular-nums transition-colors",
+                "relative flex items-center justify-center rounded-xl border tabular-nums transition-colors",
                 cellClassName,
                 isDisabled
                   ? "cursor-not-allowed border-transparent bg-background text-muted-foreground/40 opacity-50"
                   : undefined,
                 dayState
                   ? entryStateUi[dayState].calendarCellClassName
+                  : isHoliday
+                    ? entryStateUi.holiday.calendarCellClassName
                   : "border-transparent bg-background text-foreground hover:bg-muted",
                 isSelected ? "border-2 border-foreground shadow-sm" : undefined,
-                isHoliday ? "ring-1 ring-inset ring-amber-500/40 dark:ring-amber-400/40" : undefined,
+                isHoliday && !dayState ? "ring-1 ring-inset ring-border/80" : undefined,
               )}
               onClick={() => {
                 if (!isDisabled) {
@@ -160,6 +162,15 @@ export function Calendar({
               disabled={isDisabled}
               aria-disabled={isDisabled}
             >
+              {isHoliday && dayState ? (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "pointer-events-none absolute inset-1 rounded-lg border border-border/80",
+                    compact ? "inset-0.5 rounded-md" : undefined,
+                  )}
+                />
+              ) : null}
               <span
                 className={cn(
                   "flex items-center justify-center rounded-full font-medium",

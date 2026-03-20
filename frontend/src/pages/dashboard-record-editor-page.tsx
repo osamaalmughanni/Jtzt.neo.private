@@ -172,7 +172,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
   const initialEntryType = (searchParams.get("type") as TimeEntryType | null) ?? "work";
   const [entryType, setEntryType] = useState<TimeEntryType>(
-    initialEntryType === "vacation" || initialEntryType === "sick_leave" ? initialEntryType : "work"
+    initialEntryType === "vacation" || initialEntryType === "sick_leave" || initialEntryType === "time_off_in_lieu" ? initialEntryType : "work"
   );
   const [startDate, setStartDate] = useState(parseDayParam(searchParams.get("day")));
   const [endDate, setEndDate] = useState(parseDayParam(searchParams.get("day")));
@@ -185,15 +185,20 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [holidays, setHolidays] = useState<PublicHolidayRecord[]>([]);
+  const [timeOffInLieuBalance, setTimeOffInLieuBalance] = useState({ earnedMinutes: 0, bookedMinutes: 0, availableMinutes: 0 });
+  const [timeOffInLieuRequestedMinutes, setTimeOffInLieuRequestedMinutes] = useState(0);
+  const [vacationBalance, setVacationBalance] = useState({ entitledDays: 0, usedDays: 0, availableDays: 0 });
+  const [vacationRequestedDays, setVacationRequestedDays] = useState(0);
+  const [rangeEntryConflict, setRangeEntryConflict] = useState({ hasWork: false, hasLeave: false });
 
   const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
   const selectedDay = parseDayParam(searchParams.get("day"));
+  const dashboardDay = selectedDay;
   const effectiveUserId =
     canSwitchUser
       ? Number(searchParams.get("user") ?? companyIdentity?.user.id ?? 0) || companyIdentity?.user.id || 0
       : companyIdentity?.user.id || 0;
-  const dashboardToday = getLocalNowSnapshot(new Date(), settings.timeZone).localDay;
-  const backTo = `/dashboard?user=${effectiveUserId}&day=${dashboardToday}`;
+  const backTo = `/dashboard?user=${effectiveUserId}&day=${dashboardDay}`;
   const activeCustomFields = useMemo(
     () => settings.customFields.filter((field) => field.targets.includes(entryType)),
     [entryType, settings.customFields],
@@ -235,11 +240,11 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   });
   const startDatePastDistance = getPastDayDistance(startDate, todayDay);
   const futurePlanningDistance = getFutureDayDistance(rangeEndDate, todayDay);
-  const futureVacationOnly =
+  const futurePlannedLeaveOnly =
     policy.reason === "future_restricted" &&
-    allowedEntryTypes.onlyVacationAllowed &&
+    allowedEntryTypes.onlyPlannedLeaveAllowed &&
     futurePlanningDistance > 0;
-  const dayLimitError = futureVacationOnly
+  const dayLimitError = futurePlannedLeaveOnly
     ? t("recordEditor.futureVacationOnly", {
         date: rangeEndDate,
         days: futurePlanningDistance,
@@ -263,10 +268,66 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
           })
         : null;
   const entryTypeTabs: Array<{ value: TimeEntryType; label: string; disabled?: boolean }> = [
-    { value: "work", label: t("recordEditor.working"), disabled: mode === "create" && !allowedEntryTypes.work.allowed },
-    { value: "vacation", label: t("recordEditor.vacation") },
-    { value: "sick_leave", label: t("recordEditor.sickLeave"), disabled: mode === "create" && !allowedEntryTypes.sickLeave.allowed },
+    {
+      value: "work",
+      label: t("recordEditor.working"),
+      disabled: rangeEntryConflict.hasLeave || (mode === "create" && !allowedEntryTypes.work.allowed),
+    },
+    {
+      value: "vacation",
+      label: t("recordEditor.vacation"),
+      disabled: rangeEntryConflict.hasWork || rangeEntryConflict.hasLeave || (mode === "create" && vacationBalance.availableDays <= 0),
+    },
+    {
+      value: "time_off_in_lieu",
+      label: t("recordEditor.timeOffInLieu"),
+      disabled: rangeEntryConflict.hasWork || rangeEntryConflict.hasLeave || (mode === "create" && (!allowedEntryTypes.timeOffInLieu.allowed || timeOffInLieuBalance.availableMinutes <= 0)),
+    },
+    {
+      value: "sick_leave",
+      label: t("recordEditor.sickLeave"),
+      disabled: rangeEntryConflict.hasWork || rangeEntryConflict.hasLeave || (mode === "create" && !allowedEntryTypes.sickLeave.allowed),
+    },
   ];
+  const timeOffInLieuError =
+    entryType === "time_off_in_lieu" && timeOffInLieuRequestedMinutes > timeOffInLieuBalance.availableMinutes
+      ? t("recordEditor.timeOffInLieuInsufficient", {
+          available: `${(Math.max(0, timeOffInLieuBalance.availableMinutes) / 60).toFixed(1)}h`,
+          requested: `${(timeOffInLieuRequestedMinutes / 60).toFixed(1)}h`,
+        })
+      : null;
+  const vacationError =
+    entryType === "vacation" && vacationRequestedDays > Math.max(0, vacationBalance.availableDays)
+      ? t("recordEditor.vacationInsufficient", {
+          available: Math.max(0, vacationBalance.availableDays).toFixed(2),
+          requested: vacationRequestedDays.toFixed(2),
+        })
+      : null;
+  const workDayConflictError =
+    entryType !== "work" && rangeEntryConflict.hasWork
+      ? t("recordEditor.workDayAlreadyBooked")
+      : entryType !== "work" && rangeEntryConflict.hasLeave
+        ? t("recordEditor.leaveTypeAlreadyBooked")
+      : entryType === "work" && rangeEntryConflict.hasLeave
+        ? t("recordEditor.leaveDayAlreadyBooked")
+      : null;
+  const blockingError = dayLimitError ?? workDayConflictError ?? vacationError ?? timeOffInLieuError;
+  const timeOffInLieuInfo =
+    entryType === "time_off_in_lieu"
+      ? t("recordEditor.timeOffInLieuBalance", {
+          available: `${(Math.max(0, timeOffInLieuBalance.availableMinutes) / 60).toFixed(1)}h`,
+          requested: `${(timeOffInLieuRequestedMinutes / 60).toFixed(1)}h`,
+        })
+      : null;
+  const vacationInfo =
+    entryType === "vacation"
+      ? t("recordEditor.vacationBalance", {
+          available: Math.max(0, vacationBalance.availableDays).toFixed(2),
+          requested: vacationRequestedDays.toFixed(2),
+          used: vacationBalance.usedDays.toFixed(2),
+          entitled: vacationBalance.entitledDays.toFixed(2),
+        })
+      : null;
 
   useEffect(() => {
     if (!companySession) return;
@@ -284,6 +345,62 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       .then((responses) => setHolidays(responses.flatMap((response) => response.holidays)))
       .catch(() => setHolidays([]));
   }, [companySession, resolvedEndDate, settings.country, startDate]);
+
+  useEffect(() => {
+    if (!companySession || !effectiveUserId) {
+      setTimeOffInLieuBalance({ earnedMinutes: 0, bookedMinutes: 0, availableMinutes: 0 });
+      setTimeOffInLieuRequestedMinutes(0);
+      setVacationBalance({ entitledDays: 0, usedDays: 0, availableDays: 0 });
+      setVacationRequestedDays(0);
+      return;
+    }
+
+    void Promise.all([
+      api.getTimeOffInLieuBalance(companySession.token, {
+        targetUserId: canSwitchUser ? effectiveUserId : undefined,
+        excludeEntryId: mode === "edit" && entryId ? Number(entryId) : undefined,
+        startDate,
+        endDate: resolvedEndDate,
+      }),
+      api.getVacationBalance(companySession.token, {
+        targetUserId: canSwitchUser ? effectiveUserId : undefined,
+        excludeEntryId: mode === "edit" && entryId ? Number(entryId) : undefined,
+        startDate,
+        endDate: resolvedEndDate,
+      }),
+    ]).then(([timeOffResponse, vacationResponse]) => {
+      setTimeOffInLieuBalance(timeOffResponse.balance);
+      setTimeOffInLieuRequestedMinutes(timeOffResponse.requestedMinutes ?? 0);
+      setVacationBalance(vacationResponse.balance);
+      setVacationRequestedDays(vacationResponse.requestedDays ?? 0);
+    }).catch(() => {
+      setTimeOffInLieuBalance({ earnedMinutes: 0, bookedMinutes: 0, availableMinutes: 0 });
+      setTimeOffInLieuRequestedMinutes(0);
+      setVacationBalance({ entitledDays: 0, usedDays: 0, availableDays: 0 });
+      setVacationRequestedDays(0);
+    });
+  }, [canSwitchUser, companySession, effectiveUserId, endDate, entryId, mode, resolvedEndDate, startDate]);
+
+  useEffect(() => {
+    if (!companySession || !effectiveUserId) {
+      setRangeEntryConflict({ hasWork: false, hasLeave: false });
+      return;
+    }
+
+    void api.listTimeEntries(companySession.token, {
+      from: startDate,
+      to: resolvedEndDate,
+      targetUserId: canSwitchUser ? effectiveUserId : undefined,
+    }).then((response) => {
+      const relevantEntries = response.entries.filter((entry) => mode !== "edit" || entry.id !== Number(entryId));
+      setRangeEntryConflict({
+        hasWork: relevantEntries.some((entry) => entry.entryType === "work"),
+        hasLeave: relevantEntries.some((entry) => entry.entryType !== "work"),
+      });
+    }).catch(() => {
+      setRangeEntryConflict({ hasWork: false, hasLeave: false });
+    });
+  }, [canSwitchUser, companySession, effectiveUserId, entryId, mode, resolvedEndDate, startDate]);
 
   useEffect(() => {
     if (mode !== "edit" || !companySession || !entryId || !effectiveUserId) return;
@@ -324,24 +441,39 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       return;
     }
 
+    const nextAllowedType = (
+      [
+        !rangeEntryConflict.hasLeave && allowedEntryTypes.work.allowed ? "work" : null,
+        !rangeEntryConflict.hasWork && !rangeEntryConflict.hasLeave && allowedEntryTypes.vacation.allowed && vacationBalance.availableDays > 0 ? "vacation" : null,
+        !rangeEntryConflict.hasWork && !rangeEntryConflict.hasLeave && allowedEntryTypes.timeOffInLieu.allowed && timeOffInLieuBalance.availableMinutes > 0 ? "time_off_in_lieu" : null,
+        !rangeEntryConflict.hasWork && !rangeEntryConflict.hasLeave && allowedEntryTypes.sickLeave.allowed ? "sick_leave" : null,
+      ] as Array<TimeEntryType | null>
+    ).find((value): value is TimeEntryType => value !== null);
+
     const currentEntryTypeAllowed =
       entryType === "work"
-        ? allowedEntryTypes.work.allowed
+        ? !rangeEntryConflict.hasLeave && allowedEntryTypes.work.allowed
+        : entryType === "time_off_in_lieu"
+          ? !rangeEntryConflict.hasWork && !rangeEntryConflict.hasLeave && allowedEntryTypes.timeOffInLieu.allowed && timeOffInLieuBalance.availableMinutes > 0
+        : entryType === "vacation"
+          ? !rangeEntryConflict.hasWork && !rangeEntryConflict.hasLeave && allowedEntryTypes.vacation.allowed && vacationBalance.availableDays > 0
         : entryType === "sick_leave"
-          ? allowedEntryTypes.sickLeave.allowed
-          : allowedEntryTypes.vacation.allowed;
+          ? !rangeEntryConflict.hasWork && !rangeEntryConflict.hasLeave && allowedEntryTypes.sickLeave.allowed
+        : allowedEntryTypes.vacation.allowed;
 
     if (!currentEntryTypeAllowed) {
-      setEntryType("vacation");
+      if (nextAllowedType) {
+        setEntryType(nextAllowedType);
+      }
     }
-  }, [allowedEntryTypes.sickLeave.allowed, allowedEntryTypes.vacation.allowed, allowedEntryTypes.work.allowed, entryType, mode]);
+  }, [allowedEntryTypes.sickLeave.allowed, allowedEntryTypes.timeOffInLieu.allowed, allowedEntryTypes.vacation.allowed, allowedEntryTypes.work.allowed, entryType, mode, rangeEntryConflict.hasLeave, rangeEntryConflict.hasWork, timeOffInLieuBalance.availableMinutes, vacationBalance.availableDays]);
 
   async function handleSave() {
     if (!companySession || !effectiveUserId) return;
 
     try {
       if (resolvedEndDate < startDate) throw new Error(t("recordEditor.endDateAfterStart"));
-      if (dayLimitError) throw new Error(dayLimitError);
+      if (blockingError) throw new Error(blockingError);
       if (entryType === "work") {
         if (!startTime) throw new Error(t("recordEditor.startTimeRequired"));
         if (!endTime) throw new Error(t("recordEditor.endTimeRequired"));
@@ -475,9 +607,11 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
         skeleton={<PageLoadingState />}
       >
         <FormPanel>
-          {dayLimitError ? (
-            <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
-              {dayLimitError}
+          {(blockingError || timeOffInLieuInfo || vacationInfo) ? (
+            <div className="rounded-2xl border border-border bg-muted/70 px-4 py-3">
+              <p className="text-sm text-foreground">
+                {blockingError ?? timeOffInLieuInfo ?? vacationInfo}
+              </p>
             </div>
           ) : null}
 
@@ -548,7 +682,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
               <Button variant="ghost" onClick={() => navigate(backTo)} type="button">
                 {t("recordEditor.cancel")}
               </Button>
-              <Button disabled={saving || loading || deleting || Boolean(dayLimitError)} onClick={() => void handleSave()} type="button">
+              <Button disabled={saving || loading || deleting || Boolean(blockingError)} onClick={() => void handleSave()} type="button">
                 {saving ? t("recordEditor.saving") : mode === "create" ? t("recordEditor.addEntry") : t("recordEditor.save")}
               </Button>
             </div>

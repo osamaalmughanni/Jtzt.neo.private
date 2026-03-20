@@ -19,7 +19,7 @@ import { normalizeOvertimeSettings } from "../../shared/utils/overtime";
 import { buildUserContract } from "../services/user-contract-schedule";
 
 function normalizeEntryType(value: unknown) {
-  if (value === "work" || value === "vacation" || value === "sick_leave") {
+  if (value === "work" || value === "vacation" || value === "sick_leave" || value === "time_off_in_lieu") {
     return value;
   }
 
@@ -107,6 +107,7 @@ export function mapUserContract(row: any, schedule: UserContractScheduleDay[] = 
     startDate: row.start_date,
     endDate: row.end_date,
     paymentPerHour: row.payment_per_hour,
+    annualVacationDays: Number(row.annual_vacation_days ?? 25),
     schedule: [],
     createdAt: row.created_at
   };

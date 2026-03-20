@@ -11,7 +11,7 @@ function isWorkEntry(entryType: TimeEntryType) {
 }
 
 function usesDateRange(entryType: TimeEntryType) {
-  return entryType === "vacation" || entryType === "sick_leave";
+  return entryType === "vacation" || entryType === "sick_leave" || entryType === "time_off_in_lieu";
 }
 
 function resolveNonWorkAnchorIso(day: string, timeZone: string) {
@@ -218,6 +218,54 @@ export const timeService = {
 
       return timestampsOverlap(candidate.startTime, candidate.endTime, row.start_time, row.end_time);
     });
+  },
+
+  async hasWorkEntryOnRange(
+    db: AppDatabase,
+    companyId: string,
+    userId: number,
+    startDay: string,
+    endDay: string,
+    excludeEntryId?: number,
+  ) {
+    const row = await db.first(
+      `SELECT id
+         FROM time_entries
+         WHERE company_id = ?
+           AND user_id = ?
+           AND entry_type = 'work'
+           AND (? IS NULL OR id != ?)
+           AND entry_date <= ?
+           AND COALESCE(end_date, entry_date) >= ?
+         LIMIT 1`,
+      [companyId, userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
+    );
+
+    return Boolean(row);
+  },
+
+  async hasNonWorkEntryOnRange(
+    db: AppDatabase,
+    companyId: string,
+    userId: number,
+    startDay: string,
+    endDay: string,
+    excludeEntryId?: number,
+  ) {
+    const row = await db.first(
+      `SELECT id
+         FROM time_entries
+         WHERE company_id = ?
+           AND user_id = ?
+           AND entry_type != 'work'
+           AND (? IS NULL OR id != ?)
+           AND entry_date <= ?
+           AND COALESCE(end_date, entry_date) >= ?
+         LIMIT 1`,
+      [companyId, userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
+    );
+
+    return Boolean(row);
   },
 
   async startTimer(db: AppDatabase, companyId: string, userId: number, input: StartTimerInput, snapshot = getLocalNowSnapshot()) {

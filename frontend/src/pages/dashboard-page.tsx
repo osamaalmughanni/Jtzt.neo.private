@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarBlank, FirstAidKit, PencilSimple, Play, Plus, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
+import { Briefcase, CalendarBlank, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import type {
   CompanyCustomField,
@@ -74,6 +74,8 @@ const defaultSummary: DashboardSummary = {
     today: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     week: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     month: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+    vacation: { entitledDays: 0, usedDays: 0, availableDays: 0 },
+    timeOffInLieu: { earnedMinutes: 0, bookedMinutes: 0, availableMinutes: 0 },
   },
 };
 
@@ -111,7 +113,7 @@ function parseDayParam(value: string | null) {
   return parseLocalDay(value) ?? new Date();
 }
 
-function buildRecordEditorHref(userId: number | null, day: Date, entryType?: "vacation") {
+function buildRecordEditorHref(userId: number | null, day: Date, entryType?: "vacation" | "time_off_in_lieu") {
   const params = new URLSearchParams();
   if (userId) {
     params.set("user", String(userId));
@@ -131,36 +133,23 @@ function getHolidayDisplayName(holiday: PublicHolidayRecord | undefined) {
   return holiday.localName?.trim() || holiday.name?.trim() || null;
 }
 
-function getEntryHeadline(entry: TimeEntryView, getLabel: (entryType: TimeEntryView["entryType"]) => string, timeZone?: string) {
-  if (entry.entryType === "work") {
-    return `${toTimeInputValue(entry.startTime, timeZone)} - ${toTimeInputValue(entry.endTime, timeZone)}`;
-  }
-
+function getEntryHeadline(entry: TimeEntryView, getLabel: (entryType: TimeEntryView["entryType"]) => string) {
   return getLabel(entry.entryType);
 }
 
-function getEntryMeta(entry: TimeEntryView, locale: string) {
-  if (entry.entryType === "work") {
-    return formatMinutes(entry.durationMinutes);
-  }
-
-  return `${formatCompanyDateRange(entry.entryDate, entry.endDate, locale)} • ${entry.effectiveDayCount} day${entry.effectiveDayCount === 1 ? "" : "s"}`;
+function formatDayCount(value: number) {
+  const normalized = Math.max(0, value);
+  const hasFraction = Math.abs(normalized % 1) > 0;
+  const formatted = normalized.toFixed(hasFraction ? 1 : 0);
+  const suffix = Math.abs(normalized - 1) < 0.01 ? "day" : "days";
+  return `${formatted} ${suffix}`;
 }
 
 function getRecordEntryStatusClass(entryType: TimeEntryView["entryType"], isActiveWorkEntry: boolean) {
   if (isActiveWorkEntry) {
     return "border-emerald-500/25 bg-emerald-500/12 text-emerald-600 dark:text-emerald-400";
   }
-
-  if (entryType === "work") {
-    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
-  }
-
-  if (entryType === "vacation") {
-    return "border-sky-500/20 bg-sky-500/10 text-sky-600 dark:text-sky-400";
-  }
-
-  return "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400";
+  return "";
 }
 
 function getCustomFieldDisplayValue(field: CompanyCustomField | undefined, rawValue: string | number | boolean) {
@@ -212,8 +201,8 @@ function calculateLiveWorkDurationMinutes(
   return Math.max(0, rawMinutes - settings.autoBreakDurationMinutes);
 }
 
-function resolveCalendarDayState(entries: TimeEntryView[]): "work" | "sick_leave" | "vacation" | "mixed" | null {
-  let nextState: "work" | "sick_leave" | "vacation" | "mixed" | null = null;
+function resolveCalendarDayState(entries: TimeEntryView[]): "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed" | null {
+  let nextState: "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed" | null = null;
 
   for (const entry of entries) {
     if (!nextState || nextState === entry.entryType) {
@@ -230,9 +219,11 @@ function resolveCalendarDayState(entries: TimeEntryView[]): "work" | "sick_leave
 function RecordStatusIcon({
   entryType,
   active,
+  className,
 }: {
   entryType: TimeEntryView["entryType"];
   active: boolean;
+  className: string;
 }) {
   const Icon = active
     ? SpinnerGap
@@ -240,13 +231,15 @@ function RecordStatusIcon({
       ? Briefcase
       : entryType === "vacation"
         ? UmbrellaSimple
+        : entryType === "time_off_in_lieu"
+          ? ClockCounterClockwise
         : FirstAidKit;
 
   return (
     <span
       className={cn(
         "inline-flex h-6 w-6 flex-none items-center justify-center self-center rounded-md border",
-        getRecordEntryStatusClass(entryType, active)
+        active ? getRecordEntryStatusClass(entryType, active) : className
       )}
     >
       <Icon size={14} weight={active ? "bold" : "fill"} className={active ? "animate-spin" : undefined} />
@@ -274,7 +267,7 @@ export function DashboardPage() {
   const [now, setNow] = useState(() => new Date());
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDayParam(searchParams.get("day"))));
   const [calendarHolidays, setCalendarHolidays] = useState<PublicHolidayRecord[]>([]);
-  const [calendarDayStates, setCalendarDayStates] = useState<Record<string, "work" | "sick_leave" | "vacation" | "mixed">>({});
+  const [calendarDayStates, setCalendarDayStates] = useState<Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">>({});
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [isMobileCalendarCollapsed, setIsMobileCalendarCollapsed] = useState(false);
 
@@ -351,7 +344,7 @@ export function DashboardPage() {
     mode: "create",
     role: companyIdentity?.user.role,
     settings,
-    entryType: allowedEntryTypes.vacation.allowed ? "vacation" : "work",
+    entryType: allowedEntryTypes.vacation.allowed ? "vacation" : allowedEntryTypes.timeOffInLieu.allowed ? "time_off_in_lieu" : "work",
     startDate: selectedDayKey,
     endDate: selectedDayKey,
     todayDay,
@@ -359,11 +352,17 @@ export function DashboardPage() {
   });
   const selectedDayWorkBlockedByHoliday = !allowedEntryTypes.work.allowed && selectedDayIsHoliday;
   const futureRecordSelected = selectedDayFutureDistance > 0;
-  const futureVacationOnly = allowedEntryTypes.onlyVacationAllowed && futureRecordSelected;
-  const canCreateRecord = allowedEntryTypes.anyAllowed;
+  const futurePlannedLeaveOnly = allowedEntryTypes.onlyPlannedLeaveAllowed && futureRecordSelected;
+  const selectedDayHasWorkEntry = entries.some((entry) => entry.entryType === "work");
+  const selectedDayHasLeaveEntry = entries.some((entry) => entry.entryType !== "work");
+  const workEntryAllowed = allowedEntryTypes.work.allowed && !selectedDayHasLeaveEntry;
+  const vacationAllowed = allowedEntryTypes.vacation.allowed && summary.contractStats.vacation.availableDays > 0;
+  const timeOffAllowed = allowedEntryTypes.timeOffInLieu.allowed && summary.contractStats.timeOffInLieu.availableMinutes > 0;
+  const leaveEntryAllowed = !selectedDayHasWorkEntry && !selectedDayHasLeaveEntry && (allowedEntryTypes.sickLeave.allowed || vacationAllowed || timeOffAllowed);
+  const canCreateRecord = workEntryAllowed || leaveEntryAllowed;
   const canUseTabletPunch = summary.activeEntry
     ? true
-    : isNowContext && allowedEntryTypes.work.allowed;
+    : isNowContext && workEntryAllowed;
   const createRecordMessage =
     selectedDayPolicy.reason === "insert_limit"
       ? t("dashboard.insertLimitDetailed", {
@@ -371,7 +370,7 @@ export function DashboardPage() {
           days: selectedDayPastDistance,
           date: formatCompanyDate(selectedDayKey, settings.locale),
         })
-      : futureVacationOnly
+      : futurePlannedLeaveOnly
       ? t("dashboard.futureVacationOnly", {
           date: formatCompanyDate(selectedDayKey, settings.locale),
           days: selectedDayFutureDistance,
@@ -381,6 +380,10 @@ export function DashboardPage() {
           date: formatCompanyDate(selectedDayKey, settings.locale),
           holiday: getHolidayDisplayName(selectedHoliday) ?? formatCompanyDate(selectedDayKey, settings.locale),
         })
+      : selectedDayHasWorkEntry
+      ? t("dashboard.workDayAlreadyBooked")
+      : selectedDayHasLeaveEntry
+      ? t("recordEditor.leaveTypeAlreadyBooked")
       : null;
   const customFieldsById = useMemo(
     () =>
@@ -452,7 +455,7 @@ export function DashboardPage() {
 
   const calendarResource = usePageResource<{
     holidays: PublicHolidayRecord[];
-    dayStates: Record<string, "work" | "sick_leave" | "vacation" | "mixed">;
+    dayStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">;
   }>({
     enabled: Boolean(companySession) && Boolean(effectiveUserId),
     deps: [companySession?.token, effectiveUserId, visibleMonth.getFullYear(), visibleMonth.getMonth(), t],
@@ -474,7 +477,7 @@ export function DashboardPage() {
         }),
       ]);
 
-      const nextStates: Record<string, "work" | "sick_leave" | "vacation" | "mixed"> = {};
+      const nextStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed"> = {};
       for (const entry of entriesResponse.entries) {
         for (const entryDay of enumerateLocalDays(entry.entryDate, entry.endDate ?? entry.entryDate)) {
           const currentState = nextStates[entryDay];
@@ -643,8 +646,12 @@ export function DashboardPage() {
     void startTabletTimer({});
   }
 
-  const createRecordHref = buildRecordEditorHref(effectiveUserId, selectedDate, futureVacationOnly ? "vacation" : undefined);
-  const dockShowsPlay = isNowContext && allowedEntryTypes.work.allowed && !summary.activeEntry;
+  const createRecordHref = buildRecordEditorHref(
+    effectiveUserId,
+    selectedDate,
+    futurePlannedLeaveOnly ? (vacationAllowed ? "vacation" : timeOffAllowed ? "time_off_in_lieu" : undefined) : undefined,
+  );
+  const dockShowsPlay = isNowContext && workEntryAllowed && !summary.activeEntry;
   const dockShowsStop = Boolean(summary.activeEntry);
   const dockUsesPlus = !dockShowsStop && !dockShowsPlay;
   const showCalendar = !isMobileViewport || !isMobileCalendarCollapsed;
@@ -872,10 +879,14 @@ export function DashboardPage() {
                     <CalendarBlank size={14} weight={isMobileCalendarCollapsed ? "regular" : "fill"} />
                   </Button>
                 ) : null}
-                <p className="min-w-0 truncate whitespace-nowrap text-[11px] text-muted-foreground">
+                <p className="min-w-0 truncate whitespace-nowrap text-[10px] text-muted-foreground sm:text-[11px]">
                   {t("dashboard.expected", { value: formatMinutes(summary.contractStats.today.expectedMinutes) })}
-                  <span className="mx-1.5 opacity-50">/</span>
+                  <span className="mx-1 opacity-50">/</span>
                   {t("dashboard.recordedBadge", { value: formatMinutes(summary.contractStats.today.recordedMinutes) })}
+                  <span className="mx-1 opacity-50">/</span>
+                  {t("dashboard.vacationAvailable", { value: Math.max(0, summary.contractStats.vacation.availableDays).toFixed(1) })}
+                  <span className="mx-1 opacity-50">/</span>
+                  {t("dashboard.timeOffAvailable", { value: (Math.max(0, summary.contractStats.timeOffInLieu.availableMinutes) / 60).toFixed(1) })}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -907,126 +918,120 @@ export function DashboardPage() {
           <div className="flex flex-col gap-2 border-t border-border/70 pt-3">
             <p className="text-sm font-medium text-foreground">{t("dashboard.records")}</p>
             <div className="overflow-visible">
-              <Stack gap="xs">
-            {entries.map((entry) => {
-              const canEdit =
-                evaluateTimeEntryPolicy({
-                  mode: "edit",
-                  role: companyIdentity?.user.role,
-                  settings,
-                  entryType: entry.entryType,
-                  startDate: entry.entryDate,
-                  endDate: entry.endDate,
-                  todayDay,
-                  hasHolidayInRange: false,
-                }).allowed;
-              const canDelete = canEdit;
-              const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
-              const supportText = getEntrySupportText(
-                entry,
-                customFieldsById,
-              );
-              const isActiveWorkEntry =
-                entry.entryType === "work" &&
-                summary.activeEntry?.id === entry.id &&
-                !entry.endTime;
-              const entryHeadline = isActiveWorkEntry
-                ? `${toTimeInputValue(entry.startTime, settings.timeZone)} - ${toTimeInputValue(now.toISOString(), settings.timeZone)}`
-                : getEntryHeadline(entry, getEntryLabel, settings.timeZone);
-              const entryMeta =
-                entry.entryType === "work"
-                  ? formatMinutes(
-                      isActiveWorkEntry
-                        ? calculateLiveWorkDurationMinutes(entry.startTime, null, settings)
-                        : calculateLiveWorkDurationMinutes(entry.startTime, entry.endTime, settings),
-                    )
-                  : getEntryMeta(entry, settings.locale);
+              <div className="grid">
+                {entries.map((entry) => {
+                  const canEdit =
+                    evaluateTimeEntryPolicy({
+                      mode: "edit",
+                      role: companyIdentity?.user.role,
+                      settings,
+                      entryType: entry.entryType,
+                      startDate: entry.entryDate,
+                      endDate: entry.endDate,
+                      todayDay,
+                      hasHolidayInRange: false,
+                    }).allowed;
+                  const canDelete = canEdit;
+                  const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
+                  const supportText = getEntrySupportText(entry, customFieldsById);
+                  const isActiveWorkEntry =
+                    entry.entryType === "work" &&
+                    summary.activeEntry?.id === entry.id &&
+                    !entry.endTime;
+                  const entryHeadline = getEntryHeadline(entry, getEntryLabel);
+                  const entryMeta =
+                    entry.entryType === "work"
+                      ? formatMinutes(
+                          isActiveWorkEntry
+                            ? calculateLiveWorkDurationMinutes(entry.startTime, null, settings)
+                            : calculateLiveWorkDurationMinutes(entry.startTime, entry.endTime, settings),
+                        )
+                      : formatDayCount(entry.effectiveDayCount);
 
-              return (
-                <div
-                  key={entry.id}
-                  className="flex items-center gap-3"
-                >
-                  <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                    <RecordStatusIcon entryType={entry.entryType} active={isActiveWorkEntry} />
-                    <div className="shrink-0 whitespace-nowrap text-sm font-medium leading-tight text-foreground">
-                      {entryHeadline}
-                    </div>
-                    <span
-                      className={
-                        isActiveWorkEntry
-                          ? "shrink-0 truncate whitespace-nowrap rounded-full bg-destructive px-2 py-1 text-xs font-medium leading-tight text-destructive-foreground"
-                          : "shrink-0 truncate whitespace-nowrap rounded-full bg-muted px-2 py-1 text-xs font-medium leading-tight text-foreground"
-                      }
-                    >
-                        {entryMeta}
-                      </span>
-                    {supportText ? (
-                      <div className="min-w-0 flex-1 truncate whitespace-nowrap text-sm leading-tight text-muted-foreground">
-                        {supportText}
+                  return (
+                    <div key={entry.id} className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-3 py-2">
+                      <div>
+                        <RecordStatusIcon entryType={entry.entryType} active={isActiveWorkEntry} className={entryStateUi[entry.entryType].recordStatusClassName} />
                       </div>
-                    ) : null}
-                  </div>
-                  <div className="relative z-10 flex shrink-0 items-center justify-end gap-1 self-center pl-1">
-                    {canDelete ? (
-                      <Button
-                        variant="ghost"
-                        className="h-10 w-10"
-                        size="icon"
-                        onPointerDown={triggerHapticFeedback}
-                        onClick={() => setPendingDeleteEntry(entry)}
-                        type="button"
-                        aria-label={t("dashboard.deleteRecord")}
-                      >
-                        <Trash size={16} weight="bold" />
-                      </Button>
-                    ) : (
-                      <Button
-                        disabled
-                        variant="ghost"
-                        className="h-10 w-10"
-                        size="icon"
-                        type="button"
-                        aria-label={t("dashboard.recordLocked")}
-                      >
-                        <Trash size={16} weight="bold" />
-                      </Button>
-                    )}
-                      {canEdit ? (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-10 w-10"
-                          onPointerDown={triggerHapticFeedback}
-                          onClick={() => navigate(editHref)}
-                          type="button"
-                          aria-label={t("dashboard.editRecord")}
+                      <div className="min-w-0 flex items-center gap-2 overflow-hidden">
+                        <p className="shrink-0 text-sm font-medium leading-none text-foreground">
+                          {entryHeadline}
+                        </p>
+                        <span
+                          className={
+                            isActiveWorkEntry
+                              ? "shrink-0 rounded-full bg-destructive px-2 py-1 text-sm font-medium leading-none text-destructive-foreground"
+                              : "shrink-0 rounded-full bg-background px-2 py-1 text-sm font-medium leading-none text-foreground"
+                          }
                         >
-                            <PencilSimple size={16} weight="bold" />
-                        </Button>
-                      ) : (
-                        <Button
-                          disabled
-                          className="h-10 w-10"
-                          size="icon"
-                          variant="ghost"
-                          type="button"
-                          aria-label={t("dashboard.recordLocked")}
-                        >
-                          <PencilSimple size={16} weight="bold" />
-                        </Button>
-                      )}
-                  </div>
-                </div>
-              );
-            })}
+                          {entryMeta}
+                        </span>
+                        {supportText ? (
+                          <span className="min-w-0 truncate text-sm leading-none text-muted-foreground">
+                            {supportText}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="relative z-10 flex shrink-0 items-center justify-end gap-1">
+                          {canDelete ? (
+                            <Button
+                              variant="ghost"
+                              className="h-10 w-10"
+                              size="icon"
+                              onPointerDown={triggerHapticFeedback}
+                              onClick={() => setPendingDeleteEntry(entry)}
+                              type="button"
+                              aria-label={t("dashboard.deleteRecord")}
+                            >
+                              <Trash size={16} weight="bold" />
+                            </Button>
+                          ) : (
+                            <Button
+                              disabled
+                              variant="ghost"
+                              className="h-10 w-10"
+                              size="icon"
+                              type="button"
+                              aria-label={t("dashboard.recordLocked")}
+                            >
+                              <Trash size={16} weight="bold" />
+                            </Button>
+                          )}
+                          {canEdit ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-10 w-10"
+                              onPointerDown={triggerHapticFeedback}
+                              onClick={() => navigate(editHref)}
+                              type="button"
+                              aria-label={t("dashboard.editRecord")}
+                            >
+                              <PencilSimple size={16} weight="bold" />
+                            </Button>
+                          ) : (
+                            <Button
+                              disabled
+                              className="h-10 w-10"
+                              size="icon"
+                              variant="ghost"
+                              type="button"
+                              aria-label={t("dashboard.recordLocked")}
+                            >
+                              <PencilSimple size={16} weight="bold" />
+                            </Button>
+                          )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
 
-            {entries.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {t("dashboard.noRecords")}
-              </p>
-            ) : null}
-              </Stack>
+              {entries.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("dashboard.noRecords")}
+                </p>
+              ) : null}
             </div>
           </div>
         </div>

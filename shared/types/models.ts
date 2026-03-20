@@ -1,5 +1,5 @@
 export type UserRole = "employee" | "manager" | "admin";
-export type TimeEntryType = "work" | "vacation" | "sick_leave";
+export type TimeEntryType = "work" | "vacation" | "sick_leave" | "time_off_in_lieu";
 export type CompanyCustomFieldType = "text" | "number" | "date" | "boolean" | "select";
 export type ContractWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type OvertimeCompensationType = "cash" | "time_off" | "cash_or_time_off";
@@ -102,6 +102,7 @@ export interface UserContract {
   startDate: string;
   endDate: string | null;
   paymentPerHour: number;
+  annualVacationDays: number;
   schedule: UserContractScheduleDay[];
   createdAt: string;
 }
@@ -187,6 +188,16 @@ export interface DashboardSummary {
       expectedMinutes: number;
       recordedMinutes: number;
       balanceMinutes: number;
+    };
+    vacation: {
+      entitledDays: number;
+      usedDays: number;
+      availableDays: number;
+    };
+    timeOffInLieu: {
+      earnedMinutes: number;
+      bookedMinutes: number;
+      availableMinutes: number;
     };
   };
 }

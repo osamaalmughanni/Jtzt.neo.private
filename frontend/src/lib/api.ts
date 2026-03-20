@@ -28,6 +28,8 @@ import type {
   StopTimerInput,
   SystemStatsResponse,
   TimeListResponse,
+  TimeOffInLieuBalanceResponse,
+  VacationBalanceResponse,
   UpdateSettingsInput,
   UpdateOvertimeSettingsInput,
   UpdateTabletCodeInput,
@@ -303,6 +305,36 @@ export const api = {
     if (filters.targetUserId) params.set("targetUserId", String(filters.targetUserId));
     const suffix = params.toString() ? `?${params.toString()}` : "";
     return request<TimeListResponse>(`/api/time/list${suffix}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  getTimeOffInLieuBalance(
+    token: string,
+    filters: { targetUserId?: number; excludeEntryId?: number; startDate?: string; endDate?: string },
+  ) {
+    const params = new URLSearchParams();
+    if (filters.targetUserId) params.set("targetUserId", String(filters.targetUserId));
+    if (filters.excludeEntryId) params.set("excludeEntryId", String(filters.excludeEntryId));
+    if (filters.startDate) params.set("startDate", filters.startDate);
+    if (filters.endDate) params.set("endDate", filters.endDate);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<TimeOffInLieuBalanceResponse>(`/api/time/time-off-in-lieu/balance${suffix}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  getVacationBalance(
+    token: string,
+    filters: { targetUserId?: number; excludeEntryId?: number; startDate?: string; endDate?: string },
+  ) {
+    const params = new URLSearchParams();
+    if (filters.targetUserId) params.set("targetUserId", String(filters.targetUserId));
+    if (filters.excludeEntryId) params.set("excludeEntryId", String(filters.excludeEntryId));
+    if (filters.startDate) params.set("startDate", filters.startDate);
+    if (filters.endDate) params.set("endDate", filters.endDate);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<VacationBalanceResponse>(`/api/time/vacation/balance${suffix}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
   },

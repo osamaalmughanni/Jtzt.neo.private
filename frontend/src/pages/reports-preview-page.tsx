@@ -71,6 +71,9 @@ function translateEntryType(value: string, t: ReturnType<typeof useTranslation>[
     case "vacation":
     case "Vacation":
       return t("recordEditor.vacation");
+    case "time_off_in_lieu":
+    case "Time off in lieu":
+      return t("recordEditor.timeOffInLieu");
     case "sick_leave":
     case "Sick leave":
       return t("recordEditor.sickLeave");
@@ -177,34 +180,24 @@ function OvertimeTimelineCell({ meta }: { meta: NonNullable<ReportResponse["repo
   );
 }
 
-function OvertimeReceiptCell({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
+function OvertimeSummaryCell({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
+  const rows = [
+    { label: "Target", value: formatDecimalHours(meta.targetMinutes) },
+    { label: "Actual", value: formatDecimalHours(meta.paidMinutes) },
+    { label: "Premium", value: meta.overtimeMinutes > 0 ? `+${meta.premiumPercent}%` : "--" },
+    { label: "Premium credit", value: meta.overtimeMinutes > 0 ? formatDecimalHours(meta.premiumCreditMinutes) : "--" },
+    { label: "Time-off credit", value: meta.overtimeMinutes > 0 ? formatDecimalHours(meta.timeOffInLieuCreditMinutes) : "--" },
+  ];
+
   return (
-    <div className="flex min-w-[16rem] flex-col gap-1.5">
-      <div className="text-xs font-medium text-foreground">Worked {formatDecimalHours(meta.workedMinutes)}</div>
-      {meta.receiptLines.map((line, index) => (
-        <div key={`${line.label}-${index}`} className="text-xs text-muted-foreground">
-          <span className="text-foreground">{formatDecimalHours(line.minutes)} {line.label}</span>
-          {line.valueMinutes !== null ? <span>{` -> ${formatDecimalHours(line.valueMinutes)}`}</span> : null}
-          <span>{` - ${line.detail}`}</span>
+    <div className="grid gap-2 sm:grid-cols-2">
+      {rows.map((row) => (
+        <div key={row.label} className="rounded-xl border border-border bg-muted/20 px-3 py-2">
+          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{row.label}</p>
+          <p className="mt-1 text-sm font-medium text-foreground">{row.value}</p>
         </div>
       ))}
     </div>
-  );
-}
-
-function OvertimeRuleCell({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
-  return (
-    <details className="min-w-[16rem]">
-      <summary className="cursor-pointer text-xs font-medium text-foreground">View rule</summary>
-      <div className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-muted/20 p-3">
-        {meta.traces.map((trace, index) => (
-          <div key={`${trace.title}-${index}`} className="flex flex-col gap-0.5">
-            <span className="text-xs font-medium text-foreground">{trace.title}</span>
-            <span className="text-xs text-muted-foreground">{trace.detail}</span>
-          </div>
-        ))}
-      </div>
-    </details>
   );
 }
 
@@ -244,19 +237,13 @@ function OvertimePreviewCard({
           <OvertimeTimelineCell meta={meta} />
         </div>
       </div>
-
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <div className="rounded-2xl border border-border bg-muted/20 p-3">
-          <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Receipt</p>
-          <OvertimeReceiptCell meta={meta} />
-        </div>
-        <div className="rounded-2xl border border-border bg-muted/20 p-3">
-          <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Rule Trace</p>
-          <OvertimeRuleCell meta={meta} />
-        </div>
-      </div>
+      <OvertimeSummaryCell meta={meta} />
     </div>
   );
+}
+
+function formatDayAmount(value: number) {
+  return `${value.toFixed(2)}d`;
 }
 
 function listDays(startDate: string, endDate: string) {
@@ -467,7 +454,7 @@ export function ReportsPreviewPage() {
   const { companySession } = useAuth();
   const draftId = searchParams.get("draft");
   const draft = useMemo(() => loadReportDraft(draftId), [draftId]);
-  const [viewMode, setViewMode] = useState<"table" | "gantt" | "overtime">("table");
+  const [viewMode, setViewMode] = useState<"table" | "gantt" | "overtime" | "vacation">("table");
   const reportResource = usePageResource<{ report: ReportResponse["report"] | null; settings: CompanySettings | null }>({
     enabled: Boolean(companySession) && Boolean(draft),
     deps: [companySession?.token, draft, t],
@@ -564,6 +551,15 @@ export function ReportsPreviewPage() {
     () => rowsWithMeta.filter((item) => item.meta.overtime !== null),
     [rowsWithMeta],
   );
+  const vacationOverviewRows = useMemo(() => report?.vacationOverview ?? [], [report]);
+  const vacationTotals = useMemo(
+    () => ({
+      users: vacationOverviewRows.length,
+      periods: vacationOverviewRows.reduce((sum, row) => sum + row.periods.length, 0),
+      days: vacationOverviewRows.reduce((sum, row) => sum + row.usedDays, 0),
+    }),
+    [vacationOverviewRows],
+  );
 
   useEffect(() => {
     if (!draft && !reportResource.isLoading) {
@@ -613,12 +609,13 @@ export function ReportsPreviewPage() {
                   </div>
                 </div>
 
-                <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "gantt" | "overtime")} className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+                <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "gantt" | "overtime" | "vacation")} className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <TabsList className="h-9">
                       <TabsTrigger value="table">{t("reports.table")}</TabsTrigger>
                       <TabsTrigger value="gantt">{t("reports.gantt")}</TabsTrigger>
-                      <TabsTrigger value="overtime">Overtime</TabsTrigger>
+                      <TabsTrigger value="overtime">{t("reports.overtimeTab")}</TabsTrigger>
+                      <TabsTrigger value="vacation">{t("reports.vacationTab")}</TabsTrigger>
                     </TabsList>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button variant="outline" onClick={() => exportReportExcel({ ...report, columns: resolvedColumns }, t, customFieldLabels)} type="button">
@@ -651,10 +648,6 @@ export function ReportsPreviewPage() {
                                     <OvertimeStateBadge meta={meta.overtime} />
                                   ) : column.kind === "overtime_timeline" && meta.overtime ? (
                                     <OvertimeTimelineCell meta={meta.overtime} />
-                                  ) : column.kind === "overtime_receipt" && meta.overtime ? (
-                                    <OvertimeReceiptCell meta={meta.overtime} />
-                                  ) : column.kind === "overtime_rule" && meta.overtime ? (
-                                    <OvertimeRuleCell meta={meta.overtime} />
                                   ) : (
                                     <span className="whitespace-nowrap">
                                       {formatCellValue(
@@ -726,7 +719,7 @@ export function ReportsPreviewPage() {
                                         <p className="text-xs text-muted-foreground">{user.role}</p>
                                       </div>
                                       <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-                                        {(["work", "vacation", "sick_leave"] as const)
+                                        {(["work", "vacation", "time_off_in_lieu", "sick_leave"] as const)
                                           .filter((type) => user.items.some((item) => item.entryType === type))
                                           .map((type) => (
                                             <span key={`${user.userId}-${type}-legend`} className="inline-flex items-center gap-1.5 rounded-full bg-muted/40 px-2.5 py-1">
@@ -736,6 +729,8 @@ export function ReportsPreviewPage() {
                                                   ? t("reports.workRow")
                                                   : type === "vacation"
                                                     ? t("reports.vacationRow")
+                                                    : type === "time_off_in_lieu"
+                                                      ? t("reports.timeOffInLieuRow")
                                                     : t("reports.sickLeaveRow")}
                                               </span>
                                             </span>
@@ -803,7 +798,7 @@ export function ReportsPreviewPage() {
                   <TabsContent value="overtime" className="mt-0 min-h-0 flex-1 overflow-hidden">
                     <div className="flex h-full w-full min-h-0 flex-col gap-4 rounded-2xl border border-border p-4">
                       {overtimePreviewRows.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No overtime preview data is available for this report.</p>
+                        <p className="text-sm text-muted-foreground">{t("reports.noOvertimePreview")}</p>
                       ) : (
                         <div className="min-h-0 flex-1 overflow-auto">
                           <div className="flex flex-col gap-4">
@@ -818,6 +813,122 @@ export function ReportsPreviewPage() {
                               />
                             ) : null,
                           )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="vacation" className="mt-0 min-h-0 flex-1 overflow-hidden">
+                    <div className="flex h-full w-full min-h-0 flex-col gap-4 rounded-2xl border border-border p-4">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div className="rounded-2xl border border-border bg-background p-4">
+                          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationUsers")}</p>
+                          <p className="text-sm font-medium text-foreground">{vacationTotals.users}</p>
+                        </div>
+                        <div className="rounded-2xl border border-border bg-background p-4">
+                          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationPeriods")}</p>
+                          <p className="text-sm font-medium text-foreground">{vacationTotals.periods}</p>
+                        </div>
+                        <div className="rounded-2xl border border-border bg-background p-4">
+                          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationDays")}</p>
+                          <p className="text-sm font-medium text-foreground">{vacationTotals.days}</p>
+                        </div>
+                      </div>
+                      {vacationOverviewRows.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">{t("reports.noVacationPreview")}</p>
+                      ) : (
+                        <div className="min-h-0 flex-1 overflow-auto">
+                          <div className="flex flex-col gap-4">
+                            {vacationOverviewRows.map((row) => (
+                              <div key={`vacation-${row.userId}`} className="flex flex-col gap-4 rounded-2xl border border-border bg-background p-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div className="flex flex-col gap-1">
+                                    <p className="text-sm font-medium text-foreground">{row.userName}</p>
+                                    <p className="text-xs text-muted-foreground">{row.role}</p>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                                    <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-foreground">
+                                      {t("reports.vacationDaysBadge", { value: row.usedDays })}
+                                    </span>
+                                    <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-foreground">
+                                      {t("reports.vacationPeriodsBadge", { value: row.periods.length })}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                  {row.monthBreakdown.map((month) => (
+                                    <span key={`${row.userId}-${month.label}`} className="rounded-full bg-muted px-2.5 py-1">
+                                      {month.label} • {month.days}d
+                                    </span>
+                                  ))}
+                                </div>
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                  <div className="rounded-xl border border-border bg-muted/20 px-3 py-3">
+                                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationAvailable")}</p>
+                                    <p className="mt-1 text-sm font-medium text-foreground">{formatDayAmount(row.availableDays)}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-border bg-muted/20 px-3 py-3">
+                                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationUsed")}</p>
+                                    <p className="mt-1 text-sm font-medium text-foreground">{formatDayAmount(row.usedDays)}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-border bg-muted/20 px-3 py-3">
+                                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationEntitlement")}</p>
+                                    <p className="mt-1 text-sm font-medium text-foreground">{formatDayAmount(row.entitledDays)}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-border bg-muted/20 px-3 py-3">
+                                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationContractAllowance")}</p>
+                                    <p className="mt-1 text-sm font-medium text-foreground">
+                                      {row.currentContractVacationDays === null ? "--" : formatDayAmount(row.currentContractVacationDays)}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                                  <div className="rounded-xl border border-border bg-muted/20 px-3 py-3">
+                                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationWorkYear")}</p>
+                                    <p className="mt-1 text-sm font-medium text-foreground">
+                                      {row.currentWorkYearStart && row.currentWorkYearEnd
+                                        ? `${formatCompanyDate(row.currentWorkYearStart, report.locale)} to ${formatCompanyDate(row.currentWorkYearEnd, report.locale)}`
+                                        : "--"}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-xl border border-border bg-muted/20 px-3 py-3">
+                                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationNextGrant")}</p>
+                                    <p className="mt-1 text-sm font-medium text-foreground">
+                                      {row.nextFullEntitlementDate ? formatCompanyDate(row.nextFullEntitlementDate, report.locale) : "--"}
+                                    </p>
+                                  </div>
+                                  <div className="rounded-xl border border-border bg-muted/20 px-3 py-3">
+                                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationStatus")}</p>
+                                    <p className="mt-1 text-sm font-medium text-foreground">
+                                      {row.inInitialAccrualPhase ? t("reports.vacationAccrualPhase") : t("reports.vacationFullEntitlement")}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="overflow-hidden rounded-2xl border border-border">
+                                  <table className="w-full border-collapse text-sm">
+                                    <thead>
+                                      <tr className="border-b border-border bg-muted/40">
+                                        <th className="px-4 py-3 text-left font-medium text-foreground">{t("reports.period")}</th>
+                                        <th className="px-4 py-3 text-left font-medium text-foreground">{t("reports.vacationDays")}</th>
+                                        <th className="px-4 py-3 text-left font-medium text-foreground">{t("reports.note")}</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {row.periods.map((period) => (
+                                        <tr key={period.entryId} className="border-b border-border/70 last:border-b-0">
+                                          <td className="px-4 py-3 text-muted-foreground">
+                                            {formatCompanyDate(period.startDate, report.locale)} to {formatCompanyDate(period.endDate, report.locale)}
+                                          </td>
+                                          <td className="px-4 py-3 text-muted-foreground">{period.days}</td>
+                                          <td className="px-4 py-3 text-muted-foreground">{period.notes?.trim() || "--"}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       )}

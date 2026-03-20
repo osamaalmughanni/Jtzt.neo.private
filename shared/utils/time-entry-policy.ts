@@ -66,7 +66,7 @@ export function evaluateTimeEntryPolicy(input: EvaluateTimeEntryPolicyInput): Ti
     }
   }
 
-  if (daysInFuture > 0 && input.entryType !== "vacation" && !input.settings.allowFutureRecords) {
+  if (daysInFuture > 0 && input.entryType !== "vacation" && input.entryType !== "time_off_in_lieu" && !input.settings.allowFutureRecords) {
     return {
       allowed: false,
       reason: "future_restricted",
@@ -129,12 +129,23 @@ export function getAllowedEntryTypesForDay(input: {
     todayDay: input.todayDay,
     hasHolidayInRange: input.isHoliday,
   });
+  const timeOffInLieu = evaluateTimeEntryPolicy({
+    mode: "create",
+    role: input.role,
+    settings: input.settings,
+    entryType: "time_off_in_lieu",
+    startDate: input.day,
+    endDate: input.day,
+    todayDay: input.todayDay,
+    hasHolidayInRange: input.isHoliday,
+  });
 
   return {
     work,
     vacation,
     sickLeave,
-    anyAllowed: work.allowed || vacation.allowed || sickLeave.allowed,
-    onlyVacationAllowed: vacation.allowed && !work.allowed && !sickLeave.allowed,
+    timeOffInLieu,
+    anyAllowed: work.allowed || vacation.allowed || sickLeave.allowed || timeOffInLieu.allowed,
+    onlyPlannedLeaveAllowed: (vacation.allowed || timeOffInLieu.allowed) && !work.allowed && !sickLeave.allowed,
   };
 }

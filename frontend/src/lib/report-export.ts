@@ -125,12 +125,6 @@ function getRawExcelValue(
   if (column.key === "overtime_timeline") {
     return overtimeMeta ? JSON.stringify(overtimeMeta.segments) : value;
   }
-  if (column.key === "overtime_receipt") {
-    return overtimeMeta ? JSON.stringify(overtimeMeta.receiptLines) : value;
-  }
-  if (column.key === "overtime_rule") {
-    return overtimeMeta ? JSON.stringify(overtimeMeta.traces) : value;
-  }
 
   return value;
 }

@@ -13,12 +13,16 @@ function getRuntimeKey(config: RuntimeConfig) {
 }
 
 async function ensureTimeEntriesSchema(db: AppDatabase) {
+  const tableRow = await db.first<{ sql: string | null }>(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'time_entries'",
+  );
+  const entryTypeSupportsTimeOffInLieu = tableRow?.sql?.includes("'time_off_in_lieu'") ?? false;
   const timeEntryColumns = await db.all<{ name: string }>(
     "SELECT name FROM pragma_table_info('time_entries')",
   );
   const timeEntryColumnNames = new Set(timeEntryColumns.map((column) => column.name));
   const hasLegacyColumns = legacyTimeEntryColumns.some((column) => timeEntryColumnNames.has(column));
-  if (!hasLegacyColumns) {
+  if (!hasLegacyColumns && entryTypeSupportsTimeOffInLieu) {
     return;
   }
 
@@ -29,7 +33,7 @@ async function ensureTimeEntriesSchema(db: AppDatabase) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id TEXT NOT NULL,
       user_id INTEGER NOT NULL,
-      entry_type TEXT NOT NULL DEFAULT 'work' CHECK(entry_type IN ('work', 'vacation', 'sick_leave')),
+      entry_type TEXT NOT NULL DEFAULT 'work' CHECK(entry_type IN ('work', 'vacation', 'sick_leave', 'time_off_in_lieu')),
       entry_date TEXT NOT NULL,
       end_date TEXT,
       start_time TEXT NOT NULL,
@@ -184,6 +188,14 @@ export async function ensureBootstrapState(db: AppDatabase, config: RuntimeConfi
   }
   if (!settingsColumnNames.has("allow_future_records")) {
     await db.exec("ALTER TABLE company_settings ADD COLUMN allow_future_records INTEGER NOT NULL DEFAULT 0");
+  }
+
+  const userContractColumns = await db.all<{ name: string }>(
+    "SELECT name FROM pragma_table_info('user_contracts')",
+  );
+  const userContractColumnNames = new Set(userContractColumns.map((column) => column.name));
+  if (!userContractColumnNames.has("annual_vacation_days")) {
+    await db.exec("ALTER TABLE user_contracts ADD COLUMN annual_vacation_days REAL NOT NULL DEFAULT 25");
   }
 
   const invitationCodeColumns = await db.all<{ name: string }>(

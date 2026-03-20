@@ -275,8 +275,6 @@ export function ReportsPage() {
     { value: "duration", label: t("reports.duration") },
     { value: "overtime_state", label: "Overtime state" },
     { value: "overtime_timeline", label: "Overtime timeline" },
-    { value: "overtime_receipt", label: "Overtime breakdown" },
-    { value: "overtime_rule", label: "Overtime rule trace" },
     { value: "note", label: t("reports.note") },
     { value: "cost", label: t("reports.cost") },
   ], [t]);

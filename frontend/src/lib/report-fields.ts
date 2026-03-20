@@ -11,8 +11,6 @@ const BASE_REPORT_COLUMNS = new Set([
   "duration",
   "overtime_state",
   "overtime_timeline",
-  "overtime_receipt",
-  "overtime_rule",
   "note",
   "cost",
   "entries",
