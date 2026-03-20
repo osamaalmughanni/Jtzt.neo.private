@@ -1,7 +1,8 @@
 import { HTTPException } from "hono/http-exception";
-import type { ReportColumnDefinition, ReportRequestInput } from "../../shared/types/api";
+import type { ReportColumnDefinition, ReportRequestInput, ReportRowMeta } from "../../shared/types/api";
 import type { CompanyCustomField, TimeEntryType, UserContract } from "../../shared/types/models";
 import { calculateLeaveCompensation, calculateWorkCostAmount, calculateWorkDurationMinutes } from "./time-entry-metrics-service";
+import { aggregateOvertimeMeta, buildOvertimeReportMeta } from "./overtime-report-service";
 import { settingsService } from "./settings-service";
 import type { AppDatabase } from "../runtime/types";
 import { mapUserContractScheduleDay } from "../db/mappers";
@@ -34,7 +35,11 @@ const baseColumns: Record<string, ReportColumnDefinition> = {
   note: { key: "note", label: "Note", kind: "text" },
   cost: { key: "cost", label: "Cost", kind: "currency" },
   entries: { key: "entries", label: "Entries", kind: "number" },
-  month: { key: "month", label: "Month", kind: "text" }
+  month: { key: "month", label: "Month", kind: "text" },
+  overtime_state: { key: "overtime_state", label: "Overtime State", kind: "overtime_state" },
+  overtime_timeline: { key: "overtime_timeline", label: "Overtime Timeline", kind: "overtime_timeline" },
+  overtime_receipt: { key: "overtime_receipt", label: "Overtime Breakdown", kind: "overtime_receipt" },
+  overtime_rule: { key: "overtime_rule", label: "Rule Trace", kind: "overtime_rule" }
 };
 
 function normalizeLookupValue(value: string) {
@@ -152,6 +157,7 @@ function getEntryValue(entry: ReportRow, key: string, customFields: CompanyCusto
   if (key === "note") return entry.notes ?? "";
   if (key === "month") return getMonthKey(entry.entry_date);
   if (key === "cost") return 0;
+  if (key === "overtime_state" || key === "overtime_timeline" || key === "overtime_receipt" || key === "overtime_rule") return null;
   return null;
 }
 
@@ -249,6 +255,7 @@ export const reportService = {
     }
 
     const leaveMetricCache = new Map<number, ReturnType<typeof calculateLeaveCompensation>>();
+    const overtimeMetaByEntryId = buildOvertimeReportMeta(rows, settings, contractsByUser);
     const entryValue = (row: ReportRow, key: string) => {
       if ((key === "duration" || key === "cost") && row.entry_type !== "work") {
         let cached = leaveMetricCache.get(row.id);
@@ -291,16 +298,39 @@ export const reportService = {
       const detailRows = rows.map((row) => {
         const next: Record<string, string | number | null> = {};
         for (const column of columns) {
+          const overtimeMeta = overtimeMetaByEntryId.get(row.id) ?? null;
+          if (column.key === "overtime_state") {
+            next[column.key] = overtimeMeta?.stateLabel ?? (row.entry_type === "work" ? "Normal" : null);
+            continue;
+          }
+          if (column.key === "overtime_timeline") {
+            next[column.key] = overtimeMeta?.summary ?? null;
+            continue;
+          }
+          if (column.key === "overtime_receipt") {
+            next[column.key] = overtimeMeta?.receiptLines.map((line) => line.label).join(", ") ?? null;
+            continue;
+          }
+          if (column.key === "overtime_rule") {
+            next[column.key] = overtimeMeta?.traces.map((line) => line.title).join(", ") ?? null;
+            continue;
+          }
           next[column.key] = normalizeReportValue(entryValue(row, column.key));
         }
         return next;
       });
+      const rowMeta: ReportRowMeta[] = rows.map((row) => ({
+        entryId: row.id,
+        userId: row.user_id,
+        overtime: overtimeMetaByEntryId.get(row.id) ?? null
+      }));
 
       return {
         startDate: input.startDate,
         endDate: input.endDate,
         columns,
         rows: detailRows,
+        rowMeta,
         totals,
         locale: settings.locale,
         timeZone: settings.timeZone,
@@ -322,7 +352,7 @@ export const reportService = {
       };
     }
 
-    const bucketMap = new Map<string, { groupValues: Record<string, string | number | null>; entryCount: number; durationMinutes: number; cost: number }>();
+    const bucketMap = new Map<string, { groupValues: Record<string, string | number | null>; entryCount: number; durationMinutes: number; cost: number; rowIds: number[]; userIds: number[] }>();
     const effectiveGroupBy = input.totalsOnly ? [] : validGroupBy;
     for (const row of rows) {
       const groupValues: Record<string, string | number | null> = {};
@@ -337,16 +367,21 @@ export const reportService = {
         current.entryCount += 1;
         current.durationMinutes += durationMinutes;
         current.cost = Math.round((current.cost + cost) * 100) / 100;
+        current.rowIds.push(row.id);
+        current.userIds.push(row.user_id);
       } else {
-        bucketMap.set(bucketKey, { groupValues, entryCount: 1, durationMinutes, cost });
+        bucketMap.set(bucketKey, { groupValues, entryCount: 1, durationMinutes, cost, rowIds: [row.id], userIds: [row.user_id] });
       }
     }
 
-    const columnKeys = [...effectiveGroupBy, "entries", ...(input.columns.includes("duration") ? ["duration"] : []), ...(input.columns.includes("cost") ? ["cost"] : [])].filter(
+    const overtimeColumnKeys = input.columns.filter((key) => key === "overtime_state" || key === "overtime_timeline" || key === "overtime_receipt" || key === "overtime_rule");
+    const columnKeys = [...effectiveGroupBy, "entries", ...(input.columns.includes("duration") ? ["duration"] : []), ...(input.columns.includes("cost") ? ["cost"] : []), ...overtimeColumnKeys].filter(
       (key, index, array) => array.indexOf(key) === index
     );
     const columns = columnKeys.map((key) => getColumnDefinition(key, settings.customFields)).filter((value): value is ReportColumnDefinition => value !== null);
+    const groupedRowMeta: ReportRowMeta[] = [];
     const groupedRows = Array.from(bucketMap.values()).map((bucket) => {
+      const overtimeMeta = aggregateOvertimeMeta(bucket.rowIds.map((id) => overtimeMetaByEntryId.get(id)).filter((value): value is NonNullable<typeof value> => value !== undefined));
       const next: Record<string, string | number | null> = {};
       for (const key of effectiveGroupBy) {
         next[key] = bucket.groupValues[key] ?? null;
@@ -354,6 +389,15 @@ export const reportService = {
       if (columnKeys.includes("entries")) next.entries = bucket.entryCount;
       if (columnKeys.includes("duration")) next.duration = bucket.durationMinutes;
       if (columnKeys.includes("cost")) next.cost = bucket.cost;
+      if (columnKeys.includes("overtime_state")) next.overtime_state = overtimeMeta?.stateLabel ?? null;
+      if (columnKeys.includes("overtime_timeline")) next.overtime_timeline = overtimeMeta?.summary ?? null;
+      if (columnKeys.includes("overtime_receipt")) next.overtime_receipt = overtimeMeta?.receiptLines.map((line) => line.label).join(", ") ?? null;
+      if (columnKeys.includes("overtime_rule")) next.overtime_rule = overtimeMeta?.traces.map((line) => line.title).join(", ") ?? null;
+      groupedRowMeta.push({
+        entryId: null,
+        userId: bucket.userIds.length === 1 ? bucket.userIds[0] : null,
+        overtime: overtimeMeta
+      });
       return next;
     });
 
@@ -362,6 +406,7 @@ export const reportService = {
       endDate: input.endDate,
       columns,
       rows: groupedRows,
+      rowMeta: groupedRowMeta,
       totals,
       locale: settings.locale,
       timeZone: settings.timeZone,

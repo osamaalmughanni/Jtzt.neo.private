@@ -321,7 +321,50 @@ export interface ReportRequestInput {
 export interface ReportColumnDefinition {
   key: string;
   label: string;
-  kind: "text" | "date" | "datetime" | "duration" | "currency" | "number";
+  kind: "text" | "date" | "datetime" | "duration" | "currency" | "number" | "overtime_state" | "overtime_timeline" | "overtime_receipt" | "overtime_rule";
+}
+
+export interface ReportOvertimeSegment {
+  kind: "base" | "standard_overtime" | "employee_choice" | "break";
+  minutes: number;
+  label: string;
+}
+
+export interface ReportOvertimeReceiptLine {
+  label: string;
+  minutes: number;
+  valueMinutes: number | null;
+  detail: string;
+}
+
+export interface ReportOvertimeTrace {
+  title: string;
+  detail: string;
+}
+
+export interface ReportOvertimeMeta {
+  state: "base_only" | "daily_overtime" | "weekly_overtime" | "employee_choice" | "needs_review";
+  stateLabel: string;
+  reviewState: "none" | "overtime_only" | "needs_review";
+  workedMinutes: number;
+  paidMinutes: number;
+  breakMinutes: number;
+  baseMinutes: number;
+  standardOvertimeMinutes: number;
+  employeeChoiceMinutes: number;
+  weeklyOvertimeMinutes: number;
+  weeklyOnlyOvertimeMinutes: number;
+  equivalentValueMinutes: number;
+  segments: ReportOvertimeSegment[];
+  receiptLines: ReportOvertimeReceiptLine[];
+  traces: ReportOvertimeTrace[];
+  summary: string;
+}
+
+export interface ReportRowMeta {
+  entryId: number | null;
+  userId: number | null;
+  overtime: ReportOvertimeMeta | null;
 }
 
 export interface ReportResponse {
@@ -330,6 +373,7 @@ export interface ReportResponse {
     endDate: string;
     columns: ReportColumnDefinition[];
     rows: Array<Record<string, string | number | null>>;
+    rowMeta: ReportRowMeta[];
     totals: {
       entryCount: number;
       durationMinutes: number;

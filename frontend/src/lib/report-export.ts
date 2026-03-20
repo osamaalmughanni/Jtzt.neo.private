@@ -76,6 +76,19 @@ function formatCellValue(
   return String(value);
 }
 
+function normalizeRawScalar(value: string | number | null, columnKey: string) {
+  if (value === null || value === "") return null;
+  if (columnKey === "type" && typeof value === "string") {
+    if (value === "Working") return "work";
+    if (value === "Vacation") return "vacation";
+    if (value === "Sick leave") return "sick_leave";
+  }
+  if (columnKey === "role" && typeof value === "string") {
+    return value.toLowerCase();
+  }
+  return value;
+}
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -93,45 +106,48 @@ function toExportColumnName(
   t: TranslateFn,
   customFieldLabels?: CustomFieldLabels,
 ) {
-  const resolved = getResolvedReportColumnLabel(column, t, customFieldLabels).trim();
-  return resolved || column.key;
+  const customLabel = getResolvedReportColumnLabel(column, t, customFieldLabels).trim();
+  return customLabel.startsWith("custom:") ? customLabel : column.key;
+}
+
+function getRawExcelValue(
+  report: ReportResponse["report"],
+  row: Record<string, string | number | null>,
+  rowIndex: number,
+  column: ReportResponse["report"]["columns"][number],
+) {
+  const value = normalizeRawScalar(row[column.key] ?? null, column.key);
+  const overtimeMeta = report.rowMeta[rowIndex]?.overtime ?? null;
+
+  if (column.key === "overtime_state") {
+    return overtimeMeta?.state ?? value;
+  }
+  if (column.key === "overtime_timeline") {
+    return overtimeMeta ? JSON.stringify(overtimeMeta.segments) : value;
+  }
+  if (column.key === "overtime_receipt") {
+    return overtimeMeta ? JSON.stringify(overtimeMeta.receiptLines) : value;
+  }
+  if (column.key === "overtime_rule") {
+    return overtimeMeta ? JSON.stringify(overtimeMeta.traces) : value;
+  }
+
+  return value;
 }
 
 function getExcelCell(
   value: string | number | null,
-  columnKey: string,
   kind: ReportResponse["report"]["columns"][number]["kind"],
-  locale: string,
-  currency: string,
-  timeZone: string,
-  dateTimeFormat: string,
-  t: TranslateFn,
 ) {
   if (value === null || value === "") {
     return { type: "String", value: "" };
   }
 
-  if (kind === "date" && typeof value === "string") {
-    return { type: "String", value: formatCompanyDate(value, locale) };
-  }
-
-  if (kind === "duration" && typeof value === "number") {
-    return { type: "String", value: formatMinutes(value) };
-  }
-
-  if (kind === "currency" && typeof value === "number") {
-    return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, timeZone, dateTimeFormat, t) };
-  }
-
-  if (kind === "datetime" && typeof value === "string") {
-    return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, timeZone, dateTimeFormat, t) };
-  }
-
-  if (kind === "number" && typeof value === "number") {
+  if ((kind === "duration" || kind === "currency" || kind === "number") && typeof value === "number") {
     return { type: "Number", value: String(value) };
   }
 
-  return { type: "String", value: formatCellValue(value, columnKey, kind, locale, currency, timeZone, dateTimeFormat, t) };
+  return { type: "String", value: String(value) };
 }
 
 function buildSpreadsheetRow(cells: Array<{ type: string; value: string }>, styleId?: string) {
@@ -150,9 +166,9 @@ function buildExcelWorkbook(report: ReportResponse["report"], t: TranslateFn, cu
     value: toExportColumnName(column, t, customFieldLabels),
   }));
 
-  const dataRows = report.rows.map((row) =>
+  const dataRows = report.rows.map((row, rowIndex) =>
     report.columns.map((column) =>
-      getExcelCell(row[column.key] ?? null, column.key, column.kind, report.locale, report.currency, report.timeZone, report.dateTimeFormat, t),
+      getExcelCell(getRawExcelValue(report, row, rowIndex, column), column.kind),
     ),
   );
 

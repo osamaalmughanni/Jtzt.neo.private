@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { ReportResponse } from "@shared/types/api";
@@ -21,11 +21,15 @@ import { exportReportExcel, exportReportPdf } from "@/lib/report-export";
 import { loadReportDraft } from "@/lib/report-draft-storage";
 import { toast } from "@/lib/toast";
 
+const TIMELINE_DAY_WIDTH = 56;
+const GANTT_LEFT_COLUMN_WIDTH = 272;
+const GANTT_ROW_HEIGHT = 108;
+const GANTT_LANE_HEIGHT = 18;
+const GANTT_MAX_LANES = 3;
+
 function isLocalDayValue(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
-
-const TIMELINE_DAY_WIDTH = 56;
 
 function getReportColumnLabel(
   column: ReportResponse["report"]["columns"][number],
@@ -99,6 +103,159 @@ function formatCellValue(
   if (kind === "datetime" && typeof value === "string") return formatCompanyDateTime(value, locale, dateTimeFormat, timeZone);
   if (kind === "number" && typeof value === "number") return new Intl.NumberFormat(locale).format(value);
   return String(value);
+}
+
+function formatDecimalHours(minutes: number) {
+  return `${(minutes / 60).toFixed(1)}h`;
+}
+
+function getOvertimeSegmentClass(kind: "base" | "standard_overtime" | "employee_choice" | "break") {
+  if (kind === "base") return "bg-sky-500";
+  if (kind === "standard_overtime") return "bg-[repeating-linear-gradient(135deg,#7c3aed_0px,#7c3aed_7px,#a78bfa_7px,#a78bfa_14px)]";
+  if (kind === "employee_choice") return "bg-orange-500";
+  return "";
+}
+
+function getOvertimeLegendDotClass(kind: "base" | "standard_overtime" | "employee_choice" | "break") {
+  if (kind === "base") return "bg-sky-500";
+  if (kind === "standard_overtime") return "bg-violet-500";
+  if (kind === "employee_choice") return "bg-orange-500";
+  return "";
+}
+
+function getOvertimeSegmentStyle(kind: "base" | "standard_overtime" | "employee_choice" | "break") {
+  if (kind !== "break") return undefined;
+  return { backgroundColor: "#ef4444" };
+}
+
+function getOvertimeLegendDotStyle(kind: "base" | "standard_overtime" | "employee_choice" | "break") {
+  if (kind !== "break") return undefined;
+  return { backgroundColor: "#ef4444" };
+}
+
+function OvertimeStateBadge({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
+  const className = meta.reviewState === "needs_review"
+    ? "border-0 bg-destructive text-destructive-foreground"
+    : meta.state === "employee_choice"
+      ? "border border-border bg-accent text-accent-foreground"
+      : meta.state === "weekly_overtime"
+        ? "border border-border bg-secondary text-secondary-foreground"
+        : meta.state === "daily_overtime"
+          ? "border border-border bg-secondary text-secondary-foreground"
+          : "border border-border bg-muted text-foreground";
+  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}>{meta.stateLabel}</span>;
+}
+
+function OvertimeTimelineCell({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
+  const totalMinutes = Math.max(meta.workedMinutes, meta.segments.reduce((sum, segment) => sum + segment.minutes, 0));
+  if (totalMinutes <= 0) {
+    return <span className="text-muted-foreground">--</span>;
+  }
+
+  return (
+    <div className="flex min-w-[16rem] flex-col gap-2">
+      <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+        {meta.segments.map((segment, index) => (
+          <div
+            key={`${segment.kind}-${index}`}
+            className={getOvertimeSegmentClass(segment.kind)}
+            style={{ width: `${(segment.minutes / totalMinutes) * 100}%`, ...getOvertimeSegmentStyle(segment.kind) }}
+            title={`${segment.label}: ${formatDecimalHours(segment.minutes)}`}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+        {meta.segments.map((segment, index) => (
+          <span key={`${segment.kind}-legend-${index}`} className="inline-flex items-center gap-1">
+            <span className={`h-2.5 w-2.5 rounded-full ${getOvertimeLegendDotClass(segment.kind)}`} style={getOvertimeLegendDotStyle(segment.kind)} />
+            <span>{segment.label} {formatDecimalHours(segment.minutes)}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OvertimeReceiptCell({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
+  return (
+    <div className="flex min-w-[16rem] flex-col gap-1.5">
+      <div className="text-xs font-medium text-foreground">Worked {formatDecimalHours(meta.workedMinutes)}</div>
+      {meta.receiptLines.map((line, index) => (
+        <div key={`${line.label}-${index}`} className="text-xs text-muted-foreground">
+          <span className="text-foreground">{formatDecimalHours(line.minutes)} {line.label}</span>
+          {line.valueMinutes !== null ? <span>{` -> ${formatDecimalHours(line.valueMinutes)}`}</span> : null}
+          <span>{` - ${line.detail}`}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OvertimeRuleCell({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
+  return (
+    <details className="min-w-[16rem]">
+      <summary className="cursor-pointer text-xs font-medium text-foreground">View rule</summary>
+      <div className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-muted/20 p-3">
+        {meta.traces.map((trace, index) => (
+          <div key={`${trace.title}-${index}`} className="flex flex-col gap-0.5">
+            <span className="text-xs font-medium text-foreground">{trace.title}</span>
+            <span className="text-xs text-muted-foreground">{trace.detail}</span>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function getOvertimeRowTitle(
+  row: Record<string, string | number | null>,
+  fallbackIndex: number,
+  report: ReportResponse["report"],
+) {
+  const user = typeof row.user === "string" && row.user.trim().length > 0 ? row.user : `Row ${fallbackIndex + 1}`;
+  const date = typeof row.date === "string" ? formatCompanyDate(row.date, report.locale) : null;
+  const type = typeof row.type === "string" ? row.type : null;
+  return [user, date, type].filter(Boolean).join(" - ");
+}
+
+function OvertimePreviewCard({
+  row,
+  meta,
+  index,
+  report,
+}: {
+  row: Record<string, string | number | null>;
+  meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]>;
+  index: number;
+  report: ReportResponse["report"];
+}) {
+  return (
+    <div className="flex flex-col gap-4 rounded-2xl border border-border bg-background p-4">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-medium text-foreground">{getOvertimeRowTitle(row, index, report)}</p>
+            <p className="text-sm text-muted-foreground">{meta.summary}</p>
+          </div>
+          <OvertimeStateBadge meta={meta} />
+        </div>
+        <div className="overflow-hidden rounded-2xl border border-border bg-muted/30 p-3">
+          <OvertimeTimelineCell meta={meta} />
+        </div>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <div className="rounded-2xl border border-border bg-muted/20 p-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Receipt</p>
+          <OvertimeReceiptCell meta={meta} />
+        </div>
+        <div className="rounded-2xl border border-border bg-muted/20 p-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Rule Trace</p>
+          <OvertimeRuleCell meta={meta} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function listDays(startDate: string, endDate: string) {
@@ -275,6 +432,18 @@ function buildTimelineLanes(
   return lanes;
 }
 
+function buildCondensedTimelineRows(
+  items: ReportResponse["report"]["timeline"],
+  report: ReportResponse["report"],
+) {
+  const lanes = buildTimelineLanes(items, report);
+  return {
+    lanes: lanes.slice(0, GANTT_MAX_LANES),
+    hiddenItemCount: lanes.slice(GANTT_MAX_LANES).reduce((sum, lane) => sum + lane.length, 0),
+    totalLaneCount: lanes.length,
+  };
+}
+
 function getTimelineItemLabel(item: ReportResponse["report"]["timeline"][number], report: ReportResponse["report"]) {
   if (item.entryType === "work" && item.startDate === item.endDate) {
     const startLabel = formatTimelineTime(item.startTime, report.locale, report.dateTimeFormat, report.timeZone);
@@ -297,8 +466,7 @@ export function ReportsPreviewPage() {
   const { companySession } = useAuth();
   const draftId = searchParams.get("draft");
   const draft = useMemo(() => loadReportDraft(draftId), [draftId]);
-  const [viewMode, setViewMode] = useState<"table" | "gantt">("table");
-  const timelineScrollRef = useRef<HTMLDivElement | null>(null);
+  const [viewMode, setViewMode] = useState<"table" | "gantt" | "overtime">("table");
   const reportResource = usePageResource<{ report: ReportResponse["report"] | null; settings: CompanySettings | null }>({
     enabled: Boolean(companySession) && Boolean(draft),
     deps: [companySession?.token, draft, t],
@@ -375,6 +543,26 @@ export function ReportsPreviewPage() {
       items: aggregateTimelineItems(user.items),
     }));
   }, [report]);
+  const virtualGanttRows = useMemo(() => {
+    if (!report) return [];
+    return timelineUsers.map((user) => ({
+      ...user,
+      condensed: buildCondensedTimelineRows(user.items, report),
+    }));
+  }, [report, timelineUsers]);
+
+  const rowsWithMeta = useMemo(() => {
+    if (!report) return [];
+    return report.rows.map((row, index) => ({
+      row,
+      meta: report.rowMeta[index] ?? { entryId: null, userId: null, overtime: null },
+      index,
+    }));
+  }, [report]);
+  const overtimePreviewRows = useMemo(
+    () => rowsWithMeta.filter((item) => item.meta.overtime !== null),
+    [rowsWithMeta],
+  );
 
   useEffect(() => {
     if (!draft && !reportResource.isLoading) {
@@ -385,19 +573,6 @@ export function ReportsPreviewPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
-
-  useEffect(() => {
-    if (viewMode !== "gantt") return;
-    const node = timelineScrollRef.current;
-    if (!node) return;
-
-    const observer = new ResizeObserver(() => undefined);
-    observer.observe(node);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [viewMode, timelineWidth]);
 
   return (
     <FormPage>
@@ -416,175 +591,237 @@ export function ReportsPreviewPage() {
       >
         <div
           className="relative left-1/2 w-full -translate-x-1/2 px-5 sm:px-8 lg:px-10"
-          style={{ width: "min(120rem, calc(100vw - 2rem))" }}
+          style={{ width: "min(128rem, calc(100vw - 2rem))" }}
         >
           <FormPanel className="flex w-full flex-col gap-6">
             {report ? (
               <>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-border bg-background p-4">
-                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.period")}</p>
-                  <p className="text-sm font-medium text-foreground">
-                    {formatCompanyDate(report.startDate, report.locale)} to {formatCompanyDate(report.endDate, report.locale)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border bg-background p-4">
-                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.entries")}</p>
-                  <p className="text-sm font-medium text-foreground">{report.totals.entryCount}</p>
-                </div>
-                <div className="rounded-2xl border border-border bg-background p-4">
-                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.hours")}</p>
-                  <p className="text-sm font-medium text-foreground">{formatMinutes(report.totals.durationMinutes)}</p>
-                </div>
-              </div>
-
-              <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "gantt")} className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <TabsList className="h-9">
-                    <TabsTrigger value="table">{t("reports.table")}</TabsTrigger>
-                    <TabsTrigger value="gantt">{t("reports.gantt")}</TabsTrigger>
-                  </TabsList>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button variant="outline" onClick={() => exportReportExcel({ ...report, columns: resolvedColumns }, t, customFieldLabels)} type="button">
-                      {t("reports.exportExcel")}
-                    </Button>
-                    <Button variant="outline" onClick={() => exportReportPdf({ ...report, columns: resolvedColumns }, t, customFieldLabels)} type="button">
-                      {t("reports.exportPdf")}
-                    </Button>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-border bg-background p-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.period")}</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {formatCompanyDate(report.startDate, report.locale)} to {formatCompanyDate(report.endDate, report.locale)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-background p-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.entries")}</p>
+                    <p className="text-sm font-medium text-foreground">{report.totals.entryCount}</p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-background p-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.hours")}</p>
+                    <p className="text-sm font-medium text-foreground">{formatMinutes(report.totals.durationMinutes)}</p>
                   </div>
                 </div>
 
-                <TabsContent value="table" className="mt-0">
-                  <div className="w-full overflow-auto rounded-2xl border border-border">
-                    <table className="min-w-full border-collapse text-sm">
-                      <thead>
-                        <tr className="border-b border-border bg-muted/40">
-                          {resolvedColumns.map((column) => (
-                            <th key={column.key} className="whitespace-nowrap px-4 py-3 text-left font-medium text-foreground">
-                              {column.label}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {report.rows.map((row, index) => (
-                          <tr key={index} className="border-b border-border/70 last:border-b-0">
+                <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "gantt" | "overtime")} className="flex flex-col gap-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <TabsList className="h-9">
+                      <TabsTrigger value="table">{t("reports.table")}</TabsTrigger>
+                      <TabsTrigger value="gantt">{t("reports.gantt")}</TabsTrigger>
+                      <TabsTrigger value="overtime">Overtime</TabsTrigger>
+                    </TabsList>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button variant="outline" onClick={() => exportReportExcel({ ...report, columns: resolvedColumns }, t, customFieldLabels)} type="button">
+                        {t("reports.exportExcel")}
+                      </Button>
+                      <Button variant="outline" onClick={() => exportReportPdf({ ...report, columns: resolvedColumns }, t, customFieldLabels)} type="button">
+                        {t("reports.exportPdf")}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <TabsContent value="table" className="mt-0">
+                    <div className="w-full overflow-auto rounded-2xl border border-border">
+                      <table className="min-w-full border-collapse text-sm">
+                        <thead>
+                          <tr className="border-b border-border bg-muted/40">
                             {resolvedColumns.map((column) => (
-                              <td key={column.key} className="whitespace-nowrap px-4 py-3 text-muted-foreground">
-                                {formatCellValue(
-                                  row[column.key] ?? null,
-                                  column.key,
-                                  column.kind,
-                                  report.locale,
-                                  report.currency,
-                                  report.timeZone,
-                                  report.dateTimeFormat,
-                                  t,
-                                )}
-                              </td>
+                              <th key={column.key} className="whitespace-nowrap px-4 py-3 text-left font-medium text-foreground">
+                                {column.label}
+                              </th>
                             ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </TabsContent>
+                        </thead>
+                        <tbody>
+                          {rowsWithMeta.map(({ row, meta }, index) => (
+                            <tr key={index} className="border-b border-border/70 last:border-b-0">
+                              {resolvedColumns.map((column) => (
+                                <td key={column.key} className="px-4 py-3 text-muted-foreground align-top">
+                                  {column.kind === "overtime_state" && meta.overtime ? (
+                                    <OvertimeStateBadge meta={meta.overtime} />
+                                  ) : column.kind === "overtime_timeline" && meta.overtime ? (
+                                    <OvertimeTimelineCell meta={meta.overtime} />
+                                  ) : column.kind === "overtime_receipt" && meta.overtime ? (
+                                    <OvertimeReceiptCell meta={meta.overtime} />
+                                  ) : column.kind === "overtime_rule" && meta.overtime ? (
+                                    <OvertimeRuleCell meta={meta.overtime} />
+                                  ) : (
+                                    <span className="whitespace-nowrap">
+                                      {formatCellValue(
+                                        row[column.key] ?? null,
+                                        column.key,
+                                        column.kind,
+                                        report.locale,
+                                        report.currency,
+                                        report.timeZone,
+                                        report.dateTimeFormat,
+                                        t,
+                                      )}
+                                    </span>
+                                  )}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </TabsContent>
 
-                <TabsContent value="gantt" className="mt-0">
-                  <div className="flex w-full flex-col gap-4 rounded-2xl border border-border p-4">
-                    <p className="text-sm text-muted-foreground">{t("reports.ganttHint")}</p>
-                    {timelineUsers.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">{t("reports.noTimeline")}</p>
-                    ) : (
-                      <div ref={timelineScrollRef} className="w-full overflow-auto rounded-2xl border border-border bg-background px-3 py-3 sm:px-4">
-                        <div className="grid min-w-[72rem] gap-x-6 gap-y-4" style={{ gridTemplateColumns: "17rem minmax(0, 1fr)" }}>
-                          <div className="sticky left-0 z-20 bg-background pl-1" />
-                          <div className="relative h-11 overflow-hidden border-b border-border/60 bg-background/95" style={{ width: timelineWidth }}>
-                            {timelineMonths.map((segment) => (
+                  <TabsContent value="gantt" className="mt-0">
+                    <div className="flex w-full flex-col gap-4 rounded-2xl border border-border p-4">
+                      <p className="text-sm text-muted-foreground">Responsive timeline with condensed lanes for readable large reports.</p>
+                      {timelineUsers.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">{t("reports.noTimeline")}</p>
+                      ) : (
+                        <div className="w-full overflow-x-auto rounded-2xl border border-border bg-background">
+                          <div
+                            className="relative"
+                            style={{ minWidth: GANTT_LEFT_COLUMN_WIDTH + timelineWidth }}
+                          >
+                            <div className="flex overflow-hidden border-b border-border bg-background">
                               <div
-                                key={segment.key}
-                                className="absolute top-0 flex h-11 items-center border-r border-border/60 px-3 text-sm font-medium text-foreground"
-                                style={{
-                                  left: segment.startIndex * TIMELINE_DAY_WIDTH,
-                                  width: segment.dayCount * TIMELINE_DAY_WIDTH,
-                                }}
+                                className="flex h-12 shrink-0 items-center border-r border-border bg-background px-4"
+                                style={{ width: GANTT_LEFT_COLUMN_WIDTH }}
                               >
-                                <span className="truncate">{segment.label}</span>
+                                <span className="text-sm font-medium text-foreground">Users</span>
                               </div>
-                            ))}
-                          </div>
-
-                          {timelineUsers.map((user) => {
-                            const lanes = buildTimelineLanes(user.items, report);
-
-                            return (
-                              <div key={user.userId} className="contents">
-                                <div className="sticky left-0 z-10 flex flex-col justify-center gap-2 border-t border-border bg-background py-3 pl-1 pr-4">
-                                  <div className="flex flex-col gap-1">
-                                    <p className="truncate text-sm font-medium text-foreground">{user.userName}</p>
-                                    <p className="text-xs text-muted-foreground">{user.role}</p>
+                              <div className="relative h-12 shrink-0 overflow-hidden" style={{ width: timelineWidth }}>
+                                {timelineMonths.map((segment) => (
+                                  <div
+                                    key={segment.key}
+                                    className="absolute top-0 flex h-12 items-center border-r border-border/60 px-3 text-sm font-medium text-foreground"
+                                    style={{
+                                      left: segment.startIndex * TIMELINE_DAY_WIDTH,
+                                      width: segment.dayCount * TIMELINE_DAY_WIDTH,
+                                    }}
+                                  >
+                                    <span className="truncate">{segment.label}</span>
                                   </div>
-                                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                                    {(["work", "vacation", "sick_leave"] as const)
-                                      .filter((type) => user.items.some((item) => item.entryType === type))
-                                      .map((type) => (
-                                        <div key={`${user.userId}-${type}-legend`} className="flex items-center gap-1.5 rounded-full bg-muted/40 px-2.5 py-1">
-                                          <span className={`h-2.5 w-2.5 rounded-full ${entryStateUi[type].dotClassName}`} />
-                                          <span>
-                                            {type === "work"
-                                              ? t("reports.workRow")
-                                              : type === "vacation"
-                                                ? t("reports.vacationRow")
-                                                : t("reports.sickLeaveRow")}
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col">
+                              {virtualGanttRows.map((user) => {
+                                return (
+                                  <div
+                                    key={user.userId}
+                                    className="flex border-b border-border"
+                                    style={{ minHeight: GANTT_ROW_HEIGHT, width: GANTT_LEFT_COLUMN_WIDTH + timelineWidth }}
+                                  >
+                                    <div className="flex shrink-0 flex-col justify-center gap-2 border-r border-border bg-background px-4 py-4" style={{ width: GANTT_LEFT_COLUMN_WIDTH }}>
+                                      <div className="flex flex-col gap-1">
+                                        <p className="truncate text-sm font-medium text-foreground">{user.userName}</p>
+                                        <p className="text-xs text-muted-foreground">{user.role}</p>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+                                        {(["work", "vacation", "sick_leave"] as const)
+                                          .filter((type) => user.items.some((item) => item.entryType === type))
+                                          .map((type) => (
+                                            <span key={`${user.userId}-${type}-legend`} className="inline-flex items-center gap-1.5 rounded-full bg-muted/40 px-2.5 py-1">
+                                              <span className={`h-2.5 w-2.5 rounded-full ${entryStateUi[type].dotClassName}`} />
+                                              <span>
+                                                {type === "work"
+                                                  ? t("reports.workRow")
+                                                  : type === "vacation"
+                                                    ? t("reports.vacationRow")
+                                                    : t("reports.sickLeaveRow")}
+                                              </span>
+                                            </span>
+                                          ))}
+                                        {user.condensed.hiddenItemCount > 0 ? (
+                                          <span className="inline-flex items-center rounded-full bg-foreground px-2.5 py-1 text-xs text-background">
+                                            +{user.condensed.hiddenItemCount} more
                                           </span>
-                                        </div>
-                                      ))}
-                                  </div>
-                                </div>
+                                        ) : null}
+                                      </div>
+                                    </div>
 
-                                <div className="flex flex-col gap-2.5 border-t border-border py-3 pr-1">
-                                  {lanes.map((lane, laneIndex) => (
                                     <div
-                                      key={`${user.userId}-lane-${laneIndex}`}
-                                      className="relative h-10 overflow-hidden rounded-xl"
+                                      className="relative shrink-0 py-4"
                                       style={{
                                         width: timelineWidth,
-                                        backgroundColor: "hsl(var(--muted) / 0.3)",
+                                        backgroundColor: "hsl(var(--muted) / 0.18)",
                                         backgroundImage: `
-                                          linear-gradient(to right, hsl(var(--background) / 0.14) 0, hsl(var(--background) / 0.14) 1px, transparent 1px),
-                                          linear-gradient(to bottom, hsl(var(--background) / 0.12), hsl(var(--background) / 0.12))
+                                          linear-gradient(to right, hsl(var(--border) / 0.55) 0, hsl(var(--border) / 0.55) 1px, transparent 1px),
+                                          linear-gradient(to bottom, hsl(var(--border) / 0.2), hsl(var(--border) / 0.2))
                                         `,
                                         backgroundSize: `${TIMELINE_DAY_WIDTH}px 100%, 100% 100%`,
                                       }}
                                     >
-                                      {lane.map(({ item, leftUnits, widthUnits }) => {
-                                        const label = getTimelineItemLabel(item, report);
-                                        return (
+                                      <div className="flex flex-col gap-1.5 px-2">
+                                        {user.condensed.lanes.map((lane, laneIndex) => (
                                           <div
-                                            key={item.entryId}
-                                            className={`absolute inset-y-1 flex items-center overflow-hidden rounded-lg px-2.5 text-xs font-medium text-foreground shadow-sm ${entryStateUi[item.entryType].badgeClassName}`}
-                                            style={{
-                                              left: leftUnits * TIMELINE_DAY_WIDTH,
-                                              width: Math.max(widthUnits * TIMELINE_DAY_WIDTH, 48),
-                                            }}
-                                            title={`${item.userName} / ${label}`}
+                                            key={`${user.userId}-lane-${laneIndex}`}
+                                            className="relative rounded-md"
+                                            style={{ height: GANTT_LANE_HEIGHT }}
                                           >
-                                            <span className="truncate">{label}</span>
+                                            {lane.map(({ item, leftUnits, widthUnits }) => {
+                                              const label = getTimelineItemLabel(item, report);
+                                              return (
+                                                <div
+                                                  key={item.entryId}
+                                                  className={`absolute inset-y-0 flex items-center overflow-hidden rounded-md px-2 text-[11px] font-medium text-foreground shadow-sm ${entryStateUi[item.entryType].badgeClassName}`}
+                                                  style={{
+                                                    left: leftUnits * TIMELINE_DAY_WIDTH,
+                                                    width: Math.max(widthUnits * TIMELINE_DAY_WIDTH, 44),
+                                                  }}
+                                                  title={`${item.userName} / ${label}`}
+                                                >
+                                                  <span className="truncate">{label}</span>
+                                                </div>
+                                              );
+                                            })}
                                           </div>
-                                        );
-                                      })}
+                                        ))}
+                                        {user.condensed.totalLaneCount === 0 ? (
+                                          <div className="flex h-full items-center px-2 text-xs text-muted-foreground">No entries</div>
+                                        ) : null}
+                                      </div>
                                     </div>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                </TabsContent>
-              </Tabs>
+                      )}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="overtime" className="mt-0">
+                    <div className="flex w-full flex-col gap-4 rounded-2xl border border-border p-4">
+                      {overtimePreviewRows.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No overtime preview data is available for this report.</p>
+                      ) : (
+                        <div className="flex flex-col gap-4">
+                          {overtimePreviewRows.map(({ row, meta, index }) =>
+                            meta.overtime ? (
+                              <OvertimePreviewCard
+                                key={`overtime-preview-${index}`}
+                                row={row}
+                                meta={meta.overtime}
+                                index={index}
+                                report={report}
+                              />
+                            ) : null,
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+                </Tabs>
               </>
             ) : null}
           </FormPanel>
