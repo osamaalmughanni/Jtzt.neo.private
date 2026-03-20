@@ -2,6 +2,7 @@ import type { Icon } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { ArrowLeft, List, LockSimple } from "phosphor-react";
+import { formatLocalDay } from "@shared/utils/time";
 import { Logo } from "@/components/logo";
 import { PageLabel } from "@/components/page-label";
 import { useAppHeaderState } from "@/components/app-header-state";
@@ -68,12 +69,28 @@ export function AppHeader({
       : getRouteActions(location.pathname, menuTo);
   const contextualActions = scope === "tablet" ? fallbackActions : pageActions ?? fallbackActions;
   const resolvedActions = mergeHeaderActions(contextualActions, actions);
+  const homeTo = (() => {
+    const basePath = getHomePath(scope);
+    if (scope !== "company" && scope !== "tablet") {
+      return basePath;
+    }
+
+    const params = new URLSearchParams(location.search);
+    const nextParams = new URLSearchParams();
+    const user = params.get("user");
+    if (user) {
+      nextParams.set("user", user);
+    }
+    nextParams.set("day", formatLocalDay(new Date()));
+    const query = nextParams.toString();
+    return query ? `${basePath}?${query}` : basePath;
+  })();
 
   return (
     <header className="bg-background">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex flex-col gap-0.5">
-          <Link to={getHomePath(scope)} className="inline-flex flex-col items-start">
+          <Link to={homeTo} className="inline-flex flex-col items-start">
             <Logo size={88} />
           </Link>
           {resolvedTitle ? (

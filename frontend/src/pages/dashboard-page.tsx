@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Briefcase, CalendarBlank, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
 import { useTranslation } from "react-i18next";
@@ -244,6 +245,33 @@ function RecordStatusIcon({
     >
       <Icon size={14} weight={active ? "bold" : "fill"} className={active ? "animate-spin" : undefined} />
     </span>
+  );
+}
+
+function RecordActionButton({
+  disabled = false,
+  onClick,
+  onPointerDown,
+  ariaLabel,
+  children,
+}: {
+  disabled?: boolean;
+  onClick?: () => void;
+  onPointerDown?: () => void;
+  ariaLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onClick={onClick}
+      onPointerDown={onPointerDown}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -815,7 +843,7 @@ export function DashboardPage() {
       <div className="rounded-2xl border border-border bg-card p-4">
         <div className="flex flex-col gap-3">
           <FormSection>
-            <Field label={t("dashboard.workingAs")}>
+            <div className="flex flex-col gap-2">
               {canSwitchUser ? (
                 <Combobox
                   value={effectiveUserId ? String(effectiveUserId) : ""}
@@ -833,37 +861,28 @@ export function DashboardPage() {
                   {selectedUserName}
                 </div>
               )}
-            </Field>
+            </div>
           </FormSection>
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex flex-col gap-1">
-              <p className="text-left text-lg font-semibold tracking-[-0.04em] text-foreground">
-                {selectedDate.toLocaleDateString(settings.locale, {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
-              </p>
-              {summary.contractStats.currentContract ? (
-                <p className="text-xs text-muted-foreground">
-                  {t("dashboard.perWeek", { value: summary.contractStats.currentContract.hoursPerWeek.toFixed(2) })}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex items-center">
-              <p className="w-[5.25rem] text-right text-xs text-muted-foreground">
-                {new Intl.DateTimeFormat(settings.locale, {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                  timeZone: settings.timeZone,
-                }).format(now)}
-              </p>
-            </div>
+          <div className="flex items-center justify-between gap-3">
+            <p className="min-w-0 truncate text-left text-base font-semibold tracking-[-0.04em] text-foreground sm:text-lg">
+              {selectedDate.toLocaleDateString(settings.locale, {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
+            <p className="shrink-0 text-right text-base font-semibold tracking-[-0.04em] text-muted-foreground sm:text-lg">
+              {new Intl.DateTimeFormat(settings.locale, {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                timeZone: settings.timeZone,
+              }).format(now)}
+            </p>
           </div>
 
-          <div className="flex flex-col gap-2 border-t border-border/70 pt-3">
+          <div className="flex flex-col gap-2 pt-1">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 {isMobileViewport ? (
@@ -915,10 +934,9 @@ export function DashboardPage() {
               />
             ) : null}
           </div>
-          <div className="flex flex-col gap-2 border-t border-border/70 pt-3">
+          <div className="flex flex-col gap-2 rounded-xl border border-border bg-background p-3">
             <p className="text-sm font-medium text-foreground">{t("dashboard.records")}</p>
-            <div className="overflow-visible">
-              <div className="grid">
+            <div className="flex flex-col gap-1">
                 {entries.map((entry) => {
                   const canEdit =
                     evaluateTimeEntryPolicy({
@@ -949,7 +967,7 @@ export function DashboardPage() {
                       : formatDayCount(entry.effectiveDayCount);
 
                   return (
-                    <div key={entry.id} className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-3 py-2">
+                    <div key={entry.id} className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2.5">
                       <div>
                         <RecordStatusIcon entryType={entry.entryType} active={isActiveWorkEntry} className={entryStateUi[entry.entryType].recordStatusClassName} />
                       </div>
@@ -960,72 +978,55 @@ export function DashboardPage() {
                         <span
                           className={
                             isActiveWorkEntry
-                              ? "shrink-0 rounded-full bg-destructive px-2 py-1 text-sm font-medium leading-none text-destructive-foreground"
-                              : "shrink-0 rounded-full bg-background px-2 py-1 text-sm font-medium leading-none text-foreground"
+                              ? "shrink-0 rounded-full bg-destructive px-2 py-0.5 text-xs font-medium leading-none text-destructive-foreground"
+                              : "shrink-0 rounded-full bg-background px-2 py-0.5 text-xs font-medium leading-none text-foreground"
                           }
                         >
                           {entryMeta}
                         </span>
                         {supportText ? (
-                          <span className="min-w-0 truncate text-sm leading-none text-muted-foreground">
+                          <span className="min-w-0 truncate text-xs leading-none text-muted-foreground">
                             {supportText}
                           </span>
                         ) : null}
                       </div>
-                      <div className="relative z-10 flex shrink-0 items-center justify-end gap-1">
+                      <div className="relative z-10 flex shrink-0 items-center justify-end gap-0.5 self-center">
                           {canDelete ? (
-                            <Button
-                              variant="ghost"
-                              className="h-10 w-10"
-                              size="icon"
+                            <RecordActionButton
                               onPointerDown={triggerHapticFeedback}
                               onClick={() => setPendingDeleteEntry(entry)}
-                              type="button"
-                              aria-label={t("dashboard.deleteRecord")}
+                              ariaLabel={t("dashboard.deleteRecord")}
                             >
                               <Trash size={16} weight="bold" />
-                            </Button>
+                            </RecordActionButton>
                           ) : (
-                            <Button
+                            <RecordActionButton
                               disabled
-                              variant="ghost"
-                              className="h-10 w-10"
-                              size="icon"
-                              type="button"
-                              aria-label={t("dashboard.recordLocked")}
+                              ariaLabel={t("dashboard.recordLocked")}
                             >
                               <Trash size={16} weight="bold" />
-                            </Button>
+                            </RecordActionButton>
                           )}
                           {canEdit ? (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-10 w-10"
+                            <RecordActionButton
                               onPointerDown={triggerHapticFeedback}
                               onClick={() => navigate(editHref)}
-                              type="button"
-                              aria-label={t("dashboard.editRecord")}
+                              ariaLabel={t("dashboard.editRecord")}
                             >
                               <PencilSimple size={16} weight="bold" />
-                            </Button>
+                            </RecordActionButton>
                           ) : (
-                            <Button
+                            <RecordActionButton
                               disabled
-                              className="h-10 w-10"
-                              size="icon"
-                              variant="ghost"
-                              type="button"
-                              aria-label={t("dashboard.recordLocked")}
+                              ariaLabel={t("dashboard.recordLocked")}
                             >
                               <PencilSimple size={16} weight="bold" />
-                            </Button>
+                            </RecordActionButton>
                           )}
                       </div>
                     </div>
                   );
                 })}
-              </div>
 
               {entries.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
