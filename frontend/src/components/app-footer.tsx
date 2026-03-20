@@ -1,7 +1,9 @@
 import type { Icon } from "phosphor-react";
-import { ArrowUpRight, Info } from "lucide-react";
+import { motion } from "framer-motion";
+import { ArrowUpRight, Dot, Info, LoaderCircleIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { useAppHeaderState } from "@/components/app-header-state";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -24,6 +26,8 @@ interface AppFooterProps {
 
 export function AppFooter({ context, publicMode, authMode, actions = [] }: AppFooterProps) {
   const { t } = useTranslation();
+  const { loadingCount } = useAppHeaderState();
+  const isLoading = loadingCount > 0;
 
   if (context === "public") {
     const isLearn = publicMode === "learn";
@@ -33,7 +37,10 @@ export function AppFooter({ context, publicMode, authMode, actions = [] }: AppFo
     return (
       <Card className="rounded-none border bg-card px-3 py-2 shadow-sm">
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground sm:text-xs">
-          <p className="min-w-0 truncate whitespace-nowrap">Copyright Jtzt / jtzt.com</p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <FooterLoadingIndicator loading={isLoading} />
+            <p className="min-w-0 truncate whitespace-nowrap">Jtzt</p>
+          </div>
           <div className="ml-auto flex items-center gap-2 overflow-x-auto">
             <Button asChild variant={isLearn ? "ghost" : "outline"} size="sm" className="h-9 shrink-0 gap-1 px-3 text-xs">
               <Link to={isLearn ? "/login" : "/learn"}>
@@ -64,7 +71,10 @@ export function AppFooter({ context, publicMode, authMode, actions = [] }: AppFo
   return (
     <Card className="rounded-none border bg-card px-3 py-2 shadow-sm">
       <div className="flex items-center gap-3 text-[11px] text-muted-foreground sm:text-xs">
-        <p className="min-w-0 truncate whitespace-nowrap">Copyright Jtzt / jtzt.com</p>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <FooterLoadingIndicator loading={isLoading} />
+          <p className="min-w-0 truncate whitespace-nowrap">Jtzt</p>
+        </div>
         <div className="ml-auto flex items-center gap-2">
           {actions.map((action) => {
             const ActionIcon = action.icon;
@@ -88,5 +98,39 @@ export function AppFooter({ context, publicMode, authMode, actions = [] }: AppFo
         </div>
       </div>
     </Card>
+  );
+}
+
+function FooterLoadingIndicator({ loading }: { loading: boolean }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-8 w-8 shrink-0 p-0 text-muted-foreground hover:bg-transparent"
+      aria-label={loading ? "Loading" : "Idle"}
+      disabled
+    >
+      <span className="relative flex h-4 w-4 items-center justify-center">
+        <motion.span
+          className="absolute inset-0 flex items-center justify-center"
+          animate={loading ? { opacity: 0 } : { opacity: 1 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+        >
+          <Dot className="h-4 w-4" strokeWidth={2.5} />
+        </motion.span>
+        <motion.span
+          className="absolute inset-0 flex items-center justify-center"
+          animate={loading ? { opacity: 1, rotate: 360 } : { opacity: 0, rotate: 0 }}
+          transition={
+            loading
+              ? { opacity: { duration: 0.18 }, rotate: { duration: 0.9, ease: "linear", repeat: Number.POSITIVE_INFINITY } }
+              : { duration: 0.18, ease: "easeOut" }
+          }
+        >
+          <LoaderCircleIcon className="h-4 w-4" strokeWidth={1.75} />
+        </motion.span>
+      </span>
+    </Button>
   );
 }

@@ -51,6 +51,18 @@ export function PageLoadBoundary({
   const { startLoading, stopLoading } = useAppHeaderState();
 
   useEffect(() => {
+    if (!loading) {
+      return;
+    }
+
+    startLoading();
+
+    return () => {
+      stopLoading();
+    };
+  }, [loading, startLoading, stopLoading]);
+
+  useEffect(() => {
     if (!refreshing) {
       return;
     }
@@ -63,12 +75,7 @@ export function PageLoadBoundary({
   }, [refreshing, startLoading, stopLoading]);
 
   if (loading) {
-    return (
-      <Stack gap={gap} className={cn("min-h-full flex-1", className)}>
-        {intro}
-        {skeleton}
-      </Stack>
-    );
+    return <div className={cn("flex min-h-0 flex-1 flex-col", className)} />;
   }
 
   return (
