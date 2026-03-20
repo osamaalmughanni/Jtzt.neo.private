@@ -32,6 +32,33 @@ DEFAULT_WRANGLER_CONFIG = "cloudflare/wrangler.jsonc"
 DEFAULT_WORKER_ENTRY = "cloudflare/worker/index.ts"
 DEFAULT_MIGRATIONS_DIR = "cloudflare/d1/migrations"
 DEFAULT_ASSETS_DIR = "dist/frontend"
+NON_RUNTIME_ENV_KEYS = {
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID",
+    "CLOUDFLARE_CUSTOM_DOMAIN",
+    "CLOUDFLARE_WRANGLER_CONFIG",
+    "CLOUDFLARE_WORKER_ENTRY",
+    "CLOUDFLARE_MIGRATIONS_DIR",
+    "CLOUDFLARE_ASSETS_DIR",
+    "CLOUDFLARE_ASSETS_NOT_FOUND_HANDLING",
+    "CLOUDFLARE_WORKER_NAME",
+    "CLOUDFLARE_COMPATIBILITY_DATE",
+    "CLOUDFLARE_D1_BINDING",
+    "CLOUDFLARE_D1_DATABASE_NAME",
+    "CLOUDFLARE_D1_DATABASE_ID",
+    "NODE_SQLITE_PATH",
+}
+NON_SECRET_RUNTIME_KEYS = {
+    "APP_ENV",
+    "APP_VERSION",
+    "SESSION_TTL_HOURS",
+}
+SECRET_NAME_MARKERS = (
+    "SECRET",
+    "TOKEN",
+    "PASSWORD",
+    "PASSPHRASE",
+)
 
 ENV_REQUIRED = [
     "CLOUDFLARE_API_TOKEN",
@@ -223,6 +250,39 @@ def parse_env_file(file_path: Path) -> dict[str, str]:
     return values
 
 
+def discover_runtime_env_keys(env: dict[str, str]) -> list[str]:
+    keys = [
+        key
+        for key, value in env.items()
+        if key not in NON_RUNTIME_ENV_KEYS and value.strip()
+    ]
+    return sorted(set(keys))
+
+
+def is_secret_runtime_key(key: str) -> bool:
+    if key in NON_SECRET_RUNTIME_KEYS:
+        return False
+    if key.endswith("_KEY"):
+        return True
+    return any(marker in key for marker in SECRET_NAME_MARKERS)
+
+
+def get_runtime_var_groups(env: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    public_vars: dict[str, str] = {}
+    secrets: dict[str, str] = {}
+
+    for key in discover_runtime_env_keys(env):
+        value = env[key].strip()
+        if not value:
+            continue
+        if is_secret_runtime_key(key):
+            secrets[key] = value
+        else:
+            public_vars[key] = value
+
+    return public_vars, secrets
+
+
 def load_env(required_keys: list[str] | None = None) -> dict[str, str]:
     if not ENV_FILE.exists():
         fail(f"missing {ENV_FILE.name}; create it and fill it first")
@@ -301,19 +361,11 @@ def wrangler_command() -> list[str]:
 
 
 def write_cloudflare_dev_vars(env: dict[str, str]) -> None:
-    admin_access_token = get_admin_access_token(env)
+    public_vars, secrets = get_runtime_var_groups(env)
     CLOUDFLARE_DEV_VARS_FILE.parent.mkdir(parents=True, exist_ok=True)
     CLOUDFLARE_DEV_VARS_FILE.write_text(
         "\n".join(
-            [
-                f'JWT_SECRET="{env["JWT_SECRET"]}"',
-                f'APP_ENV="{env["APP_ENV"]}"',
-                f'APP_VERSION="{env["APP_VERSION"]}"',
-                f'SESSION_TTL_HOURS="{env["SESSION_TTL_HOURS"]}"',
-                f'ADMIN_ACCESS_TOKEN="{admin_access_token}"',
-                f'ADMIN_BOOTSTRAP_TOKEN="{admin_access_token}"',
-                "",
-            ]
+            [*(f'{key}="{value}"' for key, value in {**public_vars, **secrets}.items()), ""]
         ),
         encoding="utf-8",
     )
@@ -324,6 +376,7 @@ def write_cloudflare_dev_vars(env: dict[str, str]) -> None:
 def build_wrangler_config(env: dict[str, str]) -> dict:
     worker_entry = Path(env["CLOUDFLARE_WORKER_ENTRY"]).relative_to("cloudflare").as_posix()
     migrations_dir = Path(env["CLOUDFLARE_MIGRATIONS_DIR"]).relative_to("cloudflare").as_posix()
+    public_vars, _ = get_runtime_var_groups(env)
 
     payload: dict = {
         "name": env["CLOUDFLARE_WORKER_NAME"],
@@ -342,11 +395,7 @@ def build_wrangler_config(env: dict[str, str]) -> dict:
                 "migrations_dir": f"./{migrations_dir}",
             }
         ],
-        "vars": {
-            "APP_ENV": env["APP_ENV"],
-            "APP_VERSION": env["APP_VERSION"],
-            "SESSION_TTL_HOURS": env["SESSION_TTL_HOURS"],
-        },
+        "vars": public_vars,
     }
 
     if env["CLOUDFLARE_ACCOUNT_ID"]:
@@ -390,11 +439,7 @@ def apply_migrations(env: dict[str, str], remote: bool) -> None:
 
 
 def set_secret(env: dict[str, str]) -> None:
-    secrets = {
-        "JWT_SECRET": env["JWT_SECRET"],
-        "ADMIN_ACCESS_TOKEN": get_admin_access_token(env),
-        "ADMIN_BOOTSTRAP_TOKEN": get_admin_access_token(env),
-    }
+    _, secrets = get_runtime_var_groups(env)
 
     for key, value in secrets.items():
         run(
@@ -464,6 +509,7 @@ def deploy(env: dict[str, str]) -> dict[str, str | list[str] | None]:
 
 
 def doctor(env: dict[str, str]) -> None:
+    public_vars, secrets = get_runtime_var_groups(env)
     info("cloudflare auth: api token")
     info(f"cloudflare account id: {env['CLOUDFLARE_ACCOUNT_ID']}")
     info(f"worker: {env['CLOUDFLARE_WORKER_NAME']}")
@@ -473,6 +519,8 @@ def doctor(env: dict[str, str]) -> None:
     info(f"worker entry: {env['CLOUDFLARE_WORKER_ENTRY']}")
     info(f"migrations dir: {env['CLOUDFLARE_MIGRATIONS_DIR']}")
     info(f"assets dir: {env['CLOUDFLARE_ASSETS_DIR']}")
+    info(f"public runtime vars: {', '.join(public_vars.keys()) or '<none>'}")
+    info(f"secret runtime vars: {', '.join(secrets.keys()) or '<none>'}")
 
 
 def parse_args() -> argparse.Namespace:
