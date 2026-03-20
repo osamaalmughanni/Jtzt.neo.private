@@ -7,10 +7,10 @@ import { AppHeader } from "@/components/app-header";
 import { AppHeaderLoadingBar } from "@/components/app-header-loading-bar";
 import { AppHeaderStateProvider, useAppHeaderState } from "@/components/app-header-state";
 import { AppFrame } from "@/components/app-frame";
+import { useFullscreenFooterActions } from "@/hooks/use-fullscreen-footer-actions";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { toast } from "@/lib/toast";
-import { ArrowsIn, ArrowsOut, LockSimple } from "phosphor-react";
+import { LockSimple } from "phosphor-react";
 
 interface AppShellProps {
   mode: "company" | "admin";
@@ -21,9 +21,9 @@ export function AppShell({ mode }: AppShellProps) {
   const location = useLocation();
   const { companyIdentity, companySession, lockTablet } = useAuth();
   const [tabletIdleTimeoutSeconds, setTabletIdleTimeoutSeconds] = useState(10);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const idleTimerRef = useRef<number | null>(null);
   const firstRouteRef = useRef(true);
+  const footerActions = useFullscreenFooterActions();
   const menuTo =
     mode === "admin"
       ? "/admin/menu"
@@ -46,42 +46,6 @@ export function AppShell({ mode }: AppShellProps) {
     };
   }, []);
 
-  useEffect(() => {
-    const doc = document as Document & {
-      webkitFullscreenElement?: Element | null;
-      msFullscreenElement?: Element | null;
-    };
-    const syncFullscreenState = () => {
-      setIsFullscreen(Boolean(doc.fullscreenElement ?? doc.webkitFullscreenElement ?? doc.msFullscreenElement));
-    };
-
-    syncFullscreenState();
-    document.addEventListener("fullscreenchange", syncFullscreenState);
-    document.addEventListener("webkitfullscreenchange", syncFullscreenState as EventListener);
-    document.addEventListener("MSFullscreenChange", syncFullscreenState as EventListener);
-
-    return () => {
-      document.removeEventListener("fullscreenchange", syncFullscreenState);
-      document.removeEventListener("webkitfullscreenchange", syncFullscreenState as EventListener);
-      document.removeEventListener("MSFullscreenChange", syncFullscreenState as EventListener);
-    };
-  }, []);
-
-  const footerActions = [
-    {
-      key: "toggle-fullscreen",
-      label: isFullscreen ? "Exit fullscreen" : "Enter fullscreen",
-      icon: isFullscreen ? ArrowsIn : ArrowsOut,
-      onClick: () => {
-        void toggleFullscreen().catch((error) => {
-          toast({
-            title: "Fullscreen unavailable",
-            description: error instanceof Error ? error.message : "This browser or device blocked fullscreen mode.",
-          });
-        });
-      }
-    },
-  ];
   const headerActions =
     companySession?.accessMode === "tablet"
       ? [
@@ -316,19 +280,19 @@ function ShellContent({
       <main className="relative flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-hidden">
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-32 bg-gradient-to-b from-background via-background/90 via-20% to-transparent transition-opacity duration-300 ease-out ${showTopFade ? "opacity-100" : "opacity-0"}`}
+          className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-28 bg-gradient-to-b from-background via-background/90 via-20% to-transparent transition-opacity duration-300 ease-out ${showTopFade ? "opacity-100" : "opacity-0"}`}
         />
         <div
           ref={scrollAreaRef}
-          className="app-scroll-area flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-auto overscroll-contain pt-4 pb-4"
+          className="app-scroll-area flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-auto overscroll-contain"
         >
-          <AppContentLane ref={scrollContentRef} className="flex flex-col">
+          <AppContentLane ref={scrollContentRef} className="flex flex-col pt-4 pb-4">
             <Outlet />
           </AppContentLane>
         </div>
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-t from-background via-background/95 via-16% to-transparent transition-opacity duration-300 ease-out ${isRouteChromePending || showBottomFade ? "opacity-100" : "opacity-0"}`}
+          className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-background via-background/95 via-20% to-transparent transition-opacity duration-300 ease-out ${isRouteChromePending || showBottomFade ? "opacity-100" : "opacity-0"}`}
         />
       </main>
       {bottomBar ? <AppContentLane className="pt-3 pb-4">{bottomBar}</AppContentLane> : null}
@@ -337,54 +301,4 @@ function ShellContent({
       </AppContentLane>
     </div>
   );
-}
-
-async function toggleFullscreen() {
-  const doc = document as Document & {
-    webkitExitFullscreen?: () => Promise<void> | void;
-    msExitFullscreen?: () => Promise<void> | void;
-    webkitFullscreenElement?: Element | null;
-    msFullscreenElement?: Element | null;
-  };
-  const root = document.documentElement as HTMLElement & {
-    webkitRequestFullscreen?: () => Promise<void> | void;
-    msRequestFullscreen?: () => Promise<void> | void;
-  };
-  const fullscreenElement = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? doc.msFullscreenElement;
-
-  if (fullscreenElement) {
-    if (doc.exitFullscreen) {
-      await doc.exitFullscreen();
-      return;
-    }
-    if (doc.webkitExitFullscreen) {
-      await doc.webkitExitFullscreen();
-      return;
-    }
-    if (doc.msExitFullscreen) {
-      await doc.msExitFullscreen();
-      return;
-    }
-    throw new Error("This browser does not expose a compatible fullscreen exit API.");
-  }
-
-  if (root.requestFullscreen) {
-    try {
-      await root.requestFullscreen({ navigationUI: "hide" });
-      return;
-    } catch {
-      await root.requestFullscreen();
-      return;
-    }
-  }
-  if (root.webkitRequestFullscreen) {
-    await root.webkitRequestFullscreen();
-    return;
-  }
-  if (root.msRequestFullscreen) {
-    await root.msRequestFullscreen();
-    return;
-  }
-
-  throw new Error("This browser or embedded webview does not allow fullscreen mode.");
 }

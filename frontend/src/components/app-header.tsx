@@ -57,7 +57,7 @@ export function AppHeader({
   const location = useLocation();
   const { t } = useTranslation();
   const { actions: pageActions } = useAppHeaderState();
-  const meta = getPageMeta(location.pathname);
+  const meta = scope === "public" ? null : getPageMeta(location.pathname);
   const resolvedTitle = title ?? (meta?.titleKey ? t(meta.titleKey) : undefined);
   const resolvedDescription = description ?? (meta?.descriptionKey ? t(meta.descriptionKey) : undefined);
   const fallbackActions =
