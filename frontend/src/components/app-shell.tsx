@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Icon } from "phosphor-react";
 import { AppContentLane } from "@/components/app-content-lane";
 import { AppFooter } from "@/components/app-footer";
@@ -81,7 +81,9 @@ export function AppShell({ mode }: AppShellProps) {
         });
       }
     },
-    ...(companySession?.accessMode === "tablet"
+  ];
+  const headerActions =
+    companySession?.accessMode === "tablet"
       ? [
           {
             key: "lock-tablet",
@@ -93,8 +95,7 @@ export function AppShell({ mode }: AppShellProps) {
             }
           }
         ]
-      : []),
-  ];
+      : undefined;
 
   useEffect(() => {
     if (companySession?.accessMode !== "tablet") {
@@ -152,6 +153,8 @@ export function AppShell({ mode }: AppShellProps) {
     <AppFrame appShell>
       <AppHeaderStateProvider>
         <ShellContent
+          key={`${location.pathname}${location.search}${location.hash}`}
+          headerActions={headerActions}
           footerActions={footerActions}
           firstRouteRef={firstRouteRef}
           locationKey={`${location.pathname}${location.search}${location.hash}`}
@@ -164,12 +167,19 @@ export function AppShell({ mode }: AppShellProps) {
 }
 
 function ShellContent({
+  headerActions,
   footerActions,
   firstRouteRef,
   locationKey,
   menuTo,
   scope,
 }: {
+  headerActions?: Array<{
+    key: string;
+    label: string;
+    icon: Icon;
+    onClick: () => void;
+  }>;
   footerActions: Array<{
     key: string;
     label: string;
@@ -183,6 +193,30 @@ function ShellContent({
 }) {
   const { bottomBar, startLoading, stopLoading } = useAppHeaderState();
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const scrollContentRef = useRef<HTMLDivElement | null>(null);
+  const [showTopFade, setShowTopFade] = useState(false);
+  const [showBottomFade, setShowBottomFade] = useState(true);
+
+  const syncScrollChrome = useCallback(() => {
+    const viewport = scrollAreaRef.current;
+    const content = scrollContentRef.current;
+
+    if (!viewport || !content) {
+      setShowTopFade(false);
+      setShowBottomFade(true);
+      return;
+    }
+
+    const viewportHeight = viewport.clientHeight;
+    const contentHeight = Math.max(content.scrollHeight, content.offsetHeight);
+    const maxScrollTop = Math.max(0, contentHeight - viewportHeight);
+    const scrollTop = Math.max(0, Math.min(viewport.scrollTop, maxScrollTop));
+    const hasOverflow = maxScrollTop > 1;
+
+    setShowTopFade(hasOverflow && scrollTop > 2);
+    setShowBottomFade(hasOverflow && scrollTop < maxScrollTop - 2);
+    viewport.dataset.scrollable = hasOverflow ? "true" : "false";
+  }, []);
 
   useEffect(() => {
     if (firstRouteRef.current) {
@@ -201,22 +235,92 @@ function ShellContent({
     };
   }, [firstRouteRef, locationKey, startLoading, stopLoading]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     scrollAreaRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [locationKey]);
+
+  useLayoutEffect(() => {
+    const viewport = scrollAreaRef.current;
+    const content = scrollContentRef.current;
+
+    setShowTopFade(false);
+    setShowBottomFade(true);
+
+    if (!viewport || !content) {
+      return;
+    }
+
+    const scheduleSync = () => {
+      syncScrollChrome();
+    };
+
+    scheduleSync();
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleSync();
+    });
+    resizeObserver.observe(viewport);
+    resizeObserver.observe(content);
+
+    const mutationObserver = new MutationObserver(() => {
+      scheduleSync();
+    });
+    mutationObserver.observe(content, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+    });
+
+    const handleScroll = () => {
+      syncScrollChrome();
+    };
+    viewport.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", scheduleSync);
+
+    let frame = 0;
+    let rafId = 0;
+    const bootstrapFrames = () => {
+      syncScrollChrome();
+      frame += 1;
+      if (frame < 10) {
+        rafId = window.requestAnimationFrame(bootstrapFrames);
+      }
+    };
+    rafId = window.requestAnimationFrame(bootstrapFrames);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      viewport.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", scheduleSync);
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+    };
+  }, [locationKey, syncScrollChrome]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-hidden">
       <AppHeaderLoadingBar />
       <AppContentLane>
-        <AppHeader menuTo={menuTo} scope={scope} />
+        <AppHeader menuTo={menuTo} scope={scope} actions={headerActions} />
       </AppContentLane>
-      <main className="flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-hidden">
-        <div ref={scrollAreaRef} className="app-scroll-area flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-auto overscroll-contain pt-4 pb-4">
-          <AppContentLane className="flex min-h-full flex-1 flex-col">
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-hidden">
+        <div
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-32 bg-gradient-to-b from-background via-background/90 via-20% to-transparent transition-opacity duration-300 ease-out ${showTopFade ? "opacity-100" : "opacity-0"}`}
+        />
+        <div
+          ref={scrollAreaRef}
+          className="app-scroll-area flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-auto overscroll-contain pt-4 pb-4"
+        >
+          <AppContentLane ref={scrollContentRef} className="flex flex-col">
             <Outlet />
           </AppContentLane>
         </div>
+        <div
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-t from-background via-background/95 via-16% to-transparent transition-opacity duration-300 ease-out ${showBottomFade ? "opacity-100" : "opacity-0"}`}
+        />
       </main>
       {bottomBar ? <AppContentLane className="pt-3 pb-4">{bottomBar}</AppContentLane> : null}
       <AppContentLane>

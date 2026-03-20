@@ -15,15 +15,15 @@ export function AdminGuard() {
 }
 
 export function CompanyAdminGuard() {
-  const { loading, companySession, companyIdentity } = useAuth();
+  const { loading, companySession, companyIdentity, isTabletMode } = useAuth();
   if (loading) return <AppRouteLoadingState />;
   if (!companySession) return <Navigate to="/login" replace />;
-  return companySession.accessMode !== "tablet" && companyIdentity?.user.role === "admin" ? <Outlet /> : <Navigate to="/dashboard" replace />;
+  return !isTabletMode && companyIdentity?.user.role === "admin" ? <Outlet /> : <Navigate to="/dashboard" replace />;
 }
 
 export function CompanyFullAccessGuard() {
-  const { loading, companySession } = useAuth();
+  const { loading, companySession, isTabletMode } = useAuth();
   if (loading) return <AppRouteLoadingState />;
   if (!companySession) return <Navigate to="/login" replace />;
-  return companySession.accessMode !== "tablet" ? <Outlet /> : <Navigate to="/dashboard" replace />;
+  return !isTabletMode ? <Outlet /> : <Navigate to="/dashboard" replace />;
 }

@@ -444,7 +444,7 @@ export function DashboardPage() {
     label: user.fullName,
   }));
   return (
-    <FormPage className="h-full">
+    <FormPage className="min-h-0 flex-none">
       {!dashboardResource.isLoading ? (
         <PageDock>
           <div className="flex min-h-[5rem] flex-col items-center justify-center">
@@ -568,6 +568,7 @@ export function DashboardPage() {
         }
       />
       <PageLoadBoundary
+        className="min-h-0 flex-none"
         intro={
           <PageIntro>
             <PageLabel
@@ -657,29 +658,31 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <div className="border-t border-border/70 pt-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-foreground">{t("dashboard.balance")}</p>
-              <p className="text-sm text-muted-foreground">
-                {t("dashboard.total", { value: formatBalanceMinutes(summary.contractStats.totalBalanceMinutes) })}
-              </p>
-            </div>
+          {!isTabletMode ? (
+            <div className="border-t border-border/70 pt-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-foreground">{t("dashboard.balance")}</p>
+                <p className="text-sm text-muted-foreground">
+                  {t("dashboard.total", { value: formatBalanceMinutes(summary.contractStats.totalBalanceMinutes) })}
+                </p>
+              </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
-                {t("dashboard.expected", { value: formatMinutes(summary.contractStats.today.expectedMinutes) })}
-              </Badge>
-              <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
-                {t("dashboard.recordedBadge", { value: formatMinutes(summary.contractStats.today.recordedMinutes) })}
-              </Badge>
-              <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
-                {t("dashboard.balanceBadge", { value: formatBalanceMinutes(summary.contractStats.today.balanceMinutes) })}
-              </Badge>
-              <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
-                {t("dashboard.perWeek", { value: summary.contractStats.currentContract?.hoursPerWeek.toFixed(2) ?? "0.00" })}
-              </Badge>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
+                  {t("dashboard.expected", { value: formatMinutes(summary.contractStats.today.expectedMinutes) })}
+                </Badge>
+                <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
+                  {t("dashboard.recordedBadge", { value: formatMinutes(summary.contractStats.today.recordedMinutes) })}
+                </Badge>
+                <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
+                  {t("dashboard.balanceBadge", { value: formatBalanceMinutes(summary.contractStats.today.balanceMinutes) })}
+                </Badge>
+                <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
+                  {t("dashboard.perWeek", { value: summary.contractStats.currentContract?.hoursPerWeek.toFixed(2) ?? "0.00" })}
+                </Badge>
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </div>
 
