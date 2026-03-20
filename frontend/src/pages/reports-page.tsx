@@ -199,6 +199,17 @@ function getAllFieldValues(baseFieldOptions: ReportOption[], customFieldOptions:
   return [...baseFieldOptions, ...customFieldOptions].map((field) => field.value);
 }
 
+function createDefaultReportDraft(): ReportDraft {
+  return {
+    periodPreset: "this_month",
+    ...applyPeriodPreset("this_month", defaultSettings),
+    userIds: [],
+    columns: [],
+    groupBy: [],
+    totalsOnly: false,
+  };
+}
+
 export function ReportsPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -208,19 +219,13 @@ export function ReportsPage() {
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [fieldSearch, setFieldSearch] = useState("");
-  const savedDraft = loadReportDraft(searchParams.get("draft"));
+  const draftId = searchParams.get("draft");
+  const savedDraft = useMemo(() => loadReportDraft(draftId), [draftId]);
   const initializedDraftRef = useRef(false);
-  const [draft, setDraft] = useState<ReportDraft>(() => savedDraft ?? {
-    periodPreset: "this_month",
-    ...applyPeriodPreset("this_month", defaultSettings),
-    userIds: [],
-    columns: [],
-    groupBy: [],
-    totalsOnly: false,
-  });
+  const [draft, setDraft] = useState<ReportDraft>(() => savedDraft ?? createDefaultReportDraft());
   const pageResource = usePageResource<{ settings: CompanySettings; users: CompanyUserListItem[] }>({
     enabled: Boolean(companySession),
-    deps: [companySession?.token, savedDraft, t],
+    deps: [companySession?.token, t],
     load: async () => {
       if (!companySession) {
         return { settings: defaultSettings, users: [] };
@@ -244,6 +249,11 @@ export function ReportsPage() {
       }
     }
   });
+
+  useEffect(() => {
+    initializedDraftRef.current = false;
+    setDraft(savedDraft ?? createDefaultReportDraft());
+  }, [savedDraft]);
 
   const periodOptions = useMemo<ReportOption[]>(() => [
     { value: "custom", label: t("reports.customDates") },
