@@ -538,7 +538,7 @@ def parse_args() -> argparse.Namespace:
         "set-secret",
         "deploy",
         "full",
-    ])
+    ], nargs="?", default="full")
     return parser.parse_args()
 
 
