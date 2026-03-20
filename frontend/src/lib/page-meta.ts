@@ -13,9 +13,9 @@ const pageMetaEntries: Array<[string, PageMeta]> = [
   ["/fields", { titleKey: "page.settings.title", descriptionKey: "page.settings.description" }],
   ["/menu", { titleKey: "page.pages.title" }],
   ["/settings", { titleKey: "page.settings.title", descriptionKey: "page.settings.description" }],
+  ["/admin", { titleKey: "page.companies.title", descriptionKey: "page.companies.description" }],
   ["/admin/menu", { titleKey: "page.pages.title" }],
   ["/admin/companies", { titleKey: "page.companies.title", descriptionKey: "page.companies.description" }],
-  ["/admin/company/create", { titleKey: "page.create.title", descriptionKey: "page.create.description" }]
 ];
 
 export const pageMetaMap = new Map<string, PageMeta>(pageMetaEntries);
@@ -23,6 +23,9 @@ export const pageMetaMap = new Map<string, PageMeta>(pageMetaEntries);
 export function getPageMeta(pathname: string): PageMeta | null {
   if (
     pathname === "/menu" ||
+    pathname === "/admin" ||
+    pathname === "/admin/menu" ||
+    pathname === "/admin/companies" ||
     pathname === "/dashboard" ||
     pathname === "/reports" ||
     pathname === "/reports/preview" ||

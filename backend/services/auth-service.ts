@@ -29,20 +29,22 @@ function compareProofs(expected: string, provided: string) {
   return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
 }
 
+function normalizeInvitationCode(value: string) {
+  return value.trim().toUpperCase();
+}
+
 export const authService = {
   async loginAdmin(db: AppDatabase, config: RuntimeConfig, input: AdminLoginInput) {
-    const row = await db.first("SELECT id, username, password_hash FROM admins WHERE username = ?", [input.username]) as
-      | { id: number; username: string; password_hash: string }
-      | null;
-
-    if (!row || !bcrypt.compareSync(input.password, row.password_hash)) {
-      throw new HTTPException(401, { message: "Invalid admin credentials" });
+    const expectedToken = config.adminAccessToken.trim();
+    const providedToken = input.token.trim();
+    if (!expectedToken || !providedToken || !compareProofs(expectedToken, providedToken)) {
+      throw new HTTPException(401, { message: "Invalid admin token" });
     }
 
     return signSessionToken(config, {
       actorType: "admin",
-      adminId: row.id,
-      username: row.username
+      adminId: 1,
+      username: "admin"
     });
   },
 
@@ -51,6 +53,19 @@ export const authService = {
       if (!input.encryptionKdfSalt || !input.encryptionKdfIterations || !input.encryptionKeyVerifier) {
         throw new HTTPException(400, { message: "Secure mode requires client-side encryption metadata" });
       }
+    }
+
+    const invitationCode = normalizeInvitationCode(input.invitationCode);
+    const invitationRow = await db.first(
+      `SELECT id
+       FROM invitation_codes
+       WHERE code = ?
+         AND used_at IS NULL`,
+      [invitationCode]
+    ) as { id: number } | null;
+
+    if (!invitationRow) {
+      throw new HTTPException(403, { message: "Invitation code is invalid or already used" });
     }
 
     const company = await adminService.createCompany(db, {
@@ -67,6 +82,11 @@ export const authService = {
     if (!company) {
       throw new HTTPException(500, { message: "Company could not be created" });
     }
+
+    await db.run(
+      "UPDATE invitation_codes SET used_at = ?, used_by_company_id = ? WHERE id = ?",
+      [new Date().toISOString(), company.id, invitationRow.id]
+    );
 
     const userRow = await db.first(
       "SELECT id, username, full_name, password_hash, role, is_active, pin_code, created_at FROM users WHERE company_id = ? AND username = ?",

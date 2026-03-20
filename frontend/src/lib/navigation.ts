@@ -2,7 +2,7 @@ export type NavigationScope = "public" | "company" | "admin" | "tablet";
 
 export function getHomePath(scope: NavigationScope): string {
   if (scope === "admin") {
-    return "/admin/companies";
+    return "/admin";
   }
 
   if (scope === "company") {

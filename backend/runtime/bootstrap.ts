@@ -1,4 +1,3 @@
-import bcrypt from "bcryptjs";
 import type { AppDatabase } from "./types";
 import type { RuntimeConfig } from "./types";
 
@@ -181,13 +180,24 @@ export async function ensureBootstrapState(db: AppDatabase, config: RuntimeConfi
     await db.exec("ALTER TABLE company_settings ADD COLUMN overtime_settings_json TEXT NOT NULL DEFAULT '{}'");
   }
 
-  const row = await db.first<{ count: number }>("SELECT COUNT(*) as count FROM admins");
-  if (!row || row.count === 0) {
-    await db.run("INSERT INTO admins (username, password_hash, created_at) VALUES (?, ?, ?)", [
-      config.adminBootstrapUsername,
-      bcrypt.hashSync(config.adminBootstrapPassword, 10),
-      new Date().toISOString()
-    ]);
+  const invitationCodeColumns = await db.all<{ name: string }>(
+    "SELECT name FROM pragma_table_info('invitation_codes')",
+  );
+  if (invitationCodeColumns.length === 0) {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS invitation_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        code TEXT NOT NULL UNIQUE,
+        note TEXT,
+        created_at TEXT NOT NULL,
+        used_at TEXT,
+        used_by_company_id TEXT,
+        FOREIGN KEY (used_by_company_id) REFERENCES companies(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_invitation_codes_status
+      ON invitation_codes (used_at, created_at DESC);
+    `);
   }
 
   initializedKeys.add(key);

@@ -1,5 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import crypto from "node:crypto";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { authMiddleware, requireAdmin } from "../../auth/middleware";
 import { adminService } from "../../services/admin-service";
 import { authService } from "../../services/auth-service";
@@ -7,8 +13,7 @@ import { systemService } from "../../services/system-service";
 import type { AppRouteConfig } from "../context";
 
 const adminLoginSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1)
+  token: z.string().min(1)
 });
 
 const createCompanySchema = z.object({
@@ -28,6 +33,40 @@ const createCompanyAdminSchema = z.object({
   password: z.string().min(6),
   fullName: z.string().min(2)
 });
+
+const createInvitationCodeSchema = z.object({
+  note: z.string().trim().max(120).optional()
+});
+
+const deleteInvitationCodeSchema = z.object({
+  invitationCodeId: z.number().int().positive()
+});
+
+function createUploadedSqlitePath() {
+  return path.join(os.tmpdir(), `jtzt-upload-${crypto.randomUUID()}.sqlite`);
+}
+
+function scheduleTempFileCleanup(filePath: string) {
+  const tryDelete = (attempt = 0) => {
+    fs.rm(filePath, { force: true }, (error) => {
+      if (!error) {
+        return;
+      }
+      if ((error as NodeJS.ErrnoException).code === "EBUSY" && attempt < 12) {
+        setTimeout(() => tryDelete(attempt + 1), 40 * (attempt + 1));
+      }
+    });
+  };
+
+  tryDelete();
+}
+
+async function writeUploadedFileToTemp(file: File) {
+  const tempPath = createUploadedSqlitePath();
+  const writable = fs.createWriteStream(tempPath);
+  await pipeline(Readable.fromWeb(file.stream() as any), writable);
+  return tempPath;
+}
 
 export const adminRoutes = new Hono<AppRouteConfig>();
 
@@ -50,6 +89,21 @@ adminRoutes.get("/companies", async (c) => {
   return c.json({ companies: await systemService.listCompanies(c.get("db")) });
 });
 
+adminRoutes.get("/invitation-codes", async (c) => {
+  return c.json({ invitationCodes: await adminService.listInvitationCodes(c.get("db")) });
+});
+
+adminRoutes.post("/invitation-codes/create", async (c) => {
+  const body = createInvitationCodeSchema.parse(await c.req.json());
+  return c.json({ invitationCode: await adminService.createInvitationCode(c.get("db"), body) });
+});
+
+adminRoutes.post("/invitation-codes/delete", async (c) => {
+  const body = deleteInvitationCodeSchema.parse(await c.req.json());
+  await adminService.deleteInvitationCode(c.get("db"), body);
+  return c.json({ success: true });
+});
+
 adminRoutes.post("/companies/create", async (c) => {
   const body = createCompanySchema.parse(await c.req.json());
   return c.json({ company: await adminService.createCompany(c.get("db"), body) });
@@ -57,18 +111,20 @@ adminRoutes.post("/companies/create", async (c) => {
 
 adminRoutes.post("/companies/create/import", async (c) => {
   const formData = await c.req.formData();
-  const name = String(formData.get("name") ?? "").trim();
   const file = formData.get("file");
-
-  if (name.length < 2) {
-    return c.json({ error: "Company name is required" }, 400);
-  }
+  const name = String(formData.get("name") ?? "").trim();
   if (!(file instanceof File)) {
-    return c.json({ error: "Snapshot file is required" }, 400);
+    return c.json({ error: "SQLite company file is required" }, 400);
   }
 
-  const snapshot = JSON.parse(await file.text());
-  return c.json({ company: await adminService.createCompanyFromSnapshot(c.get("db"), { name, snapshot }) });
+  const tempPath = await writeUploadedFileToTemp(file);
+  try {
+    const { importCompanyFromSqlite } = await import("../../services/admin-sqlite-transfer");
+    const imported = importCompanyFromSqlite(c.get("config"), tempPath, { companyName: name || undefined });
+    return c.json({ company: await systemService.getCompanyById(c.get("db"), imported.companyId) });
+  } finally {
+    scheduleTempFileCleanup(tempPath);
+  }
 });
 
 adminRoutes.post("/companies/delete", async (c) => {
@@ -84,10 +140,20 @@ adminRoutes.get("/companies/:companyId/export", async (c) => {
     return c.json({ error: "Company not found" }, 404);
   }
 
-  const fileName = `${company.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "company"}.snapshot.json`;
-  return c.body(JSON.stringify(await adminService.exportCompanySnapshot(c.get("db"), companyId), null, 2), 200, {
-    "Content-Type": "application/json",
-    "Content-Disposition": `attachment; filename="${fileName}"`
+  const { exportCompanyToSqlite } = await import("../../services/admin-sqlite-transfer");
+  const { filePath, fileName } = exportCompanyToSqlite(c.get("config"), companyId);
+  const readStream = fs.createReadStream(filePath);
+  const cleanup = () => {
+    scheduleTempFileCleanup(filePath);
+  };
+  readStream.on("close", cleanup);
+  readStream.on("error", cleanup);
+
+  return new Response(Readable.toWeb(readStream) as ReadableStream, {
+    headers: {
+      "Content-Type": "application/vnd.sqlite3",
+      "Content-Disposition": `attachment; filename="${fileName}"`
+    }
   });
 });
 
@@ -101,11 +167,17 @@ adminRoutes.post("/companies/:companyId/import", async (c) => {
   const formData = await c.req.formData();
   const file = formData.get("file");
   if (!(file instanceof File)) {
-    return c.json({ error: "Snapshot file is required" }, 400);
+    return c.json({ error: "SQLite company file is required" }, 400);
   }
 
-  const snapshot = JSON.parse(await file.text());
-  return c.json({ company: await adminService.replaceCompanySnapshot(c.get("db"), { companyId, snapshot }) });
+  const tempPath = await writeUploadedFileToTemp(file);
+  try {
+    const { importCompanyFromSqlite } = await import("../../services/admin-sqlite-transfer");
+    const imported = importCompanyFromSqlite(c.get("config"), tempPath, { companyId, companyName: company.name });
+    return c.json({ company: await systemService.getCompanyById(c.get("db"), imported.companyId) });
+  } finally {
+    scheduleTempFileCleanup(tempPath);
+  }
 });
 
 adminRoutes.post("/companies/admins/create", async (c) => {

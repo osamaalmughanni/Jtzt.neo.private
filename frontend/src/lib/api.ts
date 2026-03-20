@@ -11,10 +11,13 @@ import type {
   DeleteTimeEntryInput,
   DeleteUserInput,
   CreateCompanyAdminInput,
+  CreateInvitationCodeInput,
   CreateCompanyInput,
   DashboardResponse,
+  DeleteInvitationCodeInput,
   DeleteCompanyInput,
   HolidayResponse,
+  InvitationCodeListResponse,
   LoginResponse,
   OvertimeSettingsResponse,
   RegisterCompanyInput,
@@ -395,6 +398,28 @@ export const api = {
   getSystemStats(token: string) {
     return request<SystemStatsResponse>("/api/admin/stats", {
       headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  listInvitationCodes(token: string) {
+    return request<InvitationCodeListResponse>("/api/admin/invitation-codes", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  createInvitationCode(token: string, input: CreateInvitationCodeInput) {
+    return request<{ invitationCode: InvitationCodeListResponse["invitationCodes"][number] }>("/api/admin/invitation-codes/create", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  deleteInvitationCode(token: string, input: DeleteInvitationCodeInput) {
+    return request<{ success: boolean }>("/api/admin/invitation-codes/delete", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
     });
   },
 

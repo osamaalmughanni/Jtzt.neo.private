@@ -1,13 +1,6 @@
 export const appSchema = `
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS admins (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS companies (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
@@ -23,6 +16,19 @@ CREATE TABLE IF NOT EXISTS companies (
   tablet_code_updated_at TEXT,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS invitation_codes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  note TEXT,
+  created_at TEXT NOT NULL,
+  used_at TEXT,
+  used_by_company_id TEXT,
+  FOREIGN KEY (used_by_company_id) REFERENCES companies(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_invitation_codes_status
+ON invitation_codes (used_at, created_at DESC);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_tablet_code_hash
 ON companies (tablet_code_hash)

@@ -56,8 +56,8 @@ export interface RuntimeBindings {
   JWT_SECRET?: string;
   SESSION_TTL_HOURS?: string;
   NODE_SQLITE_PATH?: string;
-  ADMIN_BOOTSTRAP_USERNAME?: string;
-  ADMIN_BOOTSTRAP_PASSWORD?: string;
+  ADMIN_ACCESS_TOKEN?: string;
+  ADMIN_BOOTSTRAP_TOKEN?: string;
 }
 
 export interface RuntimeConfig {
@@ -67,6 +67,5 @@ export interface RuntimeConfig {
   jwtSecret: string;
   sessionTtlHours: number;
   nodeSqlitePath: string;
-  adminBootstrapUsername: string;
-  adminBootstrapPassword: string;
+  adminAccessToken: string;
 }

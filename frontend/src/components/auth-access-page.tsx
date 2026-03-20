@@ -38,6 +38,7 @@ const registerSchema = z
     name: z.string().min(2, "Company name is required"),
     adminUsername: z.string().min(2, "Admin username is required"),
     adminPassword: z.string().min(6, "Admin password must be at least 6 characters"),
+    invitationCode: z.string().min(4, "Invitation code is required"),
     encryptionEnabled: z.boolean(),
     encryptionKey: z.string().optional(),
     confirmEncryptionKey: z.string().optional(),
@@ -60,8 +61,7 @@ const tabletAccessSchema = z.object({
 });
 
 const adminLoginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
+  token: z.string().min(1, "Access token is required"),
 });
 
 type AuthMode = (typeof AUTH_MODES)[number];
@@ -111,14 +111,6 @@ export function AuthAccessPage() {
       landingDescription: t("auth.landingDescription", {
         defaultValue: "One clean entry point for company sign in, workspace creation, tablet access, and platform administration.",
       }),
-      companyTitle: t("auth.companySignInTitle"),
-      companyDescription: t("auth.companySignInDescription"),
-      registerTitle: t("auth.registerTitle"),
-      registerDescription: t("auth.registerDescription"),
-      tabletTitle: t("auth.tabletTitle", { defaultValue: "Tablet access" }),
-      tabletDescription: t("auth.tabletDescription", { defaultValue: "Open the shared tablet PIN screen for a company workspace." }),
-      adminTitle: t("auth.adminTitle"),
-      adminDescription: t("auth.adminDescription"),
       tabletTab: t("auth.tabletTab", { defaultValue: "Tablet" }),
       tabletCodeLabel: t("auth.tabletCodeLabel", { defaultValue: "Tablet code" }),
       tabletCodePlaceholder: t("auth.tabletCodePlaceholder", { defaultValue: "Enter tablet code" }),
@@ -138,13 +130,6 @@ export function AuthAccessPage() {
     [t],
   );
 
-  const modeConfig: Record<AuthMode, { title: string; description: string }> = {
-    "sign-in": { title: copy.companyTitle, description: copy.companyDescription },
-    register: { title: copy.registerTitle, description: copy.registerDescription },
-    tablet: { title: copy.tabletTitle, description: copy.tabletDescription },
-    admin: { title: copy.adminTitle, description: copy.adminDescription },
-  };
-
   const companyForm = useForm<CompanyLoginValues>({
     resolver: zodResolver(companyLoginSchema),
     defaultValues: { companyName: "", username: "", password: "", encryptionKey: "" },
@@ -155,6 +140,7 @@ export function AuthAccessPage() {
       name: "",
       adminUsername: "",
       adminPassword: "",
+      invitationCode: "",
       encryptionEnabled: false,
       encryptionKey: "",
       confirmEncryptionKey: "",
@@ -166,7 +152,7 @@ export function AuthAccessPage() {
   });
   const adminForm = useForm<AdminLoginValues>({
     resolver: zodResolver(adminLoginSchema),
-    defaultValues: { username: "", password: "" },
+    defaultValues: { token: "" },
   });
 
   const companyName = companyForm.watch("companyName");
@@ -265,6 +251,7 @@ export function AuthAccessPage() {
         name: values.name,
         adminUsername: values.adminUsername,
         adminPassword: values.adminPassword,
+        invitationCode: values.invitationCode,
         encryptionEnabled: values.encryptionEnabled,
         encryptionKdfAlgorithm,
         encryptionKdfIterations,
@@ -334,7 +321,7 @@ export function AuthAccessPage() {
     try {
       const response = await api.adminLogin(values);
       await loginAdmin(response.session);
-      navigate("/admin/companies");
+      navigate("/admin");
     } catch (error) {
       toast({
         title: t("auth.signInFailed"),
@@ -394,6 +381,7 @@ export function AuthAccessPage() {
                     <AuthField control={registerForm.control} name="name" label={t("auth.companyNameLabel")} placeholder="Acme" />
                     <AuthField control={registerForm.control} name="adminUsername" label={t("auth.adminUsernameLabel")} placeholder="jane" />
                     <AuthField control={registerForm.control} name="adminPassword" label={t("auth.adminPasswordLabel")} placeholder="********" type="password" />
+                    <AuthField control={registerForm.control} name="invitationCode" label="Invitation code" placeholder="ABCD-EFGH-IJKL" />
                     <FormField
                       control={registerForm.control}
                       name="encryptionEnabled"
@@ -470,8 +458,7 @@ export function AuthAccessPage() {
               <TabsContent value="admin" className="mt-0">
                 <Form {...adminForm}>
                   <form className="space-y-4" onSubmit={adminForm.handleSubmit(onAdminSubmit)}>
-                    <AuthField control={adminForm.control} name="username" label={t("common.username")} placeholder="admin" />
-                    <AuthField control={adminForm.control} name="password" label={t("common.password")} type="password" placeholder="********" />
+                    <AuthField control={adminForm.control} name="token" label="Admin access token" type="password" placeholder="Enter admin token" />
                     <Button className="w-full" type="submit" disabled={adminForm.formState.isSubmitting}>
                       {t("auth.signInAsAdmin")}
                     </Button>

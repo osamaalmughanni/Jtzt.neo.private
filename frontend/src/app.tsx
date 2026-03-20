@@ -5,9 +5,7 @@ import { AppRouteLoadingState } from "@/components/page-load-state";
 import { AdminGuard, CompanyAdminGuard, CompanyFullAccessGuard, CompanyGuard } from "@/components/route-guards";
 import { useAuth } from "@/lib/auth";
 import { AdminCompaniesPage } from "@/pages/admin-companies-page";
-import { AdminCompanyCreatePage } from "@/pages/admin-company-create-page";
 import { AdminLoginPage } from "@/pages/admin-login-page";
-import { AdminMenuPage } from "@/pages/admin-menu-page";
 import { DashboardDayPickerPage } from "@/pages/dashboard-day-picker-page";
 import { DashboardRecordEditorPage } from "@/pages/dashboard-record-editor-page";
 import { DashboardPage } from "@/pages/dashboard-page";
@@ -29,7 +27,7 @@ import { UserEditorPage } from "@/pages/user-editor-page";
 function PublicEntryRoute() {
   const { loading, adminSession, companySession } = useAuth();
   if (loading) return <AppRouteLoadingState />;
-  if (adminSession) return <Navigate to="/admin/menu" replace />;
+  if (adminSession) return <Navigate to="/admin" replace />;
   if (companySession) {
     return <Navigate to={companySession.accessMode === "tablet" ? "/dashboard" : "/menu"} replace />;
   }
@@ -42,11 +40,10 @@ export function App() {
       <Route path="/" element={<PublicEntryRoute />} />
       <Route path="/learn" element={<LearnPage />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/admin" element={<Navigate to="/?mode=admin" replace />} />
+      <Route path="/admin/login" element={<AdminLoginPage />} />
       <Route path="/tablet" element={<TabletCodePage />} />
       <Route path="/tablet/pin" element={<TabletPinPage />} />
       <Route path="/register" element={<RegisterCompanyPage />} />
-      <Route path="/admin/login" element={<AdminLoginPage />} />
       <Route element={<CompanyGuard />}>
         <Route element={<AppShell mode="company" />}>
           <Route path="/dashboard" element={<DashboardPage />} />
@@ -71,9 +68,8 @@ export function App() {
       </Route>
       <Route element={<AdminGuard />}>
         <Route element={<AppShell mode="admin" />}>
-          <Route path="/admin/menu" element={<AdminMenuPage />} />
+          <Route path="/admin" element={<AdminCompaniesPage />} />
           <Route path="/admin/companies" element={<AdminCompaniesPage />} />
-          <Route path="/admin/company/create" element={<AdminCompanyCreatePage />} />
         </Route>
       </Route>
       <Route path="*" element={<PublicEntryRoute />} />

@@ -11,8 +11,7 @@ const bindings: RuntimeBindings = {
   JWT_SECRET: config.jwtSecret,
   SESSION_TTL_HOURS: String(config.sessionTtlHours),
   NODE_SQLITE_PATH: config.nodeSqlitePath,
-  ADMIN_BOOTSTRAP_USERNAME: config.adminBootstrapUsername,
-  ADMIN_BOOTSTRAP_PASSWORD: config.adminBootstrapPassword
+  ADMIN_ACCESS_TOKEN: config.adminAccessToken
 };
 
 serve({

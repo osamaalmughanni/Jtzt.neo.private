@@ -52,10 +52,9 @@ function toPositiveInteger(value: string | undefined, fallback: number) {
 function validateRuntimeConfig(config: RuntimeConfig) {
   const isProduction = config.appEnv === "production";
   const jwtLooksPlaceholder = config.jwtSecret.startsWith("replace-with-");
-  const adminPasswordLooksPlaceholder =
-    config.adminBootstrapPassword === "admin123" ||
-    config.adminBootstrapPassword === "change-this-now" ||
-    config.adminBootstrapPassword.startsWith("replace-with-");
+  const adminTokenLooksPlaceholder =
+    config.adminAccessToken === "change-this-admin-token" ||
+    config.adminAccessToken.startsWith("replace-with-");
 
   if (isProduction && (config.jwtSecret === "jtzt-dev-secret-change-me" || jwtLooksPlaceholder)) {
     throw new Error("JWT_SECRET must be set explicitly in production");
@@ -65,8 +64,12 @@ function validateRuntimeConfig(config: RuntimeConfig) {
     throw new Error("JWT_SECRET must be at least 32 characters in production");
   }
 
-  if (isProduction && adminPasswordLooksPlaceholder) {
-    throw new Error("ADMIN_BOOTSTRAP_PASSWORD must not use the default value in production");
+  if (isProduction && adminTokenLooksPlaceholder) {
+    throw new Error("ADMIN_ACCESS_TOKEN must not use the default value in production");
+  }
+
+  if (isProduction && config.adminAccessToken.length < 24) {
+    throw new Error("ADMIN_ACCESS_TOKEN must be at least 24 characters in production");
   }
 }
 
@@ -79,8 +82,7 @@ export function resolveRuntimeConfig(bindings?: RuntimeBindings): RuntimeConfig 
     jwtSecret: source.JWT_SECRET?.trim() || "jtzt-dev-secret-change-me",
     sessionTtlHours: toPositiveInteger(source.SESSION_TTL_HOURS, 12),
     nodeSqlitePath: source.NODE_SQLITE_PATH?.trim() || path.resolve(process.cwd(), "data", "app.db"),
-    adminBootstrapUsername: source.ADMIN_BOOTSTRAP_USERNAME?.trim() || "admin",
-    adminBootstrapPassword: source.ADMIN_BOOTSTRAP_PASSWORD?.trim() || "admin123"
+    adminAccessToken: source.ADMIN_ACCESS_TOKEN?.trim() || source.ADMIN_BOOTSTRAP_TOKEN?.trim() || "change-this-admin-token"
   };
 
   validateRuntimeConfig(config);

@@ -15,7 +15,7 @@ import type {
 import type { AppDatabase, SqlValue } from "../runtime/types";
 
 const API_KEY_PREFIX = "jtzt_";
-const EXCLUDED_TABLES = new Set(["admins", "companies", "sqlite_sequence"]);
+const EXCLUDED_TABLES = new Set(["admins", "companies", "invitation_codes", "sqlite_sequence"]);
 const allowedIdentifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const queryOperators = ["eq", "ne", "gt", "gte", "lt", "lte", "like", "in"] as const;
 const mutationActions = ["insert", "update", "delete"] as const;

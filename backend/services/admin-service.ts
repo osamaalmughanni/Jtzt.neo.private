@@ -1,7 +1,14 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { HTTPException } from "hono/http-exception";
-import type { CompanySnapshot, CreateCompanyAdminInput, CreateCompanyInput, DeleteCompanyInput } from "../../shared/types/api";
+import type {
+  CompanySnapshot,
+  CreateCompanyAdminInput,
+  CreateCompanyInput,
+  DeleteInvitationCodeInput,
+  DeleteCompanyInput,
+  InvitationCodeListResponse
+} from "../../shared/types/api";
 import { mapCompanySettings, mapCompanyUser, mapProject, mapTask, mapTimeEntry, mapUserContract, mapUserContractScheduleDay } from "../db/mappers";
 import type { AppDatabase } from "../runtime/types";
 import { systemService } from "./system-service";
@@ -10,6 +17,15 @@ import { createDefaultOvertimeSettings } from "../../shared/utils/overtime";
 
 function createCompanyId() {
   return crypto.randomUUID();
+}
+
+function createInvitationCodeValue() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let index = 0; index < 12; index += 1) {
+    code += alphabet[crypto.randomInt(0, alphabet.length)];
+  }
+  return code.match(/.{1,4}/g)?.join("-") ?? code;
 }
 
 function validateSnapshot(snapshot: CompanySnapshot) {
@@ -366,16 +382,104 @@ export const adminService = {
 
   async getSystemStats(db: AppDatabase) {
     const companyCount = (await db.first<{ count: number }>("SELECT COUNT(*) as count FROM companies"))?.count ?? 0;
-    const adminCount = (await db.first<{ count: number }>("SELECT COUNT(*) as count FROM admins"))?.count ?? 0;
+    const activeInvitationCodeCount =
+      (await db.first<{ count: number }>(
+        "SELECT COUNT(*) as count FROM invitation_codes WHERE used_at IS NULL"
+      ))?.count ?? 0;
     const totalUsers = (await db.first<{ count: number }>("SELECT COUNT(*) as count FROM users"))?.count ?? 0;
     const activeTimers = (await db.first<{ count: number }>("SELECT COUNT(*) as count FROM time_entries WHERE end_time IS NULL"))?.count ?? 0;
 
     return {
       companyCount,
-      adminCount,
+      activeInvitationCodeCount,
       totalUsers,
       activeTimers
     };
+  },
+
+  async listInvitationCodes(db: AppDatabase): Promise<InvitationCodeListResponse["invitationCodes"]> {
+    const rows = await db.all(
+      `SELECT
+        invitation_codes.id,
+        invitation_codes.code,
+        invitation_codes.note,
+        invitation_codes.created_at,
+        invitation_codes.used_at,
+        invitation_codes.used_by_company_id,
+        companies.name AS used_by_company_name
+       FROM invitation_codes
+       LEFT JOIN companies ON companies.id = invitation_codes.used_by_company_id
+       ORDER BY
+         CASE
+           WHEN invitation_codes.used_at IS NULL THEN 0
+           WHEN invitation_codes.used_at IS NOT NULL THEN 1
+         END,
+         invitation_codes.created_at DESC`
+    ) as Array<{
+      id: number;
+      code: string;
+      note: string | null;
+      created_at: string;
+      used_at: string | null;
+      used_by_company_id: string | null;
+      used_by_company_name: string | null;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      code: row.code,
+      note: row.note ?? null,
+      createdAt: row.created_at,
+      usedAt: row.used_at ?? null,
+      usedByCompanyId: row.used_by_company_id ?? null,
+      usedByCompanyName: row.used_by_company_name ?? null
+    }));
+  },
+
+  async createInvitationCode(db: AppDatabase, input: { note?: string }) {
+    const createdAt = new Date().toISOString();
+    const note = input.note?.trim() || null;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const code = createInvitationCodeValue();
+      try {
+        const result = await db.run(
+          "INSERT INTO invitation_codes (code, note, created_at) VALUES (?, ?, ?)",
+          [code, note, createdAt]
+        );
+        return {
+          id: Number(result.lastRowId),
+          code,
+          note,
+          createdAt,
+          usedAt: null,
+          usedByCompanyId: null,
+          usedByCompanyName: null
+        };
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("UNIQUE")) {
+          throw error;
+        }
+      }
+    }
+
+    throw new HTTPException(500, { message: "Invitation code could not be generated" });
+  },
+
+  async deleteInvitationCode(db: AppDatabase, input: DeleteInvitationCodeInput) {
+    const invitationCode = await db.first<{ used_at: string | null }>(
+      "SELECT used_at FROM invitation_codes WHERE id = ?",
+      [input.invitationCodeId]
+    );
+
+    if (!invitationCode) {
+      throw new HTTPException(404, { message: "Invitation code not found" });
+    }
+    if (invitationCode.used_at) {
+      throw new HTTPException(409, { message: "Used invitation codes cannot be deleted" });
+    }
+
+    await db.run("DELETE FROM invitation_codes WHERE id = ?", [input.invitationCodeId]);
   },
 
   async exportCompanySnapshot(db: AppDatabase, companyId: string): Promise<CompanySnapshot> {

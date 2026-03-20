@@ -7,6 +7,7 @@ import type {
   CompanyUserProfile,
   CompanyOvertimeSettings,
   DashboardSummary,
+  InvitationCodeRecord,
   PublicHolidayRecord,
   SystemStats,
   TabletCodeStatus,
@@ -22,8 +23,7 @@ export interface CompanyLoginInput {
 }
 
 export interface AdminLoginInput {
-  username: string;
-  password: string;
+  token: string;
 }
 
 export interface LoginResponse {
@@ -168,6 +168,7 @@ export interface RegisterCompanyInput {
   adminUsername: string;
   adminPassword: string;
   adminFullName?: string;
+  invitationCode: string;
   encryptionEnabled: boolean;
   encryptionKdfAlgorithm?: "pbkdf2-sha256";
   encryptionKdfIterations?: number;
@@ -272,6 +273,18 @@ export interface CompanyListResponse {
 
 export interface SystemStatsResponse {
   stats: SystemStats;
+}
+
+export interface InvitationCodeListResponse {
+  invitationCodes: InvitationCodeRecord[];
+}
+
+export interface CreateInvitationCodeInput {
+  note?: string;
+}
+
+export interface DeleteInvitationCodeInput {
+  invitationCodeId: number;
 }
 
 export interface SettingsResponse {

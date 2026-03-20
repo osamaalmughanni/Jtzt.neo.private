@@ -10,7 +10,7 @@ import { AppFrame } from "@/components/app-frame";
 import { useFullscreenFooterActions } from "@/hooks/use-fullscreen-footer-actions";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { LockSimple } from "phosphor-react";
+import { LockSimple, SignOut } from "phosphor-react";
 
 interface AppShellProps {
   mode: "company" | "admin";
@@ -19,14 +19,14 @@ interface AppShellProps {
 export function AppShell({ mode }: AppShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { companyIdentity, companySession, lockTablet } = useAuth();
+  const { companyIdentity, companySession, lockTablet, logoutAdmin } = useAuth();
   const [tabletIdleTimeoutSeconds, setTabletIdleTimeoutSeconds] = useState(10);
   const idleTimerRef = useRef<number | null>(null);
   const firstRouteRef = useRef(true);
   const footerActions = useFullscreenFooterActions();
   const menuTo =
     mode === "admin"
-      ? "/admin/menu"
+      ? undefined
       : companySession?.accessMode === "tablet"
         ? undefined
         : companyIdentity?.user.role === "admin"
@@ -47,7 +47,19 @@ export function AppShell({ mode }: AppShellProps) {
   }, []);
 
   const headerActions =
-    companySession?.accessMode === "tablet"
+    mode === "admin"
+      ? [
+          {
+            key: "admin-sign-out",
+            label: "Sign out",
+            icon: SignOut,
+            onClick: () => {
+              logoutAdmin();
+              navigate("/?mode=admin", { replace: true });
+            }
+          }
+        ]
+      : companySession?.accessMode === "tablet"
       ? [
           {
             key: "lock-tablet",

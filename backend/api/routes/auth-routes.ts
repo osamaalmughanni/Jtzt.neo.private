@@ -26,6 +26,7 @@ const companyRegistrationSchema = z
     adminUsername: z.string().min(2),
     adminPassword: z.string().min(6),
     adminFullName: z.string().optional(),
+    invitationCode: z.string().min(4),
     encryptionEnabled: z.boolean(),
     encryptionKdfAlgorithm: z.enum(["pbkdf2-sha256"]).optional(),
     encryptionKdfIterations: z.number().int().positive().optional(),

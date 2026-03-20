@@ -59,6 +59,16 @@ export interface CompanyRecord {
   createdAt: string;
 }
 
+export interface InvitationCodeRecord {
+  id: number;
+  code: string;
+  note: string | null;
+  createdAt: string;
+  usedAt: string | null;
+  usedByCompanyId: string | null;
+  usedByCompanyName: string | null;
+}
+
 export interface AdminRecord {
   id: number;
   username: string;
@@ -240,7 +250,7 @@ export interface TaskRecord {
 
 export interface SystemStats {
   companyCount: number;
-  adminCount: number;
+  activeInvitationCodeCount: number;
   totalUsers: number;
   activeTimers: number;
 }

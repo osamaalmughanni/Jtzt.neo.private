@@ -111,9 +111,9 @@ export function getSeoEntry(pathname: string): SeoEntry {
     ["/users", pageTitle("Users")],
     ["/settings", pageTitle("Settings")],
     ["/dashboard/records/create", pageTitle("Add Entry")],
+    ["/admin", pageTitle("Companies")],
     ["/admin/menu", pageTitle("Pages")],
-    ["/admin/companies", pageTitle("Companies")],
-    ["/admin/company/create", pageTitle("Create")]
+    ["/admin/companies", pageTitle("Companies")]
   ]);
 
   if (
