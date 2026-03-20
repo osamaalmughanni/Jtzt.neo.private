@@ -9,8 +9,9 @@ import type {
   DeleteCompanyInput,
   InvitationCodeListResponse
 } from "../../shared/types/api";
+import { destroyCompanyDatabase } from "../db/runtime-database";
 import { mapCompanySettings, mapCompanyUser, mapProject, mapTask, mapTimeEntry, mapUserContract, mapUserContractScheduleDay } from "../db/mappers";
-import type { AppDatabase } from "../runtime/types";
+import type { AppDatabase, RuntimeBindings, RuntimeConfig } from "../runtime/types";
 import { systemService } from "./system-service";
 import { createLegacyContractSchedule } from "./user-contract-schedule";
 import { createDefaultOvertimeSettings } from "../../shared/utils/overtime";
@@ -271,8 +272,8 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
 }
 
 export const adminService = {
-  async createCompany(db: AppDatabase, input: CreateCompanyInput) {
-    const existing = await systemService.getCompanyByName(db, input.name);
+  async createCompany(systemDb: AppDatabase, companyDb: AppDatabase, input: CreateCompanyInput, companyId: string = createCompanyId()) {
+    const existing = await systemService.getCompanyByName(systemDb, input.name);
     if (existing) {
       throw new HTTPException(409, { message: "Company already exists" });
     }
@@ -280,9 +281,8 @@ export const adminService = {
       throw new HTTPException(400, { message: "Secure mode metadata is incomplete" });
     }
 
-    const companyId = createCompanyId();
     const createdAt = new Date().toISOString();
-    await db.run(
+    await systemDb.run(
       `INSERT INTO companies (
         id,
         name,
@@ -305,26 +305,30 @@ export const adminService = {
       ]
     );
 
-    await seedCompanyAdmin(db, companyId, {
-      username: input.adminUsername.trim(),
-      password: input.adminPassword,
-      fullName: input.adminFullName.trim()
-    });
-    await seedDefaultProjects(db, companyId);
+    try {
+      await seedCompanyAdmin(companyDb, companyId, {
+        username: input.adminUsername.trim(),
+        password: input.adminPassword,
+        fullName: input.adminFullName.trim()
+      });
+      await seedDefaultProjects(companyDb, companyId);
+    } catch (error) {
+      await systemDb.run("DELETE FROM companies WHERE id = ?", [companyId]);
+      throw error;
+    }
 
-    return systemService.getCompanyById(db, companyId);
+    return systemService.getCompanyById(systemDb, companyId);
   },
 
-  async createCompanyFromSnapshot(db: AppDatabase, input: { name: string; snapshot: CompanySnapshot }) {
-    const existing = await systemService.getCompanyByName(db, input.name);
+  async createCompanyFromSnapshot(systemDb: AppDatabase, companyDb: AppDatabase, input: { name: string; snapshot: CompanySnapshot }, companyId: string = createCompanyId()) {
+    const existing = await systemService.getCompanyByName(systemDb, input.name);
     if (existing) {
       throw new HTTPException(409, { message: "Company already exists" });
     }
 
     validateSnapshot(input.snapshot);
-    const companyId = createCompanyId();
     const createdAt = new Date().toISOString();
-    await db.run(
+    await systemDb.run(
       `INSERT INTO companies (
         id,
         name,
@@ -338,41 +342,55 @@ export const adminService = {
       [companyId, input.name.trim(), createdAt]
     );
 
-    await replaceCompanySnapshotInternal(db, companyId, {
-      ...input.snapshot,
-      company: {
-        ...input.snapshot.company,
-        createdAt
-      }
-    });
+    try {
+      await replaceCompanySnapshotInternal(companyDb, companyId, {
+        ...input.snapshot,
+        company: {
+          ...input.snapshot.company,
+          createdAt
+        }
+      });
+    } catch (error) {
+      await systemDb.run("DELETE FROM companies WHERE id = ?", [companyId]);
+      throw error;
+    }
 
-    return systemService.getCompanyById(db, companyId);
+    return systemService.getCompanyById(systemDb, companyId);
   },
 
-  async replaceCompanySnapshot(db: AppDatabase, input: { companyId: string; snapshot: CompanySnapshot }) {
-    const company = await systemService.getCompanyById(db, input.companyId);
+  async replaceCompanySnapshot(systemDb: AppDatabase, companyDb: AppDatabase, input: { companyId: string; snapshot: CompanySnapshot }) {
+    const company = await systemService.getCompanyById(systemDb, input.companyId);
     if (!company) {
       throw new HTTPException(404, { message: "Company not found" });
     }
 
-    await replaceCompanySnapshotInternal(db, input.companyId, input.snapshot);
-    return systemService.getCompanyById(db, input.companyId);
+    await replaceCompanySnapshotInternal(companyDb, input.companyId, input.snapshot);
+    return systemService.getCompanyById(systemDb, input.companyId);
   },
 
-  async deleteCompany(db: AppDatabase, input: DeleteCompanyInput) {
-    const company = await systemService.getCompanyById(db, input.companyId);
+  async deleteCompany(
+    systemDb: AppDatabase,
+    companyDb: AppDatabase,
+    input: DeleteCompanyInput,
+    options?: { config?: RuntimeConfig; bindings?: RuntimeBindings },
+  ) {
+    const company = await systemService.getCompanyById(systemDb, input.companyId);
     if (!company) {
       throw new HTTPException(404, { message: "Company not found" });
     }
-    await db.run("DELETE FROM companies WHERE id = ?", [input.companyId]);
+    await deleteCompanyData(companyDb, input.companyId);
+    await systemDb.run("DELETE FROM companies WHERE id = ?", [input.companyId]);
+    if (options?.config) {
+      await destroyCompanyDatabase(options.config, input.companyId, options.bindings);
+    }
   },
 
-  async createCompanyAdmin(db: AppDatabase, input: CreateCompanyAdminInput) {
-    const company = await systemService.getCompanyById(db, input.companyId);
+  async createCompanyAdmin(systemDb: AppDatabase, companyDb: AppDatabase, input: CreateCompanyAdminInput) {
+    const company = await systemService.getCompanyById(systemDb, input.companyId);
     if (!company) {
       throw new HTTPException(404, { message: "Company not found" });
     }
-    await db.run(
+    await companyDb.run(
       `INSERT INTO users (
         company_id,
         username,
@@ -385,14 +403,24 @@ export const adminService = {
     );
   },
 
-  async getSystemStats(db: AppDatabase) {
-    const companyCount = (await db.first<{ count: number }>("SELECT COUNT(*) as count FROM companies"))?.count ?? 0;
+  async getSystemStats(
+    systemDb: AppDatabase,
+    resolveCompanyDb: (companyId: string) => Promise<AppDatabase>,
+  ) {
+    const companyCount = (await systemDb.first<{ count: number }>("SELECT COUNT(*) as count FROM companies"))?.count ?? 0;
     const activeInvitationCodeCount =
-      (await db.first<{ count: number }>(
+      (await systemDb.first<{ count: number }>(
         "SELECT COUNT(*) as count FROM invitation_codes WHERE used_at IS NULL"
       ))?.count ?? 0;
-    const totalUsers = (await db.first<{ count: number }>("SELECT COUNT(*) as count FROM users"))?.count ?? 0;
-    const activeTimers = (await db.first<{ count: number }>("SELECT COUNT(*) as count FROM time_entries WHERE end_time IS NULL"))?.count ?? 0;
+    const companies = await systemDb.all<{ id: string }>("SELECT id FROM companies");
+    let totalUsers = 0;
+    let activeTimers = 0;
+
+    for (const company of companies) {
+      const companyDb = await resolveCompanyDb(company.id);
+      totalUsers += (await companyDb.first<{ count: number }>("SELECT COUNT(*) as count FROM users"))?.count ?? 0;
+      activeTimers += (await companyDb.first<{ count: number }>("SELECT COUNT(*) as count FROM time_entries WHERE end_time IS NULL"))?.count ?? 0;
+    }
 
     return {
       companyCount,
@@ -402,8 +430,8 @@ export const adminService = {
     };
   },
 
-  async listInvitationCodes(db: AppDatabase): Promise<InvitationCodeListResponse["invitationCodes"]> {
-    const rows = await db.all(
+  async listInvitationCodes(systemDb: AppDatabase): Promise<InvitationCodeListResponse["invitationCodes"]> {
+    const rows = await systemDb.all(
       `SELECT
         invitation_codes.id,
         invitation_codes.code,
@@ -441,14 +469,14 @@ export const adminService = {
     }));
   },
 
-  async createInvitationCode(db: AppDatabase, input: { note?: string }) {
+  async createInvitationCode(systemDb: AppDatabase, input: { note?: string }) {
     const createdAt = new Date().toISOString();
     const note = input.note?.trim() || null;
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const code = createInvitationCodeValue();
       try {
-        const result = await db.run(
+        const result = await systemDb.run(
           "INSERT INTO invitation_codes (code, note, created_at) VALUES (?, ?, ?)",
           [code, note, createdAt]
         );
@@ -471,8 +499,8 @@ export const adminService = {
     throw new HTTPException(500, { message: "Invitation code could not be generated" });
   },
 
-  async deleteInvitationCode(db: AppDatabase, input: DeleteInvitationCodeInput) {
-    const invitationCode = await db.first<{ used_at: string | null }>(
+  async deleteInvitationCode(systemDb: AppDatabase, input: DeleteInvitationCodeInput) {
+    const invitationCode = await systemDb.first<{ used_at: string | null }>(
       "SELECT used_at FROM invitation_codes WHERE id = ?",
       [input.invitationCodeId]
     );
@@ -484,11 +512,11 @@ export const adminService = {
       throw new HTTPException(409, { message: "Used invitation codes cannot be deleted" });
     }
 
-    await db.run("DELETE FROM invitation_codes WHERE id = ?", [input.invitationCodeId]);
+    await systemDb.run("DELETE FROM invitation_codes WHERE id = ?", [input.invitationCodeId]);
   },
 
-  async exportCompanySnapshot(db: AppDatabase, companyId: string): Promise<CompanySnapshot> {
-    const company = await db.first(
+  async exportCompanySnapshot(systemDb: AppDatabase, companyDb: AppDatabase, companyId: string): Promise<CompanySnapshot> {
+    const company = await systemDb.first(
       `SELECT
         name,
         encryption_enabled,
@@ -522,8 +550,8 @@ export const adminService = {
       throw new HTTPException(404, { message: "Company not found" });
     }
 
-    const settingsRow = await db.first("SELECT * FROM company_settings WHERE company_id = ?", [companyId]);
-    const users = (await db.all(
+    const settingsRow = await companyDb.first("SELECT * FROM company_settings WHERE company_id = ?", [companyId]);
+    const users = (await companyDb.all(
       "SELECT id, username, full_name, password_hash, role, is_active, pin_code, email, created_at FROM users WHERE company_id = ? ORDER BY id ASC",
       [companyId]
     ))
@@ -540,7 +568,7 @@ export const adminService = {
         createdAt: user.createdAt
       }));
 
-    const contractRows = await db.all(
+    const contractRows = await companyDb.all(
       "SELECT id, user_id, hours_per_week, start_date, end_date, payment_per_hour, annual_vacation_days, created_at FROM user_contracts WHERE company_id = ? ORDER BY id ASC",
       [companyId]
     ) as Array<{
@@ -553,7 +581,7 @@ export const adminService = {
       annual_vacation_days: number;
       created_at: string;
     }>;
-    const scheduleRows = await db.all(
+    const scheduleRows = await companyDb.all(
       `SELECT
         contract_id,
         weekday,
@@ -581,7 +609,7 @@ export const adminService = {
     }
     const userContracts = contractRows.map((contract) => mapUserContract(contract, contractScheduleById.get(contract.id) ?? []));
 
-    const timeEntries = (await db.all(
+    const timeEntries = (await companyDb.all(
       `SELECT
         id,
         user_id,
@@ -599,11 +627,11 @@ export const adminService = {
       [companyId]
     )).map(mapTimeEntry);
 
-    const projects = (await db.all("SELECT id, name, description, is_active, created_at FROM projects WHERE company_id = ? ORDER BY id ASC", [companyId])).map(
+    const projects = (await companyDb.all("SELECT id, name, description, is_active, created_at FROM projects WHERE company_id = ? ORDER BY id ASC", [companyId])).map(
       mapProject
     );
-    const tasks = (await db.all("SELECT id, project_id, title, is_active, created_at FROM tasks WHERE company_id = ? ORDER BY id ASC", [companyId])).map(mapTask);
-    const publicHolidayCache = await db.all<{ country_code: string; year: number; payload_json: string; fetched_at: string }>(
+    const tasks = (await companyDb.all("SELECT id, project_id, title, is_active, created_at FROM tasks WHERE company_id = ? ORDER BY id ASC", [companyId])).map(mapTask);
+    const publicHolidayCache = await companyDb.all<{ country_code: string; year: number; payload_json: string; fetched_at: string }>(
       "SELECT country_code, year, payload_json, fetched_at FROM public_holiday_cache WHERE company_id = ? ORDER BY year ASC, country_code ASC",
       [companyId]
     );

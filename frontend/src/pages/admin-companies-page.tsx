@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Copy, Download, KeyRound, ShieldPlus, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { InvitationCodeRecord, SystemStats } from "@shared/types/models";
+import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import { AppFullBleed } from "@/components/app-content-lane";
 import { FormPage, FormPanel } from "@/components/form-layout";
 import { PageIntro } from "@/components/page-intro";
@@ -45,7 +46,7 @@ export function AdminCompaniesPage() {
   const [newAdmin, setNewAdmin] = useState({ companyId: "", username: "", password: "", fullName: "" });
   const [importingCompanyId, setImportingCompanyId] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
-  const [pendingDeleteCompanyId, setPendingDeleteCompanyId] = useState<string | null>(null);
+  const [pendingDeleteCompany, setPendingDeleteCompany] = useState<{ id: string; name: string } | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
@@ -189,7 +190,7 @@ export function AdminCompaniesPage() {
     setDeleteSubmitting(true);
     try {
       await api.deleteCompany(adminSession.token, { companyId });
-      setPendingDeleteCompanyId(null);
+      setPendingDeleteCompany(null);
       toast({ title: "Company deleted" });
       await reloadAdminData();
     } catch (error) {
@@ -429,7 +430,7 @@ export function AdminCompaniesPage() {
                           variant="ghost"
                           size="sm"
                           className="h-9 w-9 p-0 text-destructive"
-                          onClick={() => setPendingDeleteCompanyId(company.id)}
+                          onClick={() => setPendingDeleteCompany({ id: company.id, name: company.name })}
                           aria-label={`Delete ${company.name}`}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -509,24 +510,29 @@ export function AdminCompaniesPage() {
                         </Dialog>
                       </div>
 
-                      {pendingDeleteCompanyId === company.id ? (
-                        <div className="flex flex-col gap-3 border border-destructive/30 bg-destructive/5 p-4">
-                          <p className="text-sm text-foreground">Delete {company.name} and all related data?</p>
-                          <div className="flex items-center gap-2">
-                            <Button type="button" variant="outline" size="sm" onClick={() => setPendingDeleteCompanyId(null)} disabled={deleteSubmitting}>
-                              Cancel
-                            </Button>
-                            <Button type="button" variant="destructive" size="sm" onClick={() => void handleDeleteCompany(company.id)} disabled={deleteSubmitting}>
-                              {deleteSubmitting ? "Deleting..." : "Delete company"}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
                   ))}
                 </div>
               )}
             </FormPanel>
+            <AppConfirmDialog
+              open={pendingDeleteCompany !== null}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setPendingDeleteCompany(null);
+                }
+              }}
+              title={pendingDeleteCompany ? `Delete ${pendingDeleteCompany.name}?` : "Delete company?"}
+              description="This permanently removes the company record and wipes its company database storage."
+              confirmLabel="Delete company"
+              destructive
+              confirming={deleteSubmitting}
+              onConfirm={() => {
+                if (pendingDeleteCompany) {
+                  void handleDeleteCompany(pendingDeleteCompany.id);
+                }
+              }}
+            />
           </div>
         </AppFullBleed>
       </PageLoadBoundary>

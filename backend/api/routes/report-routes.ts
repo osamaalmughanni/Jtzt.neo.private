@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
+import { authMiddleware, companyDbMiddleware, requireCompanyUser } from "../../auth/middleware";
 import { reportService } from "../../services/report-service";
 import type { AppRouteConfig, AppVariables } from "../context";
 
@@ -16,7 +16,7 @@ const reportSchema = z.object({
 
 export const reportRoutes = new Hono<AppRouteConfig>();
 
-reportRoutes.use("*", authMiddleware, requireCompanyUser);
+reportRoutes.use("*", authMiddleware, requireCompanyUser, companyDbMiddleware);
 
 function ensureManagerOrAdmin(session: AppVariables["session"]) {
   if (

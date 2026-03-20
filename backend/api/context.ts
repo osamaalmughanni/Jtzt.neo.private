@@ -3,6 +3,7 @@ import type { AppDatabase, RuntimeBindings, RuntimeConfig } from "../runtime/typ
 
 export interface AppVariables {
   session: SessionTokenPayload;
+  systemDb: AppDatabase;
   db: AppDatabase;
   config: RuntimeConfig;
   externalCompany: {

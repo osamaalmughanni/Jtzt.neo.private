@@ -94,8 +94,8 @@ export function AdminCompanyCreatePage() {
                 <FormLabel>Import company snapshot</FormLabel>
                 <FileInput
                   file={databaseFile}
-                  accept=".json,application/json"
-                  placeholder="Upload an existing company snapshot"
+                  accept=".sqlite,.db,application/vnd.sqlite3,application/octet-stream"
+                  placeholder="Upload a SQLite company backup"
                   buttonLabel="Select"
                   onFileChange={setDatabaseFile}
                 />
@@ -143,7 +143,7 @@ export function AdminCompanyCreatePage() {
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
-                  {databaseFile ? "The uploaded snapshot will seed this company inside the shared database." : "The company is created inside the shared application database."}
+                  {databaseFile ? "The uploaded SQLite backup will seed this company database." : "The company will get its own isolated company database."}
                 </p>
                 <Button type="submit" disabled={form.formState.isSubmitting}>
                   Create company

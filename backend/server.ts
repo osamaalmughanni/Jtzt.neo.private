@@ -3,14 +3,15 @@ import { app } from "./api/app";
 import { resolveRuntimeConfig } from "./runtime/env";
 import type { RuntimeBindings } from "./runtime/types";
 
-const config = resolveRuntimeConfig();
+const config = await resolveRuntimeConfig();
 
 const bindings: RuntimeBindings = {
   APP_ENV: config.appEnv,
   APP_VERSION: config.appVersion,
   JWT_SECRET: config.jwtSecret,
   SESSION_TTL_HOURS: String(config.sessionTtlHours),
-  NODE_SQLITE_PATH: config.nodeSqlitePath,
+  NODE_SYSTEM_SQLITE_PATH: config.nodeSystemSqlitePath,
+  NODE_COMPANY_SQLITE_DIR: config.nodeCompanySqliteDir,
   ADMIN_ACCESS_TOKEN: config.adminAccessToken
 };
 

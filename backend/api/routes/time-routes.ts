@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { diffCalendarDays } from "../../../shared/utils/time";
 import { evaluateTimeEntryPolicy, getRangeEndDay } from "../../../shared/utils/time-entry-policy";
-import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
+import { authMiddleware, companyDbMiddleware, requireCompanyUser } from "../../auth/middleware";
 import type { CompanyTokenPayload } from "../../auth/jwt";
 import { settingsService } from "../../services/settings-service";
 import { timeOffInLieuService } from "../../services/time-off-in-lieu-service";
@@ -62,7 +62,7 @@ const deleteEntrySchema = z.object({
 
 export const timeRoutes = new Hono<AppRouteConfig>();
 
-timeRoutes.use("*", authMiddleware, requireCompanyUser);
+timeRoutes.use("*", authMiddleware, requireCompanyUser, companyDbMiddleware);
 
 function hasCustomFieldValue(value: string | number | boolean | undefined) {
   if (typeof value === "string") return value.trim().length > 0;

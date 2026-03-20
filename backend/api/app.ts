@@ -9,8 +9,7 @@ import { reportRoutes } from "./routes/report-routes";
 import { settingsRoutes } from "./routes/settings-routes";
 import { timeRoutes } from "./routes/time-routes";
 import { userRoutes } from "./routes/user-routes";
-import { createD1Database, createNodeDatabase } from "../db/app-database";
-import { ensureBootstrapState } from "../runtime/bootstrap";
+import { createSystemDatabase } from "../db/runtime-database";
 import { resolveRuntimeConfig } from "../runtime/env";
 import type { AppRouteConfig } from "./context";
 
@@ -33,20 +32,12 @@ export function createApp() {
   });
 
   app.use("*", async (c, next) => {
-    const config = resolveRuntimeConfig(c.env);
-    const d1Session = c.env.DB
-      ? c.env.DB.withSession(c.req.header("X-D1-Bookmark")?.trim() || "first-primary")
-      : null;
-    const db = c.env.DB ? createD1Database(c.env.DB, d1Session ?? c.env.DB) : createNodeDatabase(config.nodeSqlitePath);
-    await ensureBootstrapState(db, config);
-    c.set("db", db);
+    const config = await resolveRuntimeConfig(c.env);
     c.set("config", config);
+    const systemDb = await createSystemDatabase(config, c.env);
+    c.set("systemDb", systemDb);
+    c.set("db", systemDb);
     await next();
-
-    const nextBookmark = d1Session?.getBookmark?.();
-    if (nextBookmark) {
-      c.header("X-D1-Bookmark", nextBookmark);
-    }
   });
 
   app.route("/api/auth", authRoutes);
@@ -55,6 +46,7 @@ export function createApp() {
   app.route("/api/users", userRoutes);
   app.route("/api/settings", settingsRoutes);
   app.route("/api/reports", reportRoutes);
+  app.route("/api/projects", projectRoutes);
   app.route("/api/admin", adminRoutes);
 
   app.get("/api/health", (c) => {
@@ -79,15 +71,21 @@ export function createApp() {
   });
 
   app.onError((error, c) => {
-    const config = c.get("config");
+    const config = (() => {
+      try {
+        return c.get("config") as { runtime?: string; appEnv?: string } | undefined;
+      } catch {
+        return undefined;
+      }
+    })();
     const requestId = c.res.headers.get("X-Request-Id") ?? null;
     const errorName = error instanceof Error ? error.name : "UnknownError";
     const basePayload = {
       requestId,
       method: c.req.method,
       path: c.req.path,
-      runtime: config.runtime,
-      env: config.appEnv,
+      runtime: config?.runtime ?? "unknown",
+      env: config?.appEnv ?? "unknown",
       errorName,
     };
 
@@ -104,7 +102,7 @@ export function createApp() {
           error: error.message,
           ...basePayload,
           details,
-          ...(config.appEnv !== "production" && cause instanceof Error ? { debugMessage: cause.message, stack: cause.stack } : {}),
+          ...(config?.appEnv !== "production" && cause instanceof Error ? { debugMessage: cause.message, stack: cause.stack } : {}),
         },
         error.status
       );
@@ -116,7 +114,7 @@ export function createApp() {
         error: "Internal server error",
         ...basePayload,
         debugMessage: error instanceof Error ? error.message : String(error),
-        ...(config.appEnv !== "production" && error instanceof Error ? { stack: error.stack } : {}),
+        ...(config?.appEnv !== "production" && error instanceof Error ? { stack: error.stack } : {}),
       },
       500
     );

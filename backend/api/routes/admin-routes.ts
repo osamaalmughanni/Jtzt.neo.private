@@ -1,12 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import crypto from "node:crypto";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { authMiddleware, requireAdmin } from "../../auth/middleware";
+import { createCompanyDatabase } from "../../db/runtime-database";
 import { adminService } from "../../services/admin-service";
 import { authService } from "../../services/auth-service";
 import { systemService } from "../../services/system-service";
@@ -42,11 +38,40 @@ const deleteInvitationCodeSchema = z.object({
   invitationCodeId: z.number().int().positive()
 });
 
-function createUploadedSqlitePath() {
-  return path.join(os.tmpdir(), `jtzt-upload-${crypto.randomUUID()}.sqlite`);
+function scheduleTempFileCleanup(filePath: string) {
+  void (async () => {
+    const { default: fs } = await import("node:fs");
+    const tryDelete = (attempt = 0) => {
+      fs.rm(filePath, { force: true }, (error) => {
+        if (!error) {
+          return;
+        }
+        if ((error as NodeJS.ErrnoException).code === "EBUSY" && attempt < 12) {
+          setTimeout(() => tryDelete(attempt + 1), 40 * (attempt + 1));
+        }
+      });
+    };
+    tryDelete();
+  })();
 }
 
-function scheduleTempFileCleanup(filePath: string) {
+async function writeUploadedFileToTemp(file: File) {
+  const [{ default: fs }, os, path, { Readable }, { pipeline }] = await Promise.all([
+    import("node:fs"),
+    import("node:os"),
+    import("node:path"),
+    import("node:stream"),
+    import("node:stream/promises"),
+  ]);
+  const tempPath = path.join(os.tmpdir(), `jtzt-upload-${crypto.randomUUID()}.sqlite`);
+  const writable = fs.createWriteStream(tempPath);
+  await pipeline(Readable.fromWeb(file.stream() as any), writable);
+  return tempPath;
+}
+
+async function createReadStreamResponse(filePath: string, fileName: string) {
+  const [{ default: fs }, { Readable }] = await Promise.all([import("node:fs"), import("node:stream")]);
+
   const tryDelete = (attempt = 0) => {
     fs.rm(filePath, { force: true }, (error) => {
       if (!error) {
@@ -58,21 +83,26 @@ function scheduleTempFileCleanup(filePath: string) {
     });
   };
 
-  tryDelete();
-}
+  const readStream = fs.createReadStream(filePath);
+  const cleanup = () => {
+    tryDelete();
+  };
+  readStream.on("close", cleanup);
+  readStream.on("error", cleanup);
 
-async function writeUploadedFileToTemp(file: File) {
-  const tempPath = createUploadedSqlitePath();
-  const writable = fs.createWriteStream(tempPath);
-  await pipeline(Readable.fromWeb(file.stream() as any), writable);
-  return tempPath;
+  return new Response(Readable.toWeb(readStream) as ReadableStream, {
+    headers: {
+      "Content-Type": "application/vnd.sqlite3",
+      "Content-Disposition": `attachment; filename="${fileName}"`,
+    },
+  });
 }
 
 export const adminRoutes = new Hono<AppRouteConfig>();
 
 adminRoutes.post("/auth/login", async (c) => {
   const body = adminLoginSchema.parse(await c.req.json());
-  return c.json({ session: await authService.loginAdmin(c.get("db"), c.get("config"), body) });
+  return c.json({ session: await authService.loginAdmin(c.get("config"), body) });
 });
 
 adminRoutes.use("*", authMiddleware, requireAdmin);
@@ -86,27 +116,29 @@ adminRoutes.get("/me", (c) => {
 });
 
 adminRoutes.get("/companies", async (c) => {
-  return c.json({ companies: await systemService.listCompanies(c.get("db")) });
+  return c.json({ companies: await systemService.listCompanies(c.get("systemDb")) });
 });
 
 adminRoutes.get("/invitation-codes", async (c) => {
-  return c.json({ invitationCodes: await adminService.listInvitationCodes(c.get("db")) });
+  return c.json({ invitationCodes: await adminService.listInvitationCodes(c.get("systemDb")) });
 });
 
 adminRoutes.post("/invitation-codes/create", async (c) => {
   const body = createInvitationCodeSchema.parse(await c.req.json());
-  return c.json({ invitationCode: await adminService.createInvitationCode(c.get("db"), body) });
+  return c.json({ invitationCode: await adminService.createInvitationCode(c.get("systemDb"), body) });
 });
 
 adminRoutes.post("/invitation-codes/delete", async (c) => {
   const body = deleteInvitationCodeSchema.parse(await c.req.json());
-  await adminService.deleteInvitationCode(c.get("db"), body);
+  await adminService.deleteInvitationCode(c.get("systemDb"), body);
   return c.json({ success: true });
 });
 
 adminRoutes.post("/companies/create", async (c) => {
   const body = createCompanySchema.parse(await c.req.json());
-  return c.json({ company: await adminService.createCompany(c.get("db"), body) });
+  const companyId = crypto.randomUUID();
+  const companyDb = await createCompanyDatabase(c.get("config"), companyId, c.env);
+  return c.json({ company: await adminService.createCompany(c.get("systemDb"), companyDb, body, companyId) });
 });
 
 adminRoutes.post("/companies/create/import", async (c) => {
@@ -121,7 +153,7 @@ adminRoutes.post("/companies/create/import", async (c) => {
   try {
     const { importCompanyFromSqlite } = await import("../../services/admin-sqlite-transfer");
     const imported = importCompanyFromSqlite(c.get("config"), tempPath, { companyName: name || undefined });
-    return c.json({ company: await systemService.getCompanyById(c.get("db"), imported.companyId) });
+    return c.json({ company: await systemService.getCompanyById(c.get("systemDb"), imported.companyId) });
   } finally {
     scheduleTempFileCleanup(tempPath);
   }
@@ -129,37 +161,26 @@ adminRoutes.post("/companies/create/import", async (c) => {
 
 adminRoutes.post("/companies/delete", async (c) => {
   const body = deleteCompanySchema.parse(await c.req.json());
-  await adminService.deleteCompany(c.get("db"), body);
+  const companyDb = await createCompanyDatabase(c.get("config"), body.companyId, c.env);
+  await adminService.deleteCompany(c.get("systemDb"), companyDb, body, { config: c.get("config"), bindings: c.env });
   return c.json({ success: true });
 });
 
 adminRoutes.get("/companies/:companyId/export", async (c) => {
   const companyId = c.req.param("companyId");
-  const company = await systemService.getCompanyById(c.get("db"), companyId);
+  const company = await systemService.getCompanyById(c.get("systemDb"), companyId);
   if (!company) {
     return c.json({ error: "Company not found" }, 404);
   }
 
   const { exportCompanyToSqlite } = await import("../../services/admin-sqlite-transfer");
   const { filePath, fileName } = exportCompanyToSqlite(c.get("config"), companyId);
-  const readStream = fs.createReadStream(filePath);
-  const cleanup = () => {
-    scheduleTempFileCleanup(filePath);
-  };
-  readStream.on("close", cleanup);
-  readStream.on("error", cleanup);
-
-  return new Response(Readable.toWeb(readStream) as ReadableStream, {
-    headers: {
-      "Content-Type": "application/vnd.sqlite3",
-      "Content-Disposition": `attachment; filename="${fileName}"`
-    }
-  });
+  return createReadStreamResponse(filePath, fileName);
 });
 
 adminRoutes.post("/companies/:companyId/import", async (c) => {
   const companyId = c.req.param("companyId");
-  const company = await systemService.getCompanyById(c.get("db"), companyId);
+  const company = await systemService.getCompanyById(c.get("systemDb"), companyId);
   if (!company) {
     return c.json({ error: "Company not found" }, 404);
   }
@@ -174,7 +195,7 @@ adminRoutes.post("/companies/:companyId/import", async (c) => {
   try {
     const { importCompanyFromSqlite } = await import("../../services/admin-sqlite-transfer");
     const imported = importCompanyFromSqlite(c.get("config"), tempPath, { companyId, companyName: company.name });
-    return c.json({ company: await systemService.getCompanyById(c.get("db"), imported.companyId) });
+    return c.json({ company: await systemService.getCompanyById(c.get("systemDb"), imported.companyId) });
   } finally {
     scheduleTempFileCleanup(tempPath);
   }
@@ -182,10 +203,13 @@ adminRoutes.post("/companies/:companyId/import", async (c) => {
 
 adminRoutes.post("/companies/admins/create", async (c) => {
   const body = createCompanyAdminSchema.parse(await c.req.json());
-  await adminService.createCompanyAdmin(c.get("db"), body);
+  const companyDb = await createCompanyDatabase(c.get("config"), body.companyId, c.env);
+  await adminService.createCompanyAdmin(c.get("systemDb"), companyDb, body);
   return c.json({ success: true });
 });
 
 adminRoutes.get("/stats", async (c) => {
-  return c.json({ stats: await adminService.getSystemStats(c.get("db")) });
+  return c.json({
+    stats: await adminService.getSystemStats(c.get("systemDb"), (companyId) => createCompanyDatabase(c.get("config"), companyId, c.env)),
+  });
 });

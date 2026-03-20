@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { authMiddleware, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
+import { authMiddleware, companyDbMiddleware, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
 import { projectService } from "../../services/project-service";
 import { taskService } from "../../services/task-service";
 import type { AppRouteConfig } from "../context";
@@ -17,7 +17,7 @@ const createTaskSchema = z.object({
 
 export const projectRoutes = new Hono<AppRouteConfig>();
 
-projectRoutes.use("*", authMiddleware, requireCompanyUser);
+projectRoutes.use("*", authMiddleware, requireCompanyUser, companyDbMiddleware);
 
 projectRoutes.get("/", async (c) => {
   const session = c.get("session");

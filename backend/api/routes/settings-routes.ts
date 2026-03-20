@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { normalizeTimeZone } from "../../../shared/utils/time";
-import { authMiddleware, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
+import { authMiddleware, companyDbMiddleware, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
 import { companyApiService } from "../../services/company-api-service";
 import { settingsService } from "../../services/settings-service";
 import { systemService } from "../../services/system-service";
@@ -83,7 +83,7 @@ const overtimeSettingsSchema = z.object({
 
 export const settingsRoutes = new Hono<AppRouteConfig>();
 
-settingsRoutes.use("*", authMiddleware, requireCompanyUser);
+settingsRoutes.use("*", authMiddleware, requireCompanyUser, companyDbMiddleware);
 
 settingsRoutes.get("/", async (c) => {
   const session = c.get("session");
@@ -143,7 +143,7 @@ settingsRoutes.get("/tablet-code", requireCompanyAdmin, async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
 
-  const tabletCode = await systemService.getTabletCodeStatus(c.get("db"), session.companyId);
+  const tabletCode = await systemService.getTabletCodeStatus(c.get("systemDb"), session.companyId);
   if (!tabletCode) {
     return c.json({ error: "Company not found" }, 404);
   }
@@ -158,7 +158,7 @@ settingsRoutes.put("/tablet-code", requireCompanyAdmin, async (c) => {
   }
 
   const body = tabletCodeSchema.parse(await c.req.json());
-  const response = await systemService.setTabletCode(c.get("db"), session.companyId, body.code);
+  const response = await systemService.setTabletCode(c.get("systemDb"), session.companyId, body.code);
   return c.json(response);
 });
 
@@ -168,7 +168,7 @@ settingsRoutes.post("/tablet-code/regenerate", requireCompanyAdmin, async (c) =>
     return c.json({ error: "Company login required" }, 403);
   }
 
-  return c.json(await systemService.regenerateTabletCode(c.get("db"), session.companyId));
+  return c.json(await systemService.regenerateTabletCode(c.get("systemDb"), session.companyId));
 });
 
 settingsRoutes.get("/api-access", requireCompanyAdmin, async (c) => {
@@ -177,7 +177,7 @@ settingsRoutes.get("/api-access", requireCompanyAdmin, async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
 
-  return c.json({ status: await companyApiService.getApiKeyStatus(c.get("db"), session.companyId) });
+  return c.json({ status: await companyApiService.getApiKeyStatus(c.get("systemDb"), session.companyId) });
 });
 
 settingsRoutes.post("/api-access/rotate", requireCompanyAdmin, async (c) => {
@@ -186,7 +186,7 @@ settingsRoutes.post("/api-access/rotate", requireCompanyAdmin, async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
 
-  return c.json(await companyApiService.rotateApiKey(c.get("db"), session.companyId));
+  return c.json(await companyApiService.rotateApiKey(c.get("systemDb"), session.companyId));
 });
 
 settingsRoutes.get("/api-access/docs", requireCompanyAdmin, async (c) => {

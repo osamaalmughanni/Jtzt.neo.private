@@ -1,7 +1,10 @@
 import { Hono } from "hono";
+import crypto from "node:crypto";
 import { z } from "zod";
-import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
+import { authMiddleware, companyDbMiddleware, requireCompanyUser } from "../../auth/middleware";
+import { createCompanyDatabase } from "../../db/runtime-database";
 import { authService } from "../../services/auth-service";
+import { systemService } from "../../services/system-service";
 import type { AppRouteConfig } from "../context";
 
 const companyLoginSchema = z.object({
@@ -53,22 +56,37 @@ export const authRoutes = new Hono<AppRouteConfig>();
 
 authRoutes.post("/login", async (c) => {
   const body = companyLoginSchema.parse(await c.req.json());
-  return c.json({ session: await authService.loginCompanyUser(c.get("db"), c.get("config"), body) });
+  const systemDb = c.get("systemDb");
+  const company = await systemService.getCompanyByName(systemDb, body.companyName);
+  if (!company) {
+    return c.json({ error: "Invalid company credentials" }, 401);
+  }
+  const companyDb = await createCompanyDatabase(c.get("config"), company.id, c.env);
+  return c.json({ session: await authService.loginCompanyUser(systemDb, companyDb, c.get("config"), body) });
 });
 
 authRoutes.post("/register-company", async (c) => {
   const body = companyRegistrationSchema.parse(await c.req.json());
-  return c.json({ session: await authService.registerCompany(c.get("db"), c.get("config"), body) });
+  const systemDb = c.get("systemDb");
+  const companyId = crypto.randomUUID();
+  const companyDb = await createCompanyDatabase(c.get("config"), companyId, c.env);
+  return c.json({ session: await authService.registerCompany(systemDb, companyDb, c.get("config"), body, companyId) });
 });
 
 authRoutes.post("/tablet/access", async (c) => {
   const body = tabletAccessSchema.parse(await c.req.json());
-  return c.json(await authService.getTabletAccess(c.get("db"), body));
+  return c.json(await authService.getTabletAccess(c.get("systemDb"), body));
 });
 
 authRoutes.post("/tablet/login", async (c) => {
   const body = tabletLoginSchema.parse(await c.req.json());
-  return c.json({ session: await authService.loginTabletUser(c.get("db"), c.get("config"), body) });
+  const systemDb = c.get("systemDb");
+  const company = await systemService.getCompanyByTabletCode(systemDb, body.code);
+  if (!company) {
+    return c.json({ error: "Invalid tablet code" }, 401);
+  }
+  const companyDb = await createCompanyDatabase(c.get("config"), company.id, c.env);
+  return c.json({ session: await authService.loginTabletUser(systemDb, companyDb, c.get("config"), body) });
 });
 
 authRoutes.get("/company-security", async (c) => {
@@ -77,16 +95,16 @@ authRoutes.get("/company-security", async (c) => {
     return c.json({ error: "Company name is required" }, 400);
   }
 
-  return c.json(await authService.getCompanySecurity(c.get("db"), companyName));
+  return c.json(await authService.getCompanySecurity(c.get("systemDb"), companyName));
 });
 
-authRoutes.get("/me", authMiddleware, requireCompanyUser, async (c) => {
+authRoutes.get("/me", authMiddleware, requireCompanyUser, companyDbMiddleware, async (c) => {
   const session = c.get("session");
   if (session.actorType !== "company_user") {
     return c.json({ error: "Company login required" }, 403);
   }
   return c.json(
-    await authService.getCompanySessionDetails(c.get("db"), {
+    await authService.getCompanySessionDetails(c.get("systemDb"), c.get("db"), {
       companyId: session.companyId,
       userId: session.userId,
       accessMode: session.accessMode

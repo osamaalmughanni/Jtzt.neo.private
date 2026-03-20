@@ -1,8 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
 import type { RuntimeBindings, RuntimeConfig } from "./types";
 
-function parseDotEnvFile(filePath: string) {
+async function parseDotEnvFile(filePath: string) {
+  const fs = await import("node:fs");
   if (!fs.existsSync(filePath)) {
     return {};
   }
@@ -31,11 +30,12 @@ function parseDotEnvFile(filePath: string) {
   return values;
 }
 
-function getNodeEnvSource() {
+async function getNodeEnvSource() {
+  const path = await import("node:path");
   const root = process.cwd();
   const fromFile = {
-    ...parseDotEnvFile(path.resolve(root, ".env")),
-    ...parseDotEnvFile(path.resolve(root, ".env.local"))
+    ...(await parseDotEnvFile(path.resolve(root, ".env"))),
+    ...(await parseDotEnvFile(path.resolve(root, ".env.local"))),
   };
 
   return {
@@ -73,15 +73,23 @@ function validateRuntimeConfig(config: RuntimeConfig) {
   }
 }
 
-export function resolveRuntimeConfig(bindings?: RuntimeBindings): RuntimeConfig {
-  const source = bindings?.DB ? bindings : getNodeEnvSource();
+export async function resolveRuntimeConfig(bindings?: RuntimeBindings): Promise<RuntimeConfig> {
+  const isCloudflare = Boolean(bindings?.SYSTEM_DO);
+  const source: RuntimeBindings | Record<string, string> = isCloudflare ? (bindings ?? {}) : await getNodeEnvSource();
+  const nodeSystemSqlitePath = isCloudflare
+    ? "cloudflare://system-do"
+    : source.NODE_SYSTEM_SQLITE_PATH?.trim() || `${process.cwd()}/data/system.db`;
+  const nodeCompanySqliteDir = isCloudflare
+    ? "cloudflare://company-do"
+    : source.NODE_COMPANY_SQLITE_DIR?.trim() || `${process.cwd()}/data/companies`;
   const config: RuntimeConfig = {
-    runtime: bindings?.DB ? "cloudflare" : "node",
+    runtime: isCloudflare ? "cloudflare" : "node",
     appEnv: source.APP_ENV?.trim() || "development",
     appVersion: source.APP_VERSION?.trim() || "dev",
     jwtSecret: source.JWT_SECRET?.trim() || "jtzt-dev-secret-change-me",
     sessionTtlHours: toPositiveInteger(source.SESSION_TTL_HOURS, 12),
-    nodeSqlitePath: source.NODE_SQLITE_PATH?.trim() || path.resolve(process.cwd(), "data", "app.db"),
+    nodeSystemSqlitePath,
+    nodeCompanySqliteDir,
     adminAccessToken: source.ADMIN_ACCESS_TOKEN?.trim() || source.ADMIN_BOOTSTRAP_TOKEN?.trim() || "change-this-admin-token"
   };
 

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { createCompanyDatabase } from "../../db/runtime-database";
 import { companyApiService, externalMutationSchema, externalQuerySchema } from "../../services/company-api-service";
 import type { CompanyApiMutationInput, CompanyApiQueryInput } from "../../../shared/types/api";
 import type { AppRouteConfig } from "../context";
@@ -17,7 +18,7 @@ async function resolveExternalCompany(c: Hono<AppRouteConfig> extends never ? ne
     return null;
   }
 
-  return companyApiService.getCompanyByApiKey(c.get("db"), apiKey);
+  return companyApiService.getCompanyByApiKey(c.get("systemDb"), apiKey);
 }
 
 export const externalRoutes = new Hono<AppRouteConfig>();
@@ -35,7 +36,7 @@ externalRoutes.use("*", async (c, next) => {
     );
   }
 
-  const company = await companyApiService.getCompanyByApiKey(c.get("db"), apiKey);
+  const company = await companyApiService.getCompanyByApiKey(c.get("systemDb"), apiKey);
   if (!company) {
     return c.json(
       {
@@ -47,6 +48,7 @@ externalRoutes.use("*", async (c, next) => {
   }
 
   c.set("externalCompany", company);
+  c.set("db", await createCompanyDatabase(c.get("config"), company.id, c.env));
   await next();
 });
 

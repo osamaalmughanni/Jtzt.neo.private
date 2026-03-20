@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { HTTPException } from "hono/http-exception";
-import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
+import { authMiddleware, companyDbMiddleware, requireCompanyUser } from "../../auth/middleware";
 import { settingsService } from "../../services/settings-service";
 import { userService } from "../../services/user-service";
 import type { AppRouteConfig, AppVariables } from "../context";
@@ -58,7 +58,7 @@ const userIdParamsSchema = z.object({
 
 export const userRoutes = new Hono<AppRouteConfig>();
 
-userRoutes.use("*", authMiddleware, requireCompanyUser);
+userRoutes.use("*", authMiddleware, requireCompanyUser, companyDbMiddleware);
 
 function ensureAdmin(session: AppVariables["session"]) {
   if (session.actorType !== "company_user" || session.accessMode !== "full" || session.role !== "admin") {

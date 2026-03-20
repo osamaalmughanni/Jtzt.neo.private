@@ -9,76 +9,31 @@
     "directory": "../dist/frontend",
     "not_found_handling": "single-page-application"
   },
-  "d1_databases": [
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SYSTEM_DO",
+        "class_name": "SystemDurableObject"
+      },
+      {
+        "name": "COMPANY_DO",
+        "class_name": "CompanyDurableObject"
+      }
+    ]
+  },
+  "migrations": [
     {
-      "binding": "DB",
-      "database_name": "jtzt-app",
-      "database_id": "d247b34e-538b-4297-8c22-4f193c6a5746",
-      "migrations_dir": "./d1/migrations"
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "SystemDurableObject",
+        "CompanyDurableObject"
+      ]
     }
   ],
   "vars": {
-    "ALLUSERSPROFILE": "C:\\ProgramData",
-    "APPDATA": "C:\\Users\\osama\\AppData\\Roaming",
-    "APP_ENV": "development",
-    "APP_VERSION": "dev",
-    "AWS_REGION": "eu-central-1",
-    "COMMONPROGRAMFILES": "C:\\Program Files\\Common Files",
-    "COMMONPROGRAMFILES(X86)": "C:\\Program Files (x86)\\Common Files",
-    "COMMONPROGRAMW6432": "C:\\Program Files\\Common Files",
-    "COMPUTERNAME": "OSAMA",
-    "COMSPEC": "C:\\WINDOWS\\system32\\cmd.exe",
-    "DOTNET_REACTOR": "C:\\Program Files (x86)\\Eziriz\\.NET Reactor",
-    "DRIVERDATA": "C:\\Windows\\System32\\Drivers\\DriverData",
-    "EFC_12596_1592913036": "1",
-    "FLUTTER_HOME": "C:\\flutter",
-    "FLUTTER_ROOT": "C:\\flutter",
-    "FPS_BROWSER_APP_PROFILE_STRING": "Internet Explorer",
-    "FPS_BROWSER_USER_PROFILE_STRING": "Default",
-    "GOPATH": "C:\\Users\\osama\\go",
-    "HOMEDRIVE": "C:",
-    "HOMEPATH": "\\Users\\osama",
-    "IGCCSVC_DB": "AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAPiqyeJs4ZkO2AmU4gw8MrQQAAAACAAAAAAAQZgAAAAEAACAAAACFo2uGQKapf7PslhAaX4BfeYqv2zS6HhKRN+PgEXd2ZgAAAAAOgAAAAAIAACAAAACLf0CeDReZ3+QtiE8CcT+Ub7iWPOYu4hZwEIAQ29vhiWAAAADMXGI7hli7QcreJGPEiRfLtrYX47GjOiXErnNO50eb54qxbrXeBeHzgh37LEy5gcu5SN1GZztomXr23T/WG+4A4/kaO34LUsLUB292rGDqOd3XZTmZV9efYtBs0O0/XYJAAAAA4CDtPZeqGlmp+lOwfe+55Hbyfku7+qkyO5vLDiw4DPH7TGtboZyercOrv3OAqCadsysHmNVrTRqZvrt9GNXs5g==",
-    "INTEL_DEV_REDIST": "C:\\Program Files (x86)\\Common Files\\Intel\\Shared Libraries\\",
-    "JAVA_HOME": "C:\\Program Files\\Android\\Android Studio\\jbr",
-    "LIBCLANG_PATH": "C:\\Program Files\\LLVM\\bin",
-    "LLVM_HOME": "C:\\Program Files\\LLVM",
-    "LOCALAPPDATA": "C:\\Users\\osama\\AppData\\Local",
-    "LOGONSERVER": "\\\\OSAMA",
-    "NUMBER_OF_PROCESSORS": "32",
-    "ONEDRIVE": "C:\\Users\\osama\\OneDrive",
-    "OS": "Windows_NT",
-    "PATH": "C:\\Program Files\\PostgreSQL\\18\\bin;C:\\Program Files\\PostgreSQL\\18\\bin;C:\\Program Files (x86)\\Common Files\\Intel\\Shared Libraries\\redist\\intel64_win\\compiler;C:\\Program Files (x86)\\Common Files\\Intel\\Shared Libraries\\redist\\intel64\\compiler;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\dotnet\\;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Common Files\\Autodesk Shared\\;C:\\Program Files\\Microsoft SQL Server\\150\\Tools\\Binn\\;C:\\php;C:\\Program Files\\Pandoc\\;C:\\Program Files\\SafeNet\\Authentication\\SAC\\x64;C:\\Program Files\\SafeNet\\Authentication\\SAC\\x32;C:\\Users\\osama\\.cargo\\bin;C:\\Users\\osama\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\osama\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\osama\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\osama\\AppData\\Roaming\\npm;C:\\Users\\osama\\AppData\\Local\\Programs\\Microso;C:\\Program Files\\nodejs\\;C:\\Program Files\\GTK3-Runtime Win64\\bin;C:\\Program Files\\gs\\gs10.06.0\\bin;C:\\Program Files\\Inkscape\\bin;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files (x86)\\ZeroTier\\One\\;C:\\Program Files\\Amazon\\AWSCLIV2\\;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files (x86)\\Eziriz\\.NET Reactor;C:\\Users\\osama\\.cargo\\bin;C:\\Users\\osama\\scoop\\shims;C:\\Users\\osama\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\;C:\\Users\\osama\\AppData\\Local\\Programs\\Python\\Python312\\;C:\\Users\\osama\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\osama\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\osama\\.dotnet\\tools;C:\\Users\\osama\\.cache\\lm-studio\\bin;C:\\Users\\osama\\AppData\\Local\\Programs\\Ollama;C:\\Users\\osama\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\;C:\\vcpkg;C:\\Users\\osama\\go\\bin;C:\\Users\\osama\\AppData\\Local\\7zip;C:\\Users\\osama\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\osama\\AppData\\Roaming\\npm;C:\\Users\\osama\\.dotnet\\tools;C:\\Users\\osama\\AppData\\Local\\Programs\\Antigravity\\bin",
-    "PATHEXT": ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC",
-    "PERSIST_CRED_SYNCTURE": "syncture:AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAT68V4iG/AEuwS9yL3NmGqQAAAAACAAAAAAAQZgAAAAEAACAAAAAtumzKhlqflxBhP0j1c8yOCqvZEwIze2npIip+L8ungQAAAAAOgAAAAAIAACAAAAAJPZCVR9qqY+qBl0qV6hIQi8p9CpEjI9JN5OW3qQMREjAAAAC0ZCanpFCwf3jV9dfP48/3RX9xEpAA94Osu00srxhvNGwPa7oDtH9wnLe5nOwZ8HZAAAAA517Hvf6Zd4O9wboi/Fx473Bcpr/0WtocEXMmAqNerL3vZOg+E/pQKPiHyJT1jNrreBtgc9QChU2VVTybcL3jcA==:PERSISTENT",
-    "PROCESSOR_ARCHITECTURE": "AMD64",
-    "PROCESSOR_IDENTIFIER": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
-    "PROCESSOR_LEVEL": "6",
-    "PROCESSOR_REVISION": "b701",
-    "PROGRAMDATA": "C:\\ProgramData",
-    "PROGRAMFILES": "C:\\Program Files",
-    "PROGRAMFILES(X86)": "C:\\Program Files (x86)",
-    "PROGRAMW6432": "C:\\Program Files",
-    "PSMODULEPATH": "C:\\Program Files\\WindowsPowerShell\\Modules;C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\Modules",
-    "PUBLIC": "C:\\Users\\Public",
-    "SESSIONNAME": "Console",
-    "SESSION_TTL_HOURS": "12",
-    "SYNCTURE_BACKUP_SYNCTURE": "syncture:AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAT68V4iG/AEuwS9yL3NmGqQAAAAACAAAAAAAQZgAAAAEAACAAAACQSNWaOplGDq6EHn09J+UbuLTFJXh0Cri/EfXJCi8NnQAAAAAOgAAAAAIAACAAAAAux5D59h0RZrYvMb2H0mDYub6w5Foo5uaIL95UyfKH6jAAAAAqHQA++XDgW7W+NeVLatpxR/Q9rmxQe47OosFhfsPcMNidSCcGsm6QEJRDMeVqcdBAAAAAfNCqZfhfRpy/c9sFrKAkSIGm7Azh8U3bks0DcDdHbKYxC47YN7enTYWVhTcndcUf7iSzdjIsjK0O0x+CB3S/JQ==:PERSISTENT",
-    "SYNCTURE_CRED_SYNCTURE": "syncture:AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAT68V4iG/AEuwS9yL3NmGqQAAAAACAAAAAAAQZgAAAAEAACAAAADf1Xpik3nuOcbFyENHnyDRo+UST0pKa+qrj+O2dA+z/gAAAAAOgAAAAAIAACAAAACvp/cQneq1Ar+UbWJd4LMgiN7lHviKwew1ewhaMZNPZzAAAAD9H571vKEaUEKwm0+ZKa72qm12nyEwAYAb9geRYqD9oktfetFFsuC1CPxP8OxKgK9AAAAARTQ8xcOhfaxZuSWgbwiGshVXuFh6Xot9kyrYFOBiWagf5F3yMXXxk0EOVnP6Nl5+japieR3qhWHx7aBWUycHdA==:PERSISTENT",
-    "SYNC_CRED_SYNCTURE": "syncture:AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAT68V4iG/AEuwS9yL3NmGqQAAAAACAAAAAAAQZgAAAAEAACAAAACq09QCEyTGIrJfbetRVbf+OgCcz+YT/IDVhtKRUh9B5gAAAAAOgAAAAAIAACAAAADXsC4tXikRR/OJ3FlICYK+6X3I7LzS9DSKmzjIVqbQGDAAAADN3GsNadCNFV19zKjG1TAIq37aS/6af7Vdx9hKPnihhFdxFmz5alk7d/7TARYerwVAAAAA2XB9QPafjQInFVixlOkW1lNMv96qJCeAlwvolhl4YqfI6qpF39QhlqUoVw6BejanCPTP7UN4d5vC7NjXD9uxPA==:PERSISTENT",
-    "SYSTEMDRIVE": "C:",
-    "SYSTEMROOT": "C:\\WINDOWS",
-    "TEMP": "C:\\Users\\osama\\AppData\\Local\\Temp",
-    "TMP": "C:\\Users\\osama\\AppData\\Local\\Temp",
-    "USERDOMAIN": "Osama",
-    "USERDOMAIN_ROAMINGPROFILE": "Osama",
-    "USERNAME": "osama",
-    "USERPROFILE": "C:\\Users\\osama",
-    "VCPKG_INSTALLED": "C:\\vcpkg\\installed",
-    "VCPKG_ROOT": "C:\\vcpkg",
-    "WINDIR": "C:\\WINDOWS",
-    "WIN_CRED_SYNCTURE": "syncture:AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAAT68V4iG/AEuwS9yL3NmGqQAAAAACAAAAAAAQZgAAAAEAACAAAABHx/gJMSnaqUCZ6MIqkARzSzeRW5YSNOXFXq4FNP36tgAAAAAOgAAAAAIAACAAAABJ2084AHvZ3lp84qVcS65+6U19AmasptkthgKflHSiTTAAAAD6QTKxbX+ZpTrSaiJIQ9Ss9vw46tqNpy/mYpMfl/MWaMumDVzHkxIQJp8hDvYPy+pAAAAAyP2MJxNT/3Gjek4uLf/QPvE8NEA0f0a5QXJYZFCaEI1bQGgxESVyl2ZJsOSdw4qUS7oMIt28Yb/XfG6EeBnToQ==:PERSISTENT",
-    "ZES_ENABLE_SYSMAN": "1"
+    "APP_ENV": "production",
+    "APP_VERSION": "2026.03.20-175207",
+    "SESSION_TTL_HOURS": "12"
   },
   "account_id": "9c637e02a954c66c7c46cbdcd402f7e9"
 }

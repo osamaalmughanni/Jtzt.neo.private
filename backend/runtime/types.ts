@@ -18,44 +18,24 @@ export interface AppDatabase {
   exec(sql: string): Promise<void>;
 }
 
-export interface D1ResultLike {
-  meta?: {
-    changes?: number;
-    last_row_id?: number;
-  };
-  results?: unknown[];
+export interface DurableObjectStubLike {
+  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
 
-export interface D1PreparedStatementLike {
-  bind(...values: SqlValue[]): D1PreparedStatementLike;
-  first<T>(): Promise<T | null>;
-  all<T>(): Promise<{ results: T[] }>;
-  run(): Promise<D1ResultLike>;
-}
-
-export interface D1QueryableLike {
-  prepare(query: string): D1PreparedStatementLike;
-  batch(statements: D1PreparedStatementLike[]): Promise<D1ResultLike[]>;
-}
-
-export interface D1DatabaseSessionLike extends D1QueryableLike {
-  getBookmark(): string | null;
-}
-
-export interface D1DatabaseLike {
-  prepare(query: string): D1PreparedStatementLike;
-  batch(statements: D1PreparedStatementLike[]): Promise<D1ResultLike[]>;
-  exec(query: string): Promise<unknown>;
-  withSession(bookmarkOrConstraint?: string): D1DatabaseSessionLike;
+export interface DurableObjectNamespaceLike {
+  idFromName(name: string): unknown;
+  get(id: unknown): DurableObjectStubLike;
 }
 
 export interface RuntimeBindings {
-  DB?: D1DatabaseLike;
+  SYSTEM_DO?: DurableObjectNamespaceLike;
+  COMPANY_DO?: DurableObjectNamespaceLike;
   APP_ENV?: string;
   APP_VERSION?: string;
   JWT_SECRET?: string;
   SESSION_TTL_HOURS?: string;
-  NODE_SQLITE_PATH?: string;
+  NODE_SYSTEM_SQLITE_PATH?: string;
+  NODE_COMPANY_SQLITE_DIR?: string;
   ADMIN_ACCESS_TOKEN?: string;
   ADMIN_BOOTSTRAP_TOKEN?: string;
 }
@@ -66,6 +46,7 @@ export interface RuntimeConfig {
   appVersion: string;
   jwtSecret: string;
   sessionTtlHours: number;
-  nodeSqlitePath: string;
+  nodeSystemSqlitePath: string;
+  nodeCompanySqliteDir: string;
   adminAccessToken: string;
 }
