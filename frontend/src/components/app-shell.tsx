@@ -196,6 +196,7 @@ function ShellContent({
   const scrollContentRef = useRef<HTMLDivElement | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
   const [showBottomFade, setShowBottomFade] = useState(true);
+  const [isRouteChromePending, setIsRouteChromePending] = useState(true);
 
   const syncScrollChrome = useCallback(() => {
     const viewport = scrollAreaRef.current;
@@ -219,14 +220,22 @@ function ShellContent({
   }, []);
 
   useEffect(() => {
+    setIsRouteChromePending(true);
+
     if (firstRouteRef.current) {
       firstRouteRef.current = false;
-      return;
+      const timeout = window.setTimeout(() => {
+        setIsRouteChromePending(false);
+      }, 360);
+      return () => {
+        window.clearTimeout(timeout);
+      };
     }
 
     startLoading();
     const timeout = window.setTimeout(() => {
       stopLoading();
+      setIsRouteChromePending(false);
     }, 320);
 
     return () => {
@@ -319,7 +328,7 @@ function ShellContent({
         </div>
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-t from-background via-background/95 via-16% to-transparent transition-opacity duration-300 ease-out ${showBottomFade ? "opacity-100" : "opacity-0"}`}
+          className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-t from-background via-background/95 via-16% to-transparent transition-opacity duration-300 ease-out ${isRouteChromePending || showBottomFade ? "opacity-100" : "opacity-0"}`}
         />
       </main>
       {bottomBar ? <AppContentLane className="pt-3 pb-4">{bottomBar}</AppContentLane> : null}
