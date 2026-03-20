@@ -48,8 +48,8 @@ ENV_OPTIONAL_DEFAULTS = {
     "APP_ENV": "production",
     "APP_VERSION": "dev",
     "SESSION_TTL_HOURS": "12",
-    "ADMIN_BOOTSTRAP_USERNAME": "admin",
-    "ADMIN_BOOTSTRAP_PASSWORD": "admin123",
+    "ADMIN_ACCESS_TOKEN": "",
+    "ADMIN_BOOTSTRAP_TOKEN": "",
     "CLOUDFLARE_API_TOKEN": "",
     "CLOUDFLARE_ACCOUNT_ID": "",
     "CLOUDFLARE_CUSTOM_DOMAIN": "",
@@ -79,6 +79,7 @@ COMMAND_REQUIRED_KEYS = {
         "CLOUDFLARE_D1_BINDING",
         "CLOUDFLARE_D1_DATABASE_NAME",
         "JWT_SECRET",
+        "ADMIN_ACCESS_TOKEN",
     ],
     "write-config": [
         "CLOUDFLARE_API_TOKEN",
@@ -121,6 +122,7 @@ COMMAND_REQUIRED_KEYS = {
         "CLOUDFLARE_D1_BINDING",
         "CLOUDFLARE_D1_DATABASE_NAME",
         "JWT_SECRET",
+        "ADMIN_ACCESS_TOKEN",
     ],
     "deploy": [
         "CLOUDFLARE_API_TOKEN",
@@ -138,8 +140,13 @@ COMMAND_REQUIRED_KEYS = {
         "CLOUDFLARE_D1_BINDING",
         "CLOUDFLARE_D1_DATABASE_NAME",
         "JWT_SECRET",
+        "ADMIN_ACCESS_TOKEN",
     ],
 }
+
+
+def get_admin_access_token(env: dict[str, str]) -> str:
+    return (env.get("ADMIN_ACCESS_TOKEN") or env.get("ADMIN_BOOTSTRAP_TOKEN") or "").strip()
 
 
 def info(message: str) -> None:
@@ -221,7 +228,15 @@ def load_env(required_keys: list[str] | None = None) -> dict[str, str]:
         fail(f"missing {ENV_FILE.name}; create it and fill it first")
 
     values = {**ENV_OPTIONAL_DEFAULTS, **parse_env_file(ENV_FILE), **{k: v for k, v in os.environ.items() if isinstance(v, str)}}
-    missing = [key for key in (required_keys or ENV_REQUIRED) if not values.get(key) or values[key].startswith("replace-with-")]
+    missing: list[str] = []
+    for key in (required_keys or ENV_REQUIRED):
+        if key == "ADMIN_ACCESS_TOKEN":
+            admin_token = get_admin_access_token(values)
+            if not admin_token or admin_token.startswith("replace-with-"):
+                missing.append(key)
+            continue
+        if not values.get(key) or values[key].startswith("replace-with-"):
+            missing.append(key)
     if missing:
         fail("missing required deploy values: " + ", ".join(missing))
     return values
@@ -286,6 +301,7 @@ def wrangler_command() -> list[str]:
 
 
 def write_cloudflare_dev_vars(env: dict[str, str]) -> None:
+    admin_access_token = get_admin_access_token(env)
     CLOUDFLARE_DEV_VARS_FILE.parent.mkdir(parents=True, exist_ok=True)
     CLOUDFLARE_DEV_VARS_FILE.write_text(
         "\n".join(
@@ -294,8 +310,8 @@ def write_cloudflare_dev_vars(env: dict[str, str]) -> None:
                 f'APP_ENV="{env["APP_ENV"]}"',
                 f'APP_VERSION="{env["APP_VERSION"]}"',
                 f'SESSION_TTL_HOURS="{env["SESSION_TTL_HOURS"]}"',
-                f'ADMIN_BOOTSTRAP_USERNAME="{env["ADMIN_BOOTSTRAP_USERNAME"]}"',
-                f'ADMIN_BOOTSTRAP_PASSWORD="{env["ADMIN_BOOTSTRAP_PASSWORD"]}"',
+                f'ADMIN_ACCESS_TOKEN="{admin_access_token}"',
+                f'ADMIN_BOOTSTRAP_TOKEN="{admin_access_token}"',
                 "",
             ]
         ),
@@ -330,8 +346,6 @@ def build_wrangler_config(env: dict[str, str]) -> dict:
             "APP_ENV": env["APP_ENV"],
             "APP_VERSION": env["APP_VERSION"],
             "SESSION_TTL_HOURS": env["SESSION_TTL_HOURS"],
-            "ADMIN_BOOTSTRAP_USERNAME": env["ADMIN_BOOTSTRAP_USERNAME"],
-            "ADMIN_BOOTSTRAP_PASSWORD": env["ADMIN_BOOTSTRAP_PASSWORD"],
         },
     }
 
@@ -376,11 +390,18 @@ def apply_migrations(env: dict[str, str], remote: bool) -> None:
 
 
 def set_secret(env: dict[str, str]) -> None:
-    run(
-        wrangler_command() + ["secret", "put", "JWT_SECRET", "--config", str(wrangler_config_path(env))],
-        input_text=env["JWT_SECRET"],
-        env_overrides=wrangler_env(env),
-    )
+    secrets = {
+        "JWT_SECRET": env["JWT_SECRET"],
+        "ADMIN_ACCESS_TOKEN": get_admin_access_token(env),
+        "ADMIN_BOOTSTRAP_TOKEN": get_admin_access_token(env),
+    }
+
+    for key, value in secrets.items():
+        run(
+            wrangler_command() + ["secret", "put", key, "--config", str(wrangler_config_path(env))],
+            input_text=value,
+            env_overrides=wrangler_env(env),
+        )
 
 
 def typecheck() -> None:

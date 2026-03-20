@@ -20,9 +20,7 @@
   "vars": {
     "APP_ENV": "development",
     "APP_VERSION": "dev",
-    "SESSION_TTL_HOURS": "12",
-    "ADMIN_BOOTSTRAP_USERNAME": "admin",
-    "ADMIN_BOOTSTRAP_PASSWORD": "change-this-now"
+    "SESSION_TTL_HOURS": "12"
   },
   "account_id": "9c637e02a954c66c7c46cbdcd402f7e9"
 }
