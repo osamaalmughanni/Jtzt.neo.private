@@ -576,8 +576,9 @@ export function ReportsPreviewPage() {
   }, []);
 
   return (
-    <FormPage>
+    <FormPage className="h-full min-h-0">
       <PageLoadBoundary
+        className="min-h-0 flex-1"
         intro={
           <>
             <PageBackAction to={backTo} label={t("reports.backToReports")} />
@@ -588,10 +589,11 @@ export function ReportsPreviewPage() {
         }
         loading={reportResource.isLoading}
         refreshing={reportResource.isRefreshing}
+        gap="lg"
         skeleton={<PageLoadingState label={t("reports.creating")} minHeightClassName="min-h-[28rem]" />}
       >
-        <AppFullBleed className="min-w-0 xl:px-12 2xl:px-16">
-          <FormPanel className="flex min-w-0 w-full flex-col gap-6">
+        <AppFullBleed className="flex min-h-0 flex-1 min-w-0 xl:px-12 2xl:px-16">
+          <FormPanel className="flex h-full min-h-0 min-w-0 w-full flex-col gap-5 overflow-hidden">
             {report ? (
               <>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -611,7 +613,7 @@ export function ReportsPreviewPage() {
                   </div>
                 </div>
 
-                <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "gantt" | "overtime")} className="flex min-w-0 flex-col gap-4">
+                <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "gantt" | "overtime")} className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <TabsList className="h-9">
                       <TabsTrigger value="table">{t("reports.table")}</TabsTrigger>
@@ -628,8 +630,8 @@ export function ReportsPreviewPage() {
                     </div>
                   </div>
 
-                  <TabsContent value="table" className="mt-0 min-w-0">
-                    <div className="w-full min-w-0 overflow-x-auto overflow-y-hidden rounded-2xl border border-border">
+                  <TabsContent value="table" className="mt-0 min-h-0 min-w-0 flex-1 overflow-hidden">
+                    <div className="h-full w-full min-w-0 overflow-auto rounded-2xl border border-border">
                       <table className="w-max min-w-full border-collapse text-sm">
                         <thead>
                           <tr className="border-b border-border bg-muted/40">
@@ -676,13 +678,13 @@ export function ReportsPreviewPage() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="gantt" className="mt-0">
-                    <div className="flex w-full flex-col gap-4 rounded-2xl border border-border p-4">
+                  <TabsContent value="gantt" className="mt-0 min-h-0 flex-1 overflow-hidden">
+                    <div className="flex h-full w-full min-h-0 flex-col gap-4 rounded-2xl border border-border p-4">
                       <p className="text-sm text-muted-foreground">Responsive timeline with condensed lanes for readable large reports.</p>
                       {timelineUsers.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{t("reports.noTimeline")}</p>
                       ) : (
-                        <div className="w-full overflow-x-auto rounded-2xl border border-border bg-background">
+                        <div className="min-h-0 w-full flex-1 overflow-auto rounded-2xl border border-border bg-background">
                           <div
                             className="relative"
                             style={{ minWidth: GANTT_LEFT_COLUMN_WIDTH + timelineWidth }}
@@ -798,12 +800,13 @@ export function ReportsPreviewPage() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="overtime" className="mt-0">
-                    <div className="flex w-full flex-col gap-4 rounded-2xl border border-border p-4">
+                  <TabsContent value="overtime" className="mt-0 min-h-0 flex-1 overflow-hidden">
+                    <div className="flex h-full w-full min-h-0 flex-col gap-4 rounded-2xl border border-border p-4">
                       {overtimePreviewRows.length === 0 ? (
                         <p className="text-sm text-muted-foreground">No overtime preview data is available for this report.</p>
                       ) : (
-                        <div className="flex flex-col gap-4">
+                        <div className="min-h-0 flex-1 overflow-auto">
+                          <div className="flex flex-col gap-4">
                           {overtimePreviewRows.map(({ row, meta, index }) =>
                             meta.overtime ? (
                               <OvertimePreviewCard
@@ -815,6 +818,7 @@ export function ReportsPreviewPage() {
                               />
                             ) : null,
                           )}
+                          </div>
                         </div>
                       )}
                     </div>

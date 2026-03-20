@@ -127,11 +127,11 @@ export function AppHeaderLoadingBar() {
   }, [visible]);
 
   return (
-    <div className="relative h-0.5 w-full overflow-hidden rounded-[999px] bg-border/40">
+    <div className="pointer-events-none fixed inset-x-0 top-0 z-[70] h-0.5 overflow-hidden bg-transparent">
       <AnimatePresence initial={false}>
         {visible && (
           <motion.div
-            className="absolute inset-y-0 left-0 rounded-[999px] bg-primary"
+            className="absolute inset-y-0 left-0 bg-primary"
             style={{ boxShadow: "0 0 14px hsl(var(--primary) / 0.18)" }}
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: `${progress}%`, opacity: 1 }}

@@ -57,12 +57,13 @@ interface TimeInputProps {
   onChange: (value: string) => void;
   onNowClick?: (value: string) => void;
   nowDisabled?: boolean;
+  showHelperButton?: boolean;
   timeZone?: string;
   locale?: string;
   className?: string;
 }
 
-export function TimeInput({ value, onChange, onNowClick, nowDisabled, timeZone, className }: TimeInputProps) {
+export function TimeInput({ value, onChange, onNowClick, nowDisabled, showHelperButton = true, timeZone, className }: TimeInputProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -111,22 +112,24 @@ export function TimeInput({ value, onChange, onNowClick, nowDisabled, timeZone, 
           "min-w-0 flex-1 text-[clamp(0.9rem,1.4vw,1rem)]",
         )}
       />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 shrink-0 rounded-full text-muted-foreground"
-        aria-label="Use current time"
-        disabled={nowDisabled}
-        onClick={() => {
-          const nowValue = getCurrentTimeValue(timeZone);
-          onChange(nowValue);
-          onNowClick?.(nowValue);
-          setDraft(nowValue);
-        }}
-      >
-        <Clock size={16} weight="regular" />
-      </Button>
+      {showHelperButton ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 shrink-0 text-muted-foreground"
+          aria-label="Use current time"
+          disabled={nowDisabled}
+          onClick={() => {
+            const nowValue = getCurrentTimeValue(timeZone);
+            onChange(nowValue);
+            onNowClick?.(nowValue);
+            setDraft(nowValue);
+          }}
+        >
+          <Clock size={16} weight="regular" />
+        </Button>
+      ) : null}
     </div>
   );
 }

@@ -19,8 +19,8 @@ import { PageIntro } from "@/components/page-intro";
 import { PageLabel } from "@/components/page-label";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { TimeInput } from "@/components/ui/time-input";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -202,9 +202,8 @@ export function OvertimeSettingsPage() {
         refreshing={pageResource.isRefreshing}
         skeleton={<PageLoadingState label="Loading overtime settings..." />}
       >
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_24rem]">
-          <div className="flex flex-col gap-6">
-            <FormPanel className="gap-6">
+        <div className="flex flex-col gap-5">
+          <FormPanel className="gap-5">
               <FormSection>
                 <Field label="Preset">
                   <FieldCombobox
@@ -217,27 +216,24 @@ export function OvertimeSettingsPage() {
               </FormSection>
 
               <FormSection>
-                <div className="flex flex-col gap-4 rounded-2xl border border-border bg-muted/20 p-4">
-                  <div className="flex flex-col gap-3">
-                    <div className="flex min-h-24 flex-col justify-between rounded-2xl border border-border bg-background px-4 py-4">
-                      <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Preset</span>
-                      <span className="text-sm font-medium text-foreground">{presetDescriptor.title}</span>
-                      <span className="text-sm text-muted-foreground">
-                        {presetDescriptor.legalStatus === "statutory_baseline"
-                          ? "Exact statutory baseline"
-                          : presetDescriptor.legalStatus === "conservative_default"
-                            ? "Conservative default"
-                            : presetDescriptor.legalStatus === "reference_default"
-                              ? "Reference default"
-                              : "Custom template"}
-                      </span>
-                    </div>
-                    <div className="flex min-h-24 flex-col justify-between rounded-2xl border border-border bg-background px-4 py-4">
-                      <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Current payout</span>
-                      <span className="text-sm text-foreground">{getPayoutSummary(settings)}</span>
-                    </div>
+                <div className="flex flex-col gap-3 rounded-2xl border border-border bg-muted/20 p-4">
+                  <div className="rounded-2xl border border-border bg-background px-4 py-4">
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Preset</p>
+                    <p className="mt-2 text-sm font-medium text-foreground">{presetDescriptor.title}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {presetDescriptor.legalStatus === "statutory_baseline"
+                        ? "Exact statutory baseline"
+                        : presetDescriptor.legalStatus === "conservative_default"
+                          ? "Conservative default"
+                          : presetDescriptor.legalStatus === "reference_default"
+                            ? "Reference default"
+                            : "Custom template"}
+                    </p>
                   </div>
-
+                  <div className="rounded-2xl border border-border bg-background px-4 py-4">
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Current payout</p>
+                    <p className="mt-2 text-sm text-foreground">{getPayoutSummary(settings)}</p>
+                  </div>
                   <div className="flex flex-col gap-3">
                     {presetDescriptor.highlights.slice(0, 2).map((item) => (
                       <div key={item} className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground">
@@ -301,7 +297,7 @@ export function OvertimeSettingsPage() {
                   <div className="flex flex-col gap-3">
                     {[standardRule, sundayRule, nightRule].filter((rule): rule is CompanyOvertimeRule => rule !== null).map((rule) => (
                       <div key={rule.id} className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4">
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-col gap-1">
                           <p className="text-sm font-medium text-foreground">{getRuleLabel(rule)}</p>
                           <span className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">+{rule.multiplierPercent}%</span>
                         </div>
@@ -320,10 +316,18 @@ export function OvertimeSettingsPage() {
                           {rule.category === "night_shift" ? (
                             <>
                               <Field label="From">
-                                <Input type="time" value={rule.windowStart ?? ""} onChange={(event) => setRuleValue(rule.id, { windowStart: event.target.value })} />
+                                <TimeInput
+                                  value={rule.windowStart ?? ""}
+                                  onChange={(value) => setRuleValue(rule.id, { windowStart: value })}
+                                  showHelperButton={false}
+                                />
                               </Field>
                               <Field label="To">
-                                <Input type="time" value={rule.windowEnd ?? ""} onChange={(event) => setRuleValue(rule.id, { windowEnd: event.target.value })} />
+                                <TimeInput
+                                  value={rule.windowEnd ?? ""}
+                                  onChange={(value) => setRuleValue(rule.id, { windowEnd: value })}
+                                  showHelperButton={false}
+                                />
                               </Field>
                             </>
                           ) : null}
@@ -349,9 +353,9 @@ export function OvertimeSettingsPage() {
 
                     {specialRules.map((rule) => (
                       <div key={rule.id} className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4">
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-col gap-2">
                           <p className="text-sm font-medium text-foreground">Special Rule</p>
-                          <Button variant="ghost" className="h-8 px-2" onClick={() => setSettings((current) => ({ ...current, rules: current.rules.filter((currentRule) => currentRule.id !== rule.id) }))} type="button">
+                          <Button variant="ghost" className="h-8 w-fit px-2" onClick={() => setSettings((current) => ({ ...current, rules: current.rules.filter((currentRule) => currentRule.id !== rule.id) }))} type="button">
                             Remove
                           </Button>
                         </div>
@@ -462,27 +466,20 @@ export function OvertimeSettingsPage() {
                   {saving ? "Saving..." : "Save Overtime Rules"}
                 </Button>
               </FormActions>
-            </FormPanel>
-          </div>
+          </FormPanel>
 
-          <FormPanel className="h-fit gap-4 xl:sticky xl:top-6">
+          <FormPanel className="gap-4">
             <div className="flex flex-col gap-1">
               <p className="text-sm font-semibold text-foreground">Live Example</p>
               <p className="text-sm text-muted-foreground">Instant preview.</p>
             </div>
 
-            <div className="rounded-3xl bg-foreground px-5 py-5 text-background">
+            <div className="rounded-2xl bg-foreground px-5 py-5 text-background">
               <p className="text-xs uppercase tracking-[0.2em] text-background/65">Example employee</p>
               <p className="mt-2 text-lg font-semibold">Max works 10 hours on a Tuesday</p>
               <div className="mt-4 flex flex-col gap-2 text-sm">
-                <div className="flex justify-between gap-3">
-                  <span>{liveExample.baseHours} hours</span>
-                  <span>Normal pay</span>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <span>{liveExample.overtimeHours} hours</span>
-                  <span>Overtime (+{liveExample.multiplier}%)</span>
-                </div>
+                <p>{liveExample.baseHours} hours: Normal pay</p>
+                <p>{liveExample.overtimeHours} hours: Overtime (+{liveExample.multiplier}%)</p>
               </div>
               <div className="mt-4 rounded-2xl bg-background/10 px-3 py-3 text-sm text-background/85">
                 {liveExample.payout}
@@ -491,23 +488,23 @@ export function OvertimeSettingsPage() {
 
             <div className="flex flex-col gap-3 rounded-2xl border border-border bg-muted/20 p-4 text-sm">
               <p className="font-medium text-foreground">Current profile</p>
-              <div className="flex justify-between gap-3">
+              <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground">Preset</span>
-                <span className="text-right text-foreground">{presetDescriptor.shortLabel}</span>
+                <span className="text-foreground">{presetDescriptor.shortLabel}</span>
               </div>
-              <div className="flex justify-between gap-3">
+              <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground">Daily trigger</span>
                 <span className="text-foreground">{settings.dailyOvertimeThresholdHours} h</span>
               </div>
-              <div className="flex justify-between gap-3">
+              <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground">Weekly trigger</span>
                 <span className="text-foreground">{settings.weeklyOvertimeThresholdHours} h</span>
               </div>
-              <div className="flex justify-between gap-3">
+              <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground">Standard bonus</span>
                 <span className="text-foreground">+{standardRule?.multiplierPercent ?? 0}%</span>
               </div>
-              <div className="flex justify-between gap-3">
+              <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground">Overlap rule</span>
                 <span className="text-foreground">{settings.conflictResolution === "stack" ? "Stack" : "Highest only"}</span>
               </div>

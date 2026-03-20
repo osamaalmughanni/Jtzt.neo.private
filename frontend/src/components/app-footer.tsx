@@ -66,7 +66,7 @@ export function AppFooter({ context, publicMode, authMode, actions = [] }: AppFo
   }
 
   return (
-    <Card className="rounded-t-none rounded-b-lg border-border/80 bg-card px-3 py-2 shadow-sm">
+    <Card className="rounded-t-none rounded-b-lg border bg-card px-3 py-2 shadow-sm">
       <div className="flex items-center gap-3 text-[11px] text-muted-foreground sm:text-xs">
         <p className="min-w-0 truncate whitespace-nowrap">Copyright Jtzt / jtzt.com</p>
         <div className="ml-auto flex items-center gap-2">

@@ -150,10 +150,11 @@ export const DateInput = forwardRef<
     locale: string;
     onChange: (value: string) => void;
     todayDisabled?: boolean;
+    showHelperButton?: boolean;
     timeZone?: string;
     className?: string;
   }
->(({ value, locale, onChange, todayDisabled, timeZone, className }, forwardedRef) => {
+>(({ value, locale, onChange, todayDisabled, showHelperButton = true, timeZone, className }, forwardedRef) => {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [focused, setFocused] = useState(false);
   const { order, separator } = useMemo(() => getDateFormat(locale), [locale]);
@@ -206,21 +207,23 @@ export const DateInput = forwardRef<
           "min-w-0 flex-1 text-[clamp(0.9rem,1.4vw,1rem)]",
         )}
       />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 shrink-0 rounded-full text-muted-foreground"
-        aria-label="Use today"
-        disabled={todayDisabled}
-        onClick={() => {
-          const todayValue = getLocalNowSnapshot(new Date(), timeZone).localDay;
-          onChange(todayValue);
-          setDraft(formatDisplayValue(todayValue, order, separator));
-        }}
-      >
-        <CalendarPlus size={16} weight="regular" />
-      </Button>
+      {showHelperButton ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 shrink-0 text-muted-foreground"
+          aria-label="Use today"
+          disabled={todayDisabled}
+          onClick={() => {
+            const todayValue = getLocalNowSnapshot(new Date(), timeZone).localDay;
+            onChange(todayValue);
+            setDraft(formatDisplayValue(todayValue, order, separator));
+          }}
+        >
+          <CalendarPlus size={16} weight="regular" />
+        </Button>
+      ) : null}
     </div>
   );
 });

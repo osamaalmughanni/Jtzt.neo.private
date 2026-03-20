@@ -207,11 +207,9 @@ function ShellContent({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-hidden">
+      <AppHeaderLoadingBar />
       <AppContentLane>
         <AppHeader menuTo={menuTo} scope={scope} />
-      </AppContentLane>
-      <AppContentLane>
-        <AppHeaderLoadingBar />
       </AppContentLane>
       <main className="flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-hidden">
         <div ref={scrollAreaRef} className="app-scroll-area flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-auto overscroll-contain pt-4 pb-4">
