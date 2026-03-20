@@ -26,6 +26,7 @@ import {
   FormPage,
   FormSection,
 } from "@/components/form-layout";
+import { PageDock } from "@/components/page-dock";
 import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
@@ -208,7 +209,6 @@ export function DashboardPage() {
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
   const [entries, setEntries] = useState<TimeEntryView[]>([]);
   const [summary, setSummary] = useState<DashboardSummary>(defaultSummary);
-  const [statsRange, setStatsRange] = useState<"day" | "week" | "month">("month");
   const [pendingDeleteEntry, setPendingDeleteEntry] =
     useState<TimeEntryView | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
@@ -269,22 +269,10 @@ export function DashboardPage() {
       new Map(settings.customFields.map((field) => [field.id, field])),
     [settings.customFields],
   );
-  const activeContractStats =
-    statsRange === "day"
-      ? summary.contractStats.today
-      : statsRange === "week"
-        ? summary.contractStats.week
-        : summary.contractStats.month;
   const requiredTabletWorkFields = useMemo(
     () => settings.customFields.filter((field) => field.targets.includes("work") && field.required),
     [settings.customFields]
   );
-
-  function cycleStatsRange() {
-    setStatsRange((current) =>
-      current === "month" ? "week" : current === "week" ? "day" : "month",
-    );
-  }
 
   function updateContext(next: { userId?: number | null; day?: Date }) {
     const params = new URLSearchParams(searchParams);
@@ -457,6 +445,67 @@ export function DashboardPage() {
   }));
   return (
     <FormPage className="h-full">
+      {!dashboardResource.isLoading ? (
+        <PageDock>
+          <div className="flex min-h-[5rem] flex-col items-center justify-center">
+            {isTabletMode ? (
+              <>
+                <Button
+                  className={
+                    summary.activeEntry
+                      ? "h-16 w-16 animate-[pulse_1.4s_ease-in-out_infinite] rounded-[999px] bg-destructive text-destructive-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                      : "h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                  }
+                  size="icon"
+                  type="button"
+                  disabled={!canUseTabletPunch}
+                  onClick={handleTabletPunch}
+                  aria-label={summary.activeEntry ? t("dashboard.stopWork") : t("dashboard.startWork")}
+                >
+                  {summary.activeEntry ? <Stop size={30} weight="fill" /> : <Play size={30} weight="fill" />}
+                </Button>
+                {canCreateRecord ? (
+                  <Button
+                    asChild
+                    variant="ghost"
+                    className="mt-3 h-9 px-4 text-xs font-medium"
+                    onPointerDown={triggerHapticFeedback}
+                  >
+                    <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
+                  </Button>
+                ) : null}
+              </>
+            ) : canCreateRecord ? (
+              <Button
+                asChild
+                className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                size="icon"
+                type="button"
+                onPointerDown={triggerHapticFeedback}
+              >
+                <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
+                  <Plus size={30} weight="bold" />
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                disabled
+                className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out"
+                size="icon"
+                type="button"
+                aria-label={t("dashboard.addRecordUnavailable")}
+              >
+                <Plus size={30} weight="bold" />
+              </Button>
+            )}
+            {!canCreateRecord ? (
+              <p className="mt-3 text-center text-sm text-muted-foreground">
+                {t("dashboard.employeesInsertLimit")}
+              </p>
+            ) : null}
+          </div>
+        </PageDock>
+      ) : null}
       <Dialog
         open={tabletPunchOpen}
         onOpenChange={(open) => {
@@ -553,7 +602,7 @@ export function DashboardPage() {
       ) : null}
 
       <div className="rounded-2xl border border-border bg-card p-5">
-        <Stack gap="lg">
+        <div className="flex flex-col gap-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
               <p className="text-sm text-muted-foreground">{selectedUserName}</p>
@@ -608,32 +657,30 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <Stack gap="sm" className="border-t border-border/70 pt-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <p className="text-sm font-medium text-foreground">{t("dashboard.balance")}</p>
-                <p className="truncate text-sm text-muted-foreground">
-                  {t("dashboard.total", { value: formatBalanceMinutes(summary.contractStats.totalBalanceMinutes) })}
-                </p>
-              </div>
-              <Button variant="ghost" onClick={cycleStatsRange} type="button" className="h-8 px-3 text-xs">
-                {statsRange === "month" ? t("dashboard.month") : statsRange === "week" ? t("dashboard.week") : t("dashboard.day")}
-              </Button>
+          <div className="border-t border-border/70 pt-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-foreground">{t("dashboard.balance")}</p>
+              <p className="text-sm text-muted-foreground">
+                {t("dashboard.total", { value: formatBalanceMinutes(summary.contractStats.totalBalanceMinutes) })}
+              </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="h-7 rounded-full px-2.5 text-xs font-medium">
-                {t("dashboard.expected", { value: formatMinutes(activeContractStats.expectedMinutes) })}
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
+                {t("dashboard.expected", { value: formatMinutes(summary.contractStats.today.expectedMinutes) })}
               </Badge>
-              <Badge variant="outline" className="h-7 rounded-full px-2.5 text-xs font-medium">
-                {t("dashboard.recordedBadge", { value: formatMinutes(activeContractStats.recordedMinutes) })}
+              <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
+                {t("dashboard.recordedBadge", { value: formatMinutes(summary.contractStats.today.recordedMinutes) })}
               </Badge>
-              <Badge variant="outline" className="h-7 rounded-full px-2.5 text-xs font-medium">
-                {t("dashboard.balanceBadge", { value: formatBalanceMinutes(activeContractStats.balanceMinutes) })}
+              <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
+                {t("dashboard.balanceBadge", { value: formatBalanceMinutes(summary.contractStats.today.balanceMinutes) })}
+              </Badge>
+              <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
+                {t("dashboard.perWeek", { value: summary.contractStats.currentContract?.hoursPerWeek.toFixed(2) ?? "0.00" })}
               </Badge>
             </div>
-          </Stack>
-        </Stack>
+          </div>
+        </div>
       </div>
 
       <Stack gap="sm" className="rounded-2xl border border-border bg-card p-5">
@@ -763,65 +810,6 @@ export function DashboardPage() {
         </div>
       </Stack>
 
-      <div className="flex min-h-[8rem] flex-1 items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          {isTabletMode ? (
-            <>
-              <Button
-                className={
-                  summary.activeEntry
-                    ? "h-20 w-20 animate-[pulse_1.4s_ease-in-out_infinite] rounded-full bg-destructive text-destructive-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                    : "h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                }
-                size="icon"
-                type="button"
-                disabled={!canUseTabletPunch}
-                onClick={handleTabletPunch}
-                aria-label={summary.activeEntry ? t("dashboard.stopWork") : t("dashboard.startWork")}
-              >
-                {summary.activeEntry ? <Stop size={36} weight="fill" /> : <Play size={36} weight="fill" />}
-              </Button>
-              {canCreateRecord ? (
-                <Button
-                  asChild
-                  variant="ghost"
-                  className="h-9 rounded-full px-4 text-xs font-medium"
-                  onPointerDown={triggerHapticFeedback}
-                >
-                  <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
-                </Button>
-              ) : null}
-            </>
-          ) : canCreateRecord ? (
-            <Button
-              asChild
-              className="h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-              size="icon"
-              type="button"
-              onPointerDown={triggerHapticFeedback}
-            >
-              <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
-                <Plus size={36} weight="bold" />
-              </Link>
-            </Button>
-          ) : (
-            <Button
-              disabled
-              className="h-20 w-20 rounded-full bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out"
-              size="icon"
-              type="button"
-              aria-label={t("dashboard.addRecordUnavailable")}
-            >
-              <Plus size={36} weight="bold" />
-            </Button>
-          )}
-          {!canCreateRecord ? (
-            <p className="text-center text-sm text-muted-foreground">
-              {t("dashboard.employeesInsertLimit")}
-            </p>
-          ) : null}
-        </div>
-      </div>
       </Stack>
       </PageLoadBoundary>
     </FormPage>

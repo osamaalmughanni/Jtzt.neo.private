@@ -5,17 +5,21 @@ import { cn } from "@/lib/utils";
 export function AppFrame({
   children,
   className,
-  centered = false
+  centered = false,
+  appShell = false,
 }: {
   children: ReactNode;
   className?: string;
   centered?: boolean;
+  appShell?: boolean;
 }) {
   return (
-    <div className="min-h-dvh bg-background text-foreground">
+    <div className={cn(appShell ? "h-dvh overflow-x-visible overflow-y-hidden bg-background text-foreground" : "min-h-dvh bg-background text-foreground")}>
       <div
         className={cn(
-          `${APP_CONTENT_LANE_CLASSNAME} flex min-h-dvh flex-col py-6 sm:py-8 lg:py-12`,
+          appShell
+            ? "flex h-full min-h-0 flex-col overflow-x-visible overflow-y-hidden py-6 sm:py-8 lg:py-12"
+            : `${APP_CONTENT_LANE_CLASSNAME} flex min-h-dvh flex-col py-6 sm:py-8 lg:py-12`,
           centered && "justify-center",
           className
         )}

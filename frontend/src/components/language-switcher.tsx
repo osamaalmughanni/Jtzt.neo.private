@@ -3,8 +3,9 @@ import { useTranslation } from "react-i18next";
 import { supportedLanguages, type AppLanguage } from "@/lib/locales";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
-export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
+export function LanguageSwitcher({ compact = false, className }: { compact?: boolean; className?: string }) {
   const { i18n, t } = useTranslation();
   const currentLanguage = supportedLanguages.find((language) => language.code === i18n.language) ?? supportedLanguages[0];
 
@@ -15,10 +16,11 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
           type="button"
           variant="ghost"
           size="sm"
-          className="h-8 gap-1 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
+          className={cn("h-9 gap-1.5 rounded-md px-3 text-xs", className)}
         >
           <Languages className="h-3.5 w-3.5" />
-          {!compact ? <span>{currentLanguage.code.toUpperCase()}</span> : null}
+          <span>{currentLanguage.code.toUpperCase()}</span>
+          {!compact ? <span className="sr-only">{t("common.language")}</span> : null}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-sm">

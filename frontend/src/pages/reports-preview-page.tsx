@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import type { ReportResponse } from "@shared/types/api";
 import type { CompanySettings } from "@shared/types/models";
 import { diffCalendarDays, enumerateLocalDays, formatMinutes, parseLocalDay } from "@shared/utils/time";
+import { AppFullBleed } from "@/components/app-content-lane";
 import { FormPage, FormPanel } from "@/components/form-layout";
 import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
@@ -589,11 +590,8 @@ export function ReportsPreviewPage() {
         refreshing={reportResource.isRefreshing}
         skeleton={<PageLoadingState label={t("reports.creating")} minHeightClassName="min-h-[28rem]" />}
       >
-        <div
-          className="relative left-1/2 w-full -translate-x-1/2 px-5 sm:px-8 lg:px-10"
-          style={{ width: "min(128rem, calc(100vw - 2rem))" }}
-        >
-          <FormPanel className="flex w-full flex-col gap-6">
+        <AppFullBleed className="min-w-0 xl:px-12 2xl:px-16">
+          <FormPanel className="flex min-w-0 w-full flex-col gap-6">
             {report ? (
               <>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -613,7 +611,7 @@ export function ReportsPreviewPage() {
                   </div>
                 </div>
 
-                <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "gantt" | "overtime")} className="flex flex-col gap-4">
+                <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "gantt" | "overtime")} className="flex min-w-0 flex-col gap-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <TabsList className="h-9">
                       <TabsTrigger value="table">{t("reports.table")}</TabsTrigger>
@@ -630,9 +628,9 @@ export function ReportsPreviewPage() {
                     </div>
                   </div>
 
-                  <TabsContent value="table" className="mt-0">
-                    <div className="w-full overflow-auto rounded-2xl border border-border">
-                      <table className="min-w-full border-collapse text-sm">
+                  <TabsContent value="table" className="mt-0 min-w-0">
+                    <div className="w-full min-w-0 overflow-x-auto overflow-y-hidden rounded-2xl border border-border">
+                      <table className="w-max min-w-full border-collapse text-sm">
                         <thead>
                           <tr className="border-b border-border bg-muted/40">
                             {resolvedColumns.map((column) => (
@@ -825,7 +823,7 @@ export function ReportsPreviewPage() {
               </>
             ) : null}
           </FormPanel>
-        </div>
+        </AppFullBleed>
       </PageLoadBoundary>
     </FormPage>
   );

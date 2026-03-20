@@ -24,6 +24,21 @@ function getRouteActions(pathname: string, menuTo?: string): HeaderAction[] {
   return menuTo ? [{ to: menuTo, label: "Open menu", icon: List }] : [];
 }
 
+function mergeHeaderActions(...groups: Array<HeaderAction[] | null | undefined>) {
+  const deduped = new Map<string, HeaderAction>();
+
+  for (const group of groups) {
+    if (!group) continue;
+
+    for (const action of group) {
+      const actionKey = action.key ?? action.to ?? action.label;
+      deduped.set(actionKey, action);
+    }
+  }
+
+  return Array.from(deduped.values());
+}
+
 export function AppHeader({
   menuTo,
   lockTo,
@@ -51,7 +66,8 @@ export function AppHeader({
         ? [{ to: lockTo, label: "Lock tablet", icon: LockSimple }]
         : []
       : getRouteActions(location.pathname, menuTo);
-  const resolvedActions = scope === "tablet" ? actions ?? fallbackActions : pageActions ?? actions ?? fallbackActions;
+  const contextualActions = scope === "tablet" ? fallbackActions : pageActions ?? fallbackActions;
+  const resolvedActions = mergeHeaderActions(contextualActions, actions);
 
   return (
     <header className="bg-background">

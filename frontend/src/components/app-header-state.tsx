@@ -1,9 +1,12 @@
+import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { HeaderAction } from "@/components/app-header";
 
 interface AppHeaderStateValue {
   actions: HeaderAction[] | null;
   setActions: (actions: HeaderAction[] | null) => void;
+  bottomBar: ReactNode | null;
+  setBottomBar: (bottomBar: ReactNode | null) => void;
   loadingCount: number;
   startLoading: () => void;
   stopLoading: () => void;
@@ -13,6 +16,7 @@ const AppHeaderStateContext = createContext<AppHeaderStateValue | null>(null);
 
 export function AppHeaderStateProvider({ children }: { children: React.ReactNode }) {
   const [actions, setActions] = useState<HeaderAction[] | null>(null);
+  const [bottomBar, setBottomBar] = useState<ReactNode | null>(null);
   const [loadingCount, setLoadingCount] = useState(0);
   const startLoading = useCallback(() => {
     setLoadingCount((current) => current + 1);
@@ -24,11 +28,13 @@ export function AppHeaderStateProvider({ children }: { children: React.ReactNode
     () => ({
       actions,
       setActions,
+      bottomBar,
+      setBottomBar,
       loadingCount,
       startLoading,
       stopLoading,
     }),
-    [actions, loadingCount, startLoading, stopLoading]
+    [actions, bottomBar, loadingCount, startLoading, stopLoading]
   );
   return <AppHeaderStateContext.Provider value={value}>{children}</AppHeaderStateContext.Provider>;
 }
