@@ -33,6 +33,7 @@ export function Calendar({
   dayStates = {},
   onMonthChange,
   compact = false,
+  disableDate,
 }: {
   selected: Date;
   onSelect: (date: Date) => void;
@@ -43,11 +44,14 @@ export function Calendar({
   dayStates?: Record<string, "work" | "sick_leave" | "vacation" | "mixed">;
   onMonthChange?: (date: Date) => void;
   compact?: boolean;
+  disableDate?: (date: Date) => boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const entryStateUi = useMemo(() => getEntryStateUi(t), [t]);
   const [viewDate, setViewDate] = useState(startOfMonth(selected));
   const selectedMonthKey = `${selected.getFullYear()}-${selected.getMonth()}`;
+  const normalizedFirstDayOfWeek = ((Math.trunc(firstDayOfWeek) % 7) + 7) % 7;
+  const displayLocale = (i18n.resolvedLanguage?.trim() || locale || "en-GB").trim();
 
   useEffect(() => {
     setViewDate(startOfMonth(selected));
@@ -60,7 +64,7 @@ export function Calendar({
   const days = useMemo(() => {
     const first = startOfMonth(viewDate);
     const last = endOfMonth(viewDate);
-    const leading = (first.getDay() - firstDayOfWeek + 7) % 7;
+    const leading = (first.getDay() - normalizedFirstDayOfWeek + 7) % 7;
     const result: Array<Date | null> = [];
 
     for (let index = 0; index < leading; index += 1) result.push(null);
@@ -69,16 +73,16 @@ export function Calendar({
     }
     while (result.length % 7 !== 0) result.push(null);
     return result;
-  }, [firstDayOfWeek, viewDate]);
+  }, [normalizedFirstDayOfWeek, viewDate]);
 
   const weekdayLabels = useMemo(() => {
     const baseSunday = new Date(Date.UTC(2026, 0, 4));
     return Array.from({ length: 7 }, (_, index) => {
       const date = new Date(baseSunday);
-      date.setUTCDate(baseSunday.getUTCDate() + ((firstDayOfWeek + index) % 7));
-      return new Intl.DateTimeFormat(locale, { weekday: "short" }).format(date);
+      date.setUTCDate(baseSunday.getUTCDate() + ((normalizedFirstDayOfWeek + index) % 7));
+      return new Intl.DateTimeFormat(displayLocale, { weekday: "short", timeZone: "UTC" }).format(date);
     });
-  }, [firstDayOfWeek, locale]);
+  }, [displayLocale, normalizedFirstDayOfWeek]);
   const holidaySet = useMemo(() => new Set(holidayDates), [holidayDates]);
   const cellClassName = compact ? "h-7 text-[11px]" : "h-12 text-sm";
   const emptyCellClassName = compact ? "h-7" : "h-12";
@@ -102,7 +106,7 @@ export function Calendar({
           {compact ? <CaretLeft size={14} weight="bold" /> : t("calendar.prev")}
         </Button>
         <p className={headerTextClassName}>
-          {formatCompanyMonthYear(viewDate, locale)}
+          {formatCompanyMonthYear(viewDate, displayLocale)}
         </p>
         <Button
           size="sm"
@@ -130,6 +134,7 @@ export function Calendar({
           const isHoliday = holidaySet.has(isoDate);
           const dayState = dayStates[isoDate];
           const isSelected = isSameDay(day, selected);
+          const isDisabled = disableDate?.(day) ?? false;
 
           return (
             <button
@@ -137,14 +142,23 @@ export function Calendar({
               className={cn(
                 "flex items-center justify-center rounded-xl border tabular-nums transition-colors",
                 cellClassName,
+                isDisabled
+                  ? "cursor-not-allowed border-transparent bg-background text-muted-foreground/40 opacity-50"
+                  : undefined,
                 dayState
                   ? entryStateUi[dayState].calendarCellClassName
                   : "border-transparent bg-background text-foreground hover:bg-muted",
                 isSelected ? "border-2 border-foreground shadow-sm" : undefined,
                 isHoliday ? "ring-1 ring-inset ring-amber-500/40 dark:ring-amber-400/40" : undefined,
               )}
-              onClick={() => onSelect(day)}
+              onClick={() => {
+                if (!isDisabled) {
+                  onSelect(day);
+                }
+              }}
               type="button"
+              disabled={isDisabled}
+              aria-disabled={isDisabled}
             >
               <span
                 className={cn(

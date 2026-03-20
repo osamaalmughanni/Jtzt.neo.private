@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS company_settings (
   allow_one_record_per_day INTEGER NOT NULL DEFAULT 0,
   allow_intersecting_records INTEGER NOT NULL DEFAULT 0,
   allow_records_on_holidays INTEGER NOT NULL DEFAULT 1,
+  allow_future_records INTEGER NOT NULL DEFAULT 0,
   country TEXT NOT NULL DEFAULT 'AT',
   tablet_idle_timeout_seconds INTEGER NOT NULL DEFAULT 10,
   auto_break_after_minutes INTEGER NOT NULL DEFAULT 300,

@@ -182,6 +182,9 @@ export async function ensureBootstrapState(db: AppDatabase, config: RuntimeConfi
   if (!settingsColumnNames.has("allow_records_on_holidays")) {
     await db.exec("ALTER TABLE company_settings ADD COLUMN allow_records_on_holidays INTEGER NOT NULL DEFAULT 1");
   }
+  if (!settingsColumnNames.has("allow_future_records")) {
+    await db.exec("ALTER TABLE company_settings ADD COLUMN allow_future_records INTEGER NOT NULL DEFAULT 0");
+  }
 
   const invitationCodeColumns = await db.all<{ name: string }>(
     "SELECT name FROM pragma_table_info('invitation_codes')",

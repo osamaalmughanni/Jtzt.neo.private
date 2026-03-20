@@ -121,13 +121,14 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         allow_one_record_per_day,
         allow_intersecting_records,
         allow_records_on_holidays,
+        allow_future_records,
         country,
         tablet_idle_timeout_seconds,
         auto_break_after_minutes,
         auto_break_duration_minutes,
         overtime_settings_json,
         custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         snapshot.settings.currency,
@@ -140,6 +141,7 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         snapshot.settings.allowOneRecordPerDay ? 1 : 0,
         snapshot.settings.allowIntersectingRecords ? 1 : 0,
         snapshot.settings.allowRecordsOnHolidays ? 1 : 0,
+        snapshot.settings.allowFutureRecords ? 1 : 0,
         snapshot.settings.country,
         snapshot.settings.tabletIdleTimeoutSeconds,
         snapshot.settings.autoBreakAfterMinutes,

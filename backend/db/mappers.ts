@@ -198,6 +198,7 @@ export function mapCompanySettings(row: any): CompanySettings {
     allowOneRecordPerDay: Boolean(row.allow_one_record_per_day ?? 0),
     allowIntersectingRecords: Boolean(row.allow_intersecting_records ?? 0),
     allowRecordsOnHolidays: Boolean(row.allow_records_on_holidays ?? 1),
+    allowFutureRecords: Boolean(row.allow_future_records ?? 0),
     country: row.country ?? row.holiday_country,
     tabletIdleTimeoutSeconds: row.tablet_idle_timeout_seconds ?? 10,
     autoBreakAfterMinutes: row.auto_break_after_minutes ?? 300,

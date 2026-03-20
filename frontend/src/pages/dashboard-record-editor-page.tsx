@@ -9,10 +9,10 @@ import type {
   TimeEntryType,
 } from "@shared/types/models";
 import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
+import { evaluateTimeEntryPolicy, getAllowedEntryTypesForDay, getFutureDayDistance, getPastDayDistance } from "@shared/utils/time-entry-policy";
 import {
   combineLocalDayAndTimeToIsoInTimeZone,
   countEffectiveLeaveDays,
-  diffCalendarDays,
   enumerateLocalDays,
   formatLocalDay,
   getLocalNowSnapshot,
@@ -44,6 +44,7 @@ const defaultSettings: CompanySettings = {
   allowOneRecordPerDay: false,
   allowIntersectingRecords: false,
   allowRecordsOnHolidays: true,
+  allowFutureRecords: false,
   country: "AT",
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
@@ -54,19 +55,6 @@ const defaultSettings: CompanySettings = {
 
 function canManageOtherUsers(role: string | undefined) {
   return role === "admin" || role === "manager";
-}
-
-function canBypassDayLimits(role: string | undefined) {
-  return role === "admin" || role === "manager";
-}
-
-function isDayWithinLimit(day: string, limit: number, timeZone?: string) {
-  const daysInPast = diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day);
-  return daysInPast <= 0 || daysInPast <= limit;
-}
-
-function getPastDayDistance(day: string, timeZone?: string) {
-  return Math.max(0, diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day));
 }
 
 function getHolidayDisplayName(holiday: PublicHolidayRecord | undefined) {
@@ -182,7 +170,10 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const [searchParams] = useSearchParams();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
-  const [entryType, setEntryType] = useState<TimeEntryType>("work");
+  const initialEntryType = (searchParams.get("type") as TimeEntryType | null) ?? "work";
+  const [entryType, setEntryType] = useState<TimeEntryType>(
+    initialEntryType === "vacation" || initialEntryType === "sick_leave" ? initialEntryType : "work"
+  );
   const [startDate, setStartDate] = useState(parseDayParam(searchParams.get("day")));
   const [endDate, setEndDate] = useState(parseDayParam(searchParams.get("day")));
   const [startTime, setStartTime] = useState("");
@@ -196,7 +187,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const [holidays, setHolidays] = useState<PublicHolidayRecord[]>([]);
 
   const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
-  const bypassDayLimits = canBypassDayLimits(companyIdentity?.user.role);
   const selectedDay = parseDayParam(searchParams.get("day"));
   const effectiveUserId =
     canSwitchUser
@@ -208,49 +198,75 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     () => settings.customFields.filter((field) => field.targets.includes(entryType)),
     [entryType, settings.customFields],
   );
-  const entryTypeTabs: Array<{ value: TimeEntryType; label: string }> = [
-    { value: "work", label: t("recordEditor.working") },
-    { value: "vacation", label: t("recordEditor.vacation") },
-    { value: "sick_leave", label: t("recordEditor.sickLeave") },
-  ];
-
   const selectedUserName =
     users.find((user) => user.id === effectiveUserId)?.fullName ?? companyIdentity?.user.fullName ?? "User";
   const resolvedEndDate = endDate;
+  const rangeEndDate = resolvedEndDate >= startDate ? resolvedEndDate : startDate;
+  const todayDay = getLocalNowSnapshot(new Date(), settings.timeZone).localDay;
   const holidaySet = useMemo(() => new Set(holidays.map((holiday) => holiday.date)), [holidays]);
   const blockedHoliday = useMemo(
     () =>
-      !settings.allowRecordsOnHolidays
+      entryType === "work" && !settings.allowRecordsOnHolidays
         ? holidays.find((holiday) => enumerateLocalDays(startDate, resolvedEndDate).includes(holiday.date)) ?? null
         : null,
-    [holidays, resolvedEndDate, settings.allowRecordsOnHolidays, startDate]
+    [entryType, holidays, resolvedEndDate, settings.allowRecordsOnHolidays, startDate]
   );
   const holidayBlocked = blockedHoliday !== null;
   const leaveMetrics = useMemo(
     () => countEffectiveLeaveDays(startDate, resolvedEndDate, holidaySet),
     [holidaySet, resolvedEndDate, startDate],
   );
-  const insertLocked = !bypassDayLimits && mode === "create" && !isDayWithinLimit(startDate, settings.insertDaysLimit, settings.timeZone);
-  const editLocked = !bypassDayLimits && mode === "edit" && !isDayWithinLimit(startDate, settings.editDaysLimit, settings.timeZone);
-  const startDatePastDistance = getPastDayDistance(startDate, settings.timeZone);
-  const dayLimitError = holidayBlocked
-    ? t("recordEditor.holidayBlocked", {
+  const policy = evaluateTimeEntryPolicy({
+    mode,
+    role: companyIdentity?.user.role,
+    settings,
+    entryType,
+    startDate,
+    endDate: resolvedEndDate,
+    todayDay,
+    hasHolidayInRange: holidayBlocked,
+  });
+  const allowedEntryTypes = getAllowedEntryTypesForDay({
+    role: companyIdentity?.user.role,
+    settings,
+    day: startDate,
+    todayDay,
+    isHoliday: holidaySet.has(startDate),
+  });
+  const startDatePastDistance = getPastDayDistance(startDate, todayDay);
+  const futurePlanningDistance = getFutureDayDistance(rangeEndDate, todayDay);
+  const futureVacationOnly =
+    policy.reason === "future_restricted" &&
+    allowedEntryTypes.onlyVacationAllowed &&
+    futurePlanningDistance > 0;
+  const dayLimitError = futureVacationOnly
+    ? t("recordEditor.futureVacationOnly", {
+        date: rangeEndDate,
+        days: futurePlanningDistance,
+      })
+    : policy.reason === "holiday_work_blocked"
+    ? t("recordEditor.holidayWorkBlocked", {
         date: blockedHoliday?.date ?? startDate,
         holiday: getHolidayDisplayName(blockedHoliday ?? undefined) ?? (blockedHoliday?.date ?? startDate),
       })
-    : insertLocked
+    : policy.reason === "insert_limit"
       ? t("recordEditor.insertLimitDetailed", {
           limit: settings.insertDaysLimit,
           days: startDatePastDistance,
           date: startDate,
         })
-      : editLocked
+      : policy.reason === "edit_limit"
         ? t("recordEditor.editLimitDetailed", {
             limit: settings.editDaysLimit,
             days: startDatePastDistance,
             date: startDate,
           })
         : null;
+  const entryTypeTabs: Array<{ value: TimeEntryType; label: string; disabled?: boolean }> = [
+    { value: "work", label: t("recordEditor.working"), disabled: mode === "create" && !allowedEntryTypes.work.allowed },
+    { value: "vacation", label: t("recordEditor.vacation") },
+    { value: "sick_leave", label: t("recordEditor.sickLeave"), disabled: mode === "create" && !allowedEntryTypes.sickLeave.allowed },
+  ];
 
   useEffect(() => {
     if (!companySession) return;
@@ -302,6 +318,23 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
 
     setEndDate(startDate);
   }, [entryType, startDate]);
+
+  useEffect(() => {
+    if (mode !== "create") {
+      return;
+    }
+
+    const currentEntryTypeAllowed =
+      entryType === "work"
+        ? allowedEntryTypes.work.allowed
+        : entryType === "sick_leave"
+          ? allowedEntryTypes.sickLeave.allowed
+          : allowedEntryTypes.vacation.allowed;
+
+    if (!currentEntryTypeAllowed) {
+      setEntryType("vacation");
+    }
+  }, [allowedEntryTypes.sickLeave.allowed, allowedEntryTypes.vacation.allowed, allowedEntryTypes.work.allowed, entryType, mode]);
 
   async function handleSave() {
     if (!companySession || !effectiveUserId) return;

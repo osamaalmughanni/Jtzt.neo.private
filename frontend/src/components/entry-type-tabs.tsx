@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 interface EntryTypeTabItem {
   value: TimeEntryType;
   label: string;
+  disabled?: boolean;
 }
 
 interface EntryTypeTabsProps {
@@ -51,9 +52,10 @@ export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProp
                 <TabsTrigger
                   key={item.value}
                   value={item.value}
+                  disabled={item.disabled}
                   className={cn(
                     "group rounded-2xl border border-border bg-muted/60 px-3 py-2 text-muted-foreground shadow-none transition-all duration-200 ease-out",
-                    "data-[state=active]:px-4 data-[state=active]:shadow-sm",
+                    "data-[state=active]:px-4 data-[state=active]:shadow-sm disabled:pointer-events-none disabled:opacity-40",
                     getEntryTypeTriggerClassName(item.value),
                   )}
                 >

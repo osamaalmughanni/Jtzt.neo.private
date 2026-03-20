@@ -23,13 +23,14 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
         allow_one_record_per_day,
         allow_intersecting_records,
         allow_records_on_holidays,
+        allow_future_records,
         country,
         tablet_idle_timeout_seconds,
         auto_break_after_minutes,
         auto_break_duration_minutes,
         overtime_settings_json,
         custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(company_id) DO NOTHING`,
     [
       companyId,
@@ -43,6 +44,7 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
       0,
       0,
       1,
+      0,
       "AT",
       10,
       300,
@@ -102,6 +104,7 @@ export const settingsService = {
            allow_one_record_per_day = ?,
            allow_intersecting_records = ?,
            allow_records_on_holidays = ?,
+           allow_future_records = ?,
            country = ?,
            tablet_idle_timeout_seconds = ?,
            auto_break_after_minutes = ?,
@@ -120,6 +123,7 @@ export const settingsService = {
         input.allowOneRecordPerDay ? 1 : 0,
         input.allowIntersectingRecords ? 1 : 0,
         input.allowRecordsOnHolidays ? 1 : 0,
+        input.allowFutureRecords ? 1 : 0,
         input.country,
         input.tabletIdleTimeoutSeconds,
         input.autoBreakAfterMinutes,

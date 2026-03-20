@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { diffCalendarDays } from "../../../shared/utils/time";
+import { evaluateTimeEntryPolicy, getRangeEndDay } from "../../../shared/utils/time-entry-policy";
 import { authMiddleware, requireCompanyUser } from "../../auth/middleware";
 import type { CompanyTokenPayload } from "../../auth/jwt";
 import { settingsService } from "../../services/settings-service";
@@ -104,16 +105,6 @@ function getCompanySession(session: AppVariables["session"]): CompanyTokenPayloa
   return session;
 }
 
-function enforceDayLimit(session: CompanyTokenPayload, limit: number, todayDay: string, day: string, message: string) {
-  if (session.role === "admin" || session.role === "manager") {
-    return;
-  }
-  const daysInPast = diffCalendarDays(todayDay, day);
-  if (daysInPast > 0 && daysInPast > limit) {
-    throw new Error(message);
-  }
-}
-
 async function enforceSingleRecordPerDay(
   db: AppDatabase,
   companyId: string,
@@ -174,15 +165,16 @@ async function enforceHolidayRecordRule(
   companyId: string,
   settings: Awaited<ReturnType<typeof settingsService.getSettings>>,
   candidate: {
+    entryType: "work" | "vacation" | "sick_leave";
     startDate: string;
     endDate?: string | null;
   }
 ) {
-  if (settings.allowRecordsOnHolidays) {
+  if (settings.allowRecordsOnHolidays || candidate.entryType !== "work") {
     return;
   }
 
-  const normalizedEndDate = candidate.endDate && candidate.endDate >= candidate.startDate ? candidate.endDate : candidate.startDate;
+  const normalizedEndDate = getRangeEndDay(candidate.startDate, candidate.endDate);
   const holiday = normalizedEndDate === candidate.startDate
     ? await settingsService.isPublicHoliday(db, companyId, candidate.startDate)
     : await settingsService.findPublicHolidayInRange(db, companyId, candidate.startDate, normalizedEndDate);
@@ -196,6 +188,35 @@ async function enforceHolidayRecordRule(
           : holiday.date;
     throw new Error(`Records on public holidays are disabled (${holidayName}, ${holiday.date})`);
   }
+}
+
+async function enforceHolidayProbe(
+  db: AppDatabase,
+  companyId: string,
+  settings: Awaited<ReturnType<typeof settingsService.getSettings>>,
+  startDate: string,
+  endDate?: string | null
+) {
+  const normalizedEndDate = getRangeEndDay(startDate, endDate);
+  return normalizedEndDate === startDate
+    ? await settingsService.isPublicHoliday(db, companyId, startDate)
+    : await settingsService.findPublicHolidayInRange(db, companyId, startDate, normalizedEndDate);
+}
+
+function getPolicyErrorMessage(reason: ReturnType<typeof evaluateTimeEntryPolicy>["reason"]) {
+  if (reason === "insert_limit") {
+    return "Insert day limit reached";
+  }
+  if (reason === "edit_limit") {
+    return "Edit day limit reached";
+  }
+  if (reason === "future_restricted") {
+    return "Future work and sick leave records are disabled";
+  }
+  if (reason === "holiday_work_blocked") {
+    return "Work records on public holidays are disabled";
+  }
+  return "Record rule violation";
 }
 
 async function enrichEntryWithDayMetrics(
@@ -335,6 +356,7 @@ timeRoutes.post("/start", async (c) => {
 
   try {
     await enforceHolidayRecordRule(db, session.companyId, settings, {
+      entryType: "work",
       startDate: snapshot.localDay,
       endDate: null
     });
@@ -371,8 +393,24 @@ timeRoutes.post("/entry", async (c) => {
 
   const settings = await settingsService.getSettings(db, session.companyId);
   try {
-    enforceDayLimit(session, settings.insertDaysLimit, todayDay, body.startDate, "Insert day limit reached");
+    const holidayInRange = body.entryType === "work"
+      ? Boolean(await enforceHolidayProbe(db, session.companyId, settings, body.startDate, body.endDate))
+      : false;
+    const policy = evaluateTimeEntryPolicy({
+      mode: "create",
+      role: session.role,
+      settings,
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      todayDay,
+      hasHolidayInRange: holidayInRange,
+    });
+    if (!policy.allowed) {
+      throw new Error(getPolicyErrorMessage(policy.reason));
+    }
     await enforceHolidayRecordRule(db, session.companyId, settings, {
+      entryType: body.entryType,
       startDate: body.startDate,
       endDate: body.endDate
     });
@@ -462,8 +500,24 @@ timeRoutes.put("/entry", async (c) => {
 
   const settings = await settingsService.getSettings(db, session.companyId);
   try {
-    enforceDayLimit(session, settings.editDaysLimit, todayDay, body.startDate, "Edit day limit reached");
+    const holidayInRange = body.entryType === "work"
+      ? Boolean(await enforceHolidayProbe(db, session.companyId, settings, body.startDate, body.endDate))
+      : false;
+    const policy = evaluateTimeEntryPolicy({
+      mode: "edit",
+      role: session.role,
+      settings,
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate,
+      todayDay,
+      hasHolidayInRange: holidayInRange,
+    });
+    if (!policy.allowed) {
+      throw new Error(getPolicyErrorMessage(policy.reason));
+    }
     await enforceHolidayRecordRule(db, session.companyId, settings, {
+      entryType: body.entryType,
       startDate: body.startDate,
       endDate: body.endDate
     });

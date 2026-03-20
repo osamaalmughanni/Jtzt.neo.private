@@ -11,9 +11,9 @@ import type {
   TimeEntryView,
 } from "@shared/types/models";
 import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
+import { evaluateTimeEntryPolicy, getAllowedEntryTypesForDay, getFutureDayDistance, getPastDayDistance } from "@shared/utils/time-entry-policy";
 import {
   enumerateLocalDays,
-  diffCalendarDays,
   diffMinutes,
   formatLocalDay,
   getLocalNowSnapshot,
@@ -29,7 +29,7 @@ import {
   FormSection,
 } from "@/components/form-layout";
 import { PageDock } from "@/components/page-dock";
-import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
+import { PageLoadBoundary } from "@/components/page-load-state";
 import { Stack } from "@/components/stack";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -54,6 +54,7 @@ const defaultSettings: CompanySettings = {
   allowOneRecordPerDay: false,
   allowIntersectingRecords: false,
   allowRecordsOnHolidays: true,
+  allowFutureRecords: false,
   country: "AT",
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
@@ -110,17 +111,16 @@ function parseDayParam(value: string | null) {
   return parseLocalDay(value) ?? new Date();
 }
 
-function canBypassDayLimits(role: string | undefined) {
-  return role === "admin" || role === "manager";
-}
-
-function isDayWithinLimit(day: string, limit: number, timeZone?: string) {
-  const daysInPast = diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day);
-  return daysInPast <= 0 || daysInPast <= limit;
-}
-
-function getPastDayDistance(day: string, timeZone?: string) {
-  return Math.max(0, diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day));
+function buildRecordEditorHref(userId: number | null, day: Date, entryType?: "vacation") {
+  const params = new URLSearchParams();
+  if (userId) {
+    params.set("user", String(userId));
+  }
+  params.set("day", formatLocalDay(day));
+  if (entryType) {
+    params.set("type", entryType);
+  }
+  return `/dashboard/records/create?${params.toString()}`;
 }
 
 function getHolidayDisplayName(holiday: PublicHolidayRecord | undefined) {
@@ -210,6 +210,21 @@ function calculateLiveWorkDurationMinutes(
   }
 
   return Math.max(0, rawMinutes - settings.autoBreakDurationMinutes);
+}
+
+function resolveCalendarDayState(entries: TimeEntryView[]): "work" | "sick_leave" | "vacation" | "mixed" | null {
+  let nextState: "work" | "sick_leave" | "vacation" | "mixed" | null = null;
+
+  for (const entry of entries) {
+    if (!nextState || nextState === entry.entryType) {
+      nextState = entry.entryType;
+      continue;
+    }
+
+    return "mixed";
+  }
+
+  return nextState;
 }
 
 function RecordStatusIcon({
@@ -302,31 +317,67 @@ export function DashboardPage() {
   );
   const selectedUserName =
     selectedUser?.fullName ?? companyIdentity?.user.fullName ?? "User";
-  const bypassDayLimits = canBypassDayLimits(companyIdentity?.user.role);
   const selectedDayKey = formatLocalDay(selectedDate);
   const selectedDayPastDistance = getPastDayDistance(selectedDayKey, settings.timeZone);
+  const selectedDayFutureDistance = getFutureDayDistance(selectedDayKey, settings.timeZone);
+  const todayDay = getLocalNowSnapshot(new Date(), settings.timeZone).localDay;
   const isNowContext = isToday(selectedDate, settings.timeZone);
   const holidayDateSet = useMemo(() => new Set(calendarHolidays.map((holiday) => holiday.date)), [calendarHolidays]);
   const selectedHoliday = useMemo(
     () => calendarHolidays.find((holiday) => holiday.date === selectedDayKey),
     [calendarHolidays, selectedDayKey]
   );
-  const selectedDayBlockedByHoliday = !settings.allowRecordsOnHolidays && holidayDateSet.has(selectedDayKey);
-  const canCreateRecord =
-    !selectedDayBlockedByHoliday &&
-    (bypassDayLimits ||
-      isDayWithinLimit(selectedDayKey, settings.insertDaysLimit, settings.timeZone));
-  const canUseTabletPunch = summary.activeEntry ? true : isNowContext && canCreateRecord;
-  const createRecordBlockedMessage = selectedDayBlockedByHoliday
-    ? t("dashboard.holidayCreateBlocked", {
-        date: formatCompanyDate(selectedDayKey, settings.locale),
-        holiday: getHolidayDisplayName(selectedHoliday) ?? formatCompanyDate(selectedDayKey, settings.locale),
-      })
-    : !bypassDayLimits && !isDayWithinLimit(selectedDayKey, settings.insertDaysLimit, settings.timeZone)
+  const selectedDayIsHoliday = holidayDateSet.has(selectedDayKey);
+  const allowedEntryTypes = getAllowedEntryTypesForDay({
+    role: companyIdentity?.user.role,
+    settings,
+    day: selectedDayKey,
+    todayDay,
+    isHoliday: selectedDayIsHoliday,
+  });
+  const selectedDayWorkPolicy = evaluateTimeEntryPolicy({
+    mode: "create",
+    role: companyIdentity?.user.role,
+    settings,
+    entryType: "work",
+    startDate: selectedDayKey,
+    endDate: selectedDayKey,
+    todayDay,
+    hasHolidayInRange: selectedDayIsHoliday,
+  });
+  const selectedDayPolicy = evaluateTimeEntryPolicy({
+    mode: "create",
+    role: companyIdentity?.user.role,
+    settings,
+    entryType: allowedEntryTypes.vacation.allowed ? "vacation" : "work",
+    startDate: selectedDayKey,
+    endDate: selectedDayKey,
+    todayDay,
+    hasHolidayInRange: selectedDayIsHoliday,
+  });
+  const selectedDayWorkBlockedByHoliday = !allowedEntryTypes.work.allowed && selectedDayIsHoliday;
+  const futureRecordSelected = selectedDayFutureDistance > 0;
+  const futureVacationOnly = allowedEntryTypes.onlyVacationAllowed && futureRecordSelected;
+  const canCreateRecord = allowedEntryTypes.anyAllowed;
+  const canUseTabletPunch = summary.activeEntry
+    ? true
+    : isNowContext && allowedEntryTypes.work.allowed;
+  const createRecordMessage =
+    selectedDayPolicy.reason === "insert_limit"
       ? t("dashboard.insertLimitDetailed", {
           limit: settings.insertDaysLimit,
           days: selectedDayPastDistance,
           date: formatCompanyDate(selectedDayKey, settings.locale),
+        })
+      : futureVacationOnly
+      ? t("dashboard.futureVacationOnly", {
+          date: formatCompanyDate(selectedDayKey, settings.locale),
+          days: selectedDayFutureDistance,
+        })
+      : selectedDayWorkPolicy.reason === "holiday_work_blocked"
+      ? t("dashboard.holidayWorkBlocked", {
+          date: formatCompanyDate(selectedDayKey, settings.locale),
+          holiday: getHolidayDisplayName(selectedHoliday) ?? formatCompanyDate(selectedDayKey, settings.locale),
         })
       : null;
   const customFieldsById = useMemo(
@@ -480,6 +531,27 @@ export function DashboardPage() {
     setCalendarDayStates(calendarResource.data.dayStates);
   }, [calendarResource.data]);
 
+  useEffect(() => {
+    setCalendarDayStates((current) => {
+      const nextState = resolveCalendarDayState(entries);
+      if (nextState === current[selectedDayKey]) {
+        return current;
+      }
+
+      const next = { ...current };
+      if (nextState) {
+        next[selectedDayKey] = nextState;
+      } else {
+        delete next[selectedDayKey];
+      }
+      return next;
+    });
+  }, [entries, selectedDayKey]);
+
+  async function refreshDashboardViews() {
+    await Promise.all([dashboardResource.reload(), calendarResource.reload()]);
+  }
+
   async function deleteEntry(entryId: number) {
     if (!companySession || !effectiveUserId) return;
 
@@ -491,7 +563,7 @@ export function DashboardPage() {
       });
       setPendingDeleteEntry(null);
       toast({ title: t("dashboard.recordDeleted") });
-      await dashboardResource.reload();
+      await refreshDashboardViews();
     } catch (error) {
       toast({
         title: t("dashboard.couldNotDeleteRecord"),
@@ -516,8 +588,7 @@ export function DashboardPage() {
       await api.startTimer(companySession.token, { customFieldValues });
       setTabletPunchOpen(false);
       setTabletPunchValues({});
-      toast({ title: t("dashboard.timerStarted") });
-      await dashboardResource.reload();
+      await refreshDashboardViews();
     } catch (error) {
       toast({
         title: t("dashboard.couldNotStartTimer"),
@@ -532,8 +603,7 @@ export function DashboardPage() {
     if (!companySession || !summary.activeEntry) return;
     try {
       await api.stopTimer(companySession.token, { entryId: summary.activeEntry.id });
-      toast({ title: t("dashboard.timerStopped") });
-      await dashboardResource.reload();
+      await refreshDashboardViews();
     } catch (error) {
       toast({
         title: t("dashboard.couldNotStopTimer"),
@@ -557,98 +627,101 @@ export function DashboardPage() {
     void startTabletTimer({});
   }
 
-  const createRecordHref = `/dashboard/records/create?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
+  const createRecordHref = buildRecordEditorHref(effectiveUserId, selectedDate, futureVacationOnly ? "vacation" : undefined);
+  const dockShowsPlay = isNowContext && allowedEntryTypes.work.allowed && !summary.activeEntry;
+  const dockShowsStop = Boolean(summary.activeEntry);
+  const dockUsesPlus = !dockShowsStop && !dockShowsPlay;
   const userOptions = availableUsers.map((user) => ({
     value: String(user.id),
     label: user.fullName,
   }));
   return (
     <FormPage className="min-h-0 flex-none">
-      {!dashboardResource.isLoading ? (
-        <PageDock>
-          <div className="flex min-h-[5rem] flex-col items-center justify-center">
-            {isTabletMode ? (
-              <>
-                {isNowContext ? (
-                  <Button
-                    className={
-                      summary.activeEntry
-                        ? "h-16 w-16 animate-[pulse_1.4s_ease-in-out_infinite] rounded-[999px] bg-destructive text-destructive-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                        : "h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                    }
-                    size="icon"
-                    type="button"
-                    disabled={!canUseTabletPunch}
-                    onClick={handleTabletPunch}
-                    aria-label={summary.activeEntry ? t("dashboard.stopWork") : t("dashboard.startWork")}
-                  >
-                    {summary.activeEntry ? <Stop size={30} weight="fill" /> : <Play size={30} weight="fill" />}
-                  </Button>
-                ) : canCreateRecord ? (
-                  <Button
-                    asChild
-                    className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                    size="icon"
-                    type="button"
-                    onPointerDown={triggerHapticFeedback}
-                  >
-                    <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
-                      <Plus size={30} weight="bold" />
-                    </Link>
-                  </Button>
-                ) : (
-                  <Button
-                    disabled
-                    className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out"
-                    size="icon"
-                    type="button"
-                    aria-label={t("dashboard.addRecordUnavailable")}
-                  >
+      <PageDock>
+        <div className="flex min-h-[5rem] flex-col items-center justify-center">
+          {dashboardResource.isLoading ? (
+            <div className="h-16 w-16 rounded-[999px] border border-border bg-muted/40" />
+          ) : isTabletMode ? (
+            <>
+              {dockShowsStop || dockShowsPlay ? (
+                <Button
+                  className={
+                    summary.activeEntry
+                      ? "h-16 w-16 animate-[pulse_1.4s_ease-in-out_infinite] rounded-[999px] bg-destructive text-destructive-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                      : "h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                  }
+                  size="icon"
+                  type="button"
+                  disabled={!canUseTabletPunch}
+                  onClick={handleTabletPunch}
+                  aria-label={summary.activeEntry ? t("dashboard.stopWork") : t("dashboard.startWork")}
+                >
+                  {summary.activeEntry ? <Stop size={30} weight="fill" /> : <Play size={30} weight="fill" />}
+                </Button>
+              ) : canCreateRecord ? (
+                <Button
+                  asChild
+                  className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                  size="icon"
+                  type="button"
+                  onPointerDown={triggerHapticFeedback}
+                >
+                  <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
                     <Plus size={30} weight="bold" />
-                  </Button>
-                )}
-                {isNowContext && canCreateRecord ? (
-                  <Button
-                    asChild
-                    variant="ghost"
-                    className="mt-3 h-9 px-4 text-xs font-medium"
-                    onPointerDown={triggerHapticFeedback}
-                  >
-                    <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
-                  </Button>
-                ) : null}
-              </>
-            ) : canCreateRecord ? (
-              <Button
-                asChild
-                className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                size="icon"
-                type="button"
-                onPointerDown={triggerHapticFeedback}
-              >
-                <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  disabled
+                  className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out"
+                  size="icon"
+                  type="button"
+                  aria-label={t("dashboard.addRecordUnavailable")}
+                >
                   <Plus size={30} weight="bold" />
-                </Link>
-              </Button>
-            ) : (
-              <Button
-                disabled
-                className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out"
-                size="icon"
-                type="button"
-                aria-label={t("dashboard.addRecordUnavailable")}
-              >
+                </Button>
+              )}
+              {dockShowsPlay && canCreateRecord ? (
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="mt-3 h-9 px-4 text-xs font-medium"
+                  onPointerDown={triggerHapticFeedback}
+                >
+                  <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
+                </Button>
+              ) : null}
+            </>
+          ) : canCreateRecord ? (
+            <Button
+              asChild
+              className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+              size="icon"
+              type="button"
+              onPointerDown={triggerHapticFeedback}
+            >
+              <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
                 <Plus size={30} weight="bold" />
-              </Button>
-            )}
-            {!canCreateRecord && createRecordBlockedMessage ? (
-              <p className="mt-3 max-w-[18rem] text-center text-xs leading-5 text-muted-foreground">
-                {createRecordBlockedMessage}
-              </p>
-            ) : null}
-          </div>
-        </PageDock>
-      ) : null}
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              disabled
+              className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out"
+              size="icon"
+              type="button"
+              aria-label={t("dashboard.addRecordUnavailable")}
+            >
+              <Plus size={30} weight="bold" />
+            </Button>
+          )}
+          {!dashboardResource.isLoading && createRecordMessage ? (
+            <p className="mt-3 max-w-[18rem] text-center text-xs leading-5 text-muted-foreground">
+              {createRecordMessage}
+            </p>
+          ) : null}
+        </div>
+      </PageDock>
       <Dialog
         open={tabletPunchOpen}
         onOpenChange={(open) => {
@@ -714,7 +787,7 @@ export function DashboardPage() {
         className="min-h-0 flex-none"
         loading={dashboardResource.isLoading}
         refreshing={dashboardResource.isRefreshing}
-        skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} minHeightClassName="min-h-[28rem]" />}
+        skeleton={null}
       >
       <Stack gap="lg" className="min-h-full flex-1">
       <div className="rounded-2xl border border-border bg-card p-4">
@@ -801,8 +874,16 @@ export function DashboardPage() {
               <Stack gap="xs">
             {entries.map((entry) => {
               const canEdit =
-                bypassDayLimits ||
-                isDayWithinLimit(entry.entryDate, settings.editDaysLimit, settings.timeZone);
+                evaluateTimeEntryPolicy({
+                  mode: "edit",
+                  role: companyIdentity?.user.role,
+                  settings,
+                  entryType: entry.entryType,
+                  startDate: entry.entryDate,
+                  endDate: entry.endDate,
+                  todayDay,
+                  hasHolidayInRange: false,
+                }).allowed;
               const canDelete = canEdit;
               const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
               const supportText = getEntrySupportText(
