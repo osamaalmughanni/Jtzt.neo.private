@@ -129,11 +129,11 @@ export function AppShell({ mode }: AppShellProps) {
     <AppFrame appShell>
       <AppHeaderStateProvider>
         <ShellContent
-          key={`${location.pathname}${location.search}${location.hash}`}
+          key={location.pathname}
           headerActions={headerActions}
           footerActions={footerActions}
           firstRouteRef={firstRouteRef}
-          locationKey={`${location.pathname}${location.search}${location.hash}`}
+          locationKey={location.pathname}
           menuTo={menuTo}
           scope={scope}
         />

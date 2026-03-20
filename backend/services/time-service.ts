@@ -246,17 +246,21 @@ export const timeService = {
   async stopTimer(db: AppDatabase, companyId: string, userId: number, input: StopTimerInput) {
     const target = (
       input.entryId
-        ? await db.first("SELECT id, user_id, end_time, entry_type FROM time_entries WHERE company_id = ? AND id = ?", [companyId, input.entryId])
+        ? await db.first("SELECT id, user_id, entry_date, end_time, entry_type FROM time_entries WHERE company_id = ? AND id = ?", [companyId, input.entryId])
         : await getOpenEntry(db, companyId, userId)
-    ) as { id: number; user_id: number; end_time: string | null; entry_type: TimeEntryType } | undefined;
+    ) as { id: number; user_id: number; entry_date: string; end_time: string | null; entry_type: TimeEntryType } | undefined;
 
     if (!target || target.user_id !== userId || target.entry_type !== "work" || target.end_time) {
       throw new HTTPException(404, { message: "Open time entry not found" });
     }
 
+    const stoppedAt = new Date();
+    const snapshot = await settingsService.getBusinessNowSnapshot(db, companyId, stoppedAt);
+    const resolvedEndDate = snapshot.localDay > target.entry_date ? snapshot.localDay : null;
+
     await db.run(
-      "UPDATE time_entries SET end_time = ?, notes = COALESCE(?, notes) WHERE company_id = ? AND id = ?",
-      [new Date().toISOString(), input.notes?.trim() || null, companyId, target.id]
+      "UPDATE time_entries SET end_time = ?, end_date = ?, notes = COALESCE(?, notes) WHERE company_id = ? AND id = ?",
+      [stoppedAt.toISOString(), resolvedEndDate, input.notes?.trim() || null, companyId, target.id]
     );
 
     return this.getEntryById(db, companyId, target.id);

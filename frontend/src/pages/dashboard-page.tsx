@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Circle, PencilSimple, Play, Plus, Stop, Trash } from "phosphor-react";
+import { Briefcase, FirstAidKit, PencilSimple, Play, Plus, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import type {
   CompanyCustomField,
   CompanySettings,
   CompanyUserListItem,
   DashboardSummary,
+  PublicHolidayRecord,
   TimeEntryView,
 } from "@shared/types/models";
 import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import {
+  enumerateLocalDays,
   diffCalendarDays,
   diffMinutes,
   formatLocalDay,
@@ -27,12 +29,10 @@ import {
   FormSection,
 } from "@/components/form-layout";
 import { PageDock } from "@/components/page-dock";
-import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
-import { PageLabel } from "@/components/page-label";
 import { Stack } from "@/components/stack";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
 import { usePageResource } from "@/hooks/use-page-resource";
@@ -41,6 +41,7 @@ import { useAuth } from "@/lib/auth";
 import { getEntryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
 import { formatCompanyDate, formatCompanyDateRange } from "@/lib/locale-format";
 import { toast } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 const defaultSettings: CompanySettings = {
   currency: "EUR",
@@ -52,6 +53,7 @@ const defaultSettings: CompanySettings = {
   insertDaysLimit: 30,
   allowOneRecordPerDay: false,
   allowIntersectingRecords: false,
+  allowRecordsOnHolidays: true,
   country: "AT",
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
@@ -78,6 +80,10 @@ function startOfDay(date: Date) {
   const value = new Date(date);
   value.setHours(0, 0, 0, 0);
   return value;
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
 function endOfDay(date: Date) {
@@ -109,7 +115,20 @@ function canBypassDayLimits(role: string | undefined) {
 }
 
 function isDayWithinLimit(day: string, limit: number, timeZone?: string) {
-  return diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day) <= limit;
+  const daysInPast = diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day);
+  return daysInPast <= 0 || daysInPast <= limit;
+}
+
+function getPastDayDistance(day: string, timeZone?: string) {
+  return Math.max(0, diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day));
+}
+
+function getHolidayDisplayName(holiday: PublicHolidayRecord | undefined) {
+  if (!holiday) {
+    return null;
+  }
+
+  return holiday.localName?.trim() || holiday.name?.trim() || null;
 }
 
 function getEntryHeadline(entry: TimeEntryView, getLabel: (entryType: TimeEntryView["entryType"]) => string, timeZone?: string) {
@@ -128,20 +147,20 @@ function getEntryMeta(entry: TimeEntryView, locale: string) {
   return `${formatCompanyDateRange(entry.entryDate, entry.endDate, locale)} • ${entry.effectiveDayCount} day${entry.effectiveDayCount === 1 ? "" : "s"}`;
 }
 
-function getRecordEntryCircleClass(entryType: TimeEntryView["entryType"], isActiveWorkEntry: boolean) {
+function getRecordEntryStatusClass(entryType: TimeEntryView["entryType"], isActiveWorkEntry: boolean) {
   if (isActiveWorkEntry) {
-    return "text-destructive";
+    return "border-emerald-500/25 bg-emerald-500/12 text-emerald-600 dark:text-emerald-400";
   }
 
   if (entryType === "work") {
-    return "text-emerald-500 dark:text-emerald-400";
+    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
   }
 
   if (entryType === "vacation") {
-    return "text-sky-500 dark:text-sky-400";
+    return "border-sky-500/20 bg-sky-500/10 text-sky-600 dark:text-sky-400";
   }
 
-  return "text-rose-500 dark:text-rose-400";
+  return "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400";
 }
 
 function getCustomFieldDisplayValue(field: CompanyCustomField | undefined, rawValue: string | number | boolean) {
@@ -170,11 +189,6 @@ function getEntrySupportText(entry: TimeEntryView, fieldsById: Map<string, Compa
   return customFields;
 }
 
-function formatBalanceMinutes(totalMinutes: number) {
-  const prefix = totalMinutes > 0 ? "+" : totalMinutes < 0 ? "-" : "";
-  return `${prefix}${formatMinutes(Math.abs(totalMinutes))}`;
-}
-
 function triggerHapticFeedback() {
   if (typeof navigator !== "undefined" && navigator.vibrate) {
     navigator.vibrate(10);
@@ -198,6 +212,33 @@ function calculateLiveWorkDurationMinutes(
   return Math.max(0, rawMinutes - settings.autoBreakDurationMinutes);
 }
 
+function RecordStatusIcon({
+  entryType,
+  active,
+}: {
+  entryType: TimeEntryView["entryType"];
+  active: boolean;
+}) {
+  const Icon = active
+    ? SpinnerGap
+    : entryType === "work"
+      ? Briefcase
+      : entryType === "vacation"
+        ? UmbrellaSimple
+        : FirstAidKit;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 w-6 flex-none items-center justify-center self-center rounded-md border",
+        getRecordEntryStatusClass(entryType, active)
+      )}
+    >
+      <Icon size={14} weight={active ? "bold" : "fill"} className={active ? "animate-spin" : undefined} />
+    </span>
+  );
+}
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const { companySession, companyIdentity, isTabletMode } = useAuth();
@@ -216,6 +257,9 @@ export function DashboardPage() {
   const [tabletPunchValues, setTabletPunchValues] = useState<Record<string, string | number | boolean>>({});
   const [tabletPunchSubmitting, setTabletPunchSubmitting] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDayParam(searchParams.get("day"))));
+  const [calendarHolidays, setCalendarHolidays] = useState<PublicHolidayRecord[]>([]);
+  const [calendarDayStates, setCalendarDayStates] = useState<Record<string, "work" | "sick_leave" | "vacation" | "mixed">>({});
 
   const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
   const selectedDate = useMemo(
@@ -260,10 +304,31 @@ export function DashboardPage() {
     selectedUser?.fullName ?? companyIdentity?.user.fullName ?? "User";
   const bypassDayLimits = canBypassDayLimits(companyIdentity?.user.role);
   const selectedDayKey = formatLocalDay(selectedDate);
+  const selectedDayPastDistance = getPastDayDistance(selectedDayKey, settings.timeZone);
+  const isNowContext = isToday(selectedDate, settings.timeZone);
+  const holidayDateSet = useMemo(() => new Set(calendarHolidays.map((holiday) => holiday.date)), [calendarHolidays]);
+  const selectedHoliday = useMemo(
+    () => calendarHolidays.find((holiday) => holiday.date === selectedDayKey),
+    [calendarHolidays, selectedDayKey]
+  );
+  const selectedDayBlockedByHoliday = !settings.allowRecordsOnHolidays && holidayDateSet.has(selectedDayKey);
   const canCreateRecord =
-    bypassDayLimits ||
-    isDayWithinLimit(selectedDayKey, settings.insertDaysLimit, settings.timeZone);
-  const canUseTabletPunch = summary.activeEntry ? true : isToday(selectedDate, settings.timeZone) && canCreateRecord;
+    !selectedDayBlockedByHoliday &&
+    (bypassDayLimits ||
+      isDayWithinLimit(selectedDayKey, settings.insertDaysLimit, settings.timeZone));
+  const canUseTabletPunch = summary.activeEntry ? true : isNowContext && canCreateRecord;
+  const createRecordBlockedMessage = selectedDayBlockedByHoliday
+    ? t("dashboard.holidayCreateBlocked", {
+        date: formatCompanyDate(selectedDayKey, settings.locale),
+        holiday: getHolidayDisplayName(selectedHoliday) ?? formatCompanyDate(selectedDayKey, settings.locale),
+      })
+    : !bypassDayLimits && !isDayWithinLimit(selectedDayKey, settings.insertDaysLimit, settings.timeZone)
+      ? t("dashboard.insertLimitDetailed", {
+          limit: settings.insertDaysLimit,
+          days: selectedDayPastDistance,
+          date: formatCompanyDate(selectedDayKey, settings.locale),
+        })
+      : null;
   const customFieldsById = useMemo(
     () =>
       new Map(settings.customFields.map((field) => [field.id, field])),
@@ -332,6 +397,48 @@ export function DashboardPage() {
     }
   });
 
+  const calendarResource = usePageResource<{
+    holidays: PublicHolidayRecord[];
+    dayStates: Record<string, "work" | "sick_leave" | "vacation" | "mixed">;
+  }>({
+    enabled: Boolean(companySession) && Boolean(effectiveUserId),
+    deps: [companySession?.token, effectiveUserId, visibleMonth.getFullYear(), visibleMonth.getMonth(), t],
+    load: async () => {
+      if (!companySession || !effectiveUserId) {
+        return {
+          holidays: [],
+          dayStates: {},
+        };
+      }
+
+      const settingsResponse = await api.getSettings(companySession.token);
+      const [holidayResponse, entriesResponse] = await Promise.all([
+        api.getPublicHolidays(companySession.token, settingsResponse.settings.country, visibleMonth.getFullYear()),
+        api.listTimeEntries(companySession.token, {
+          from: formatLocalDay(startOfMonth(visibleMonth)),
+          to: formatLocalDay(endOfDay(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0))),
+          targetUserId: canSwitchUser ? effectiveUserId : undefined,
+        }),
+      ]);
+
+      const nextStates: Record<string, "work" | "sick_leave" | "vacation" | "mixed"> = {};
+      for (const entry of entriesResponse.entries) {
+        for (const entryDay of enumerateLocalDays(entry.entryDate, entry.endDate ?? entry.entryDate)) {
+          const currentState = nextStates[entryDay];
+          nextStates[entryDay] =
+            !currentState || currentState === entry.entryType
+              ? entry.entryType
+              : "mixed";
+        }
+      }
+
+      return {
+        holidays: holidayResponse.holidays,
+        dayStates: nextStates,
+      };
+    },
+  });
+
   useEffect(() => {
     if (!companyIdentity?.user.id) return;
     const needsUser = !searchParams.get("user");
@@ -359,6 +466,19 @@ export function DashboardPage() {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setVisibleMonth(startOfMonth(selectedDate));
+  }, [selectedDayKey]);
+
+  useEffect(() => {
+    if (!calendarResource.data) {
+      return;
+    }
+
+    setCalendarHolidays(calendarResource.data.holidays);
+    setCalendarDayStates(calendarResource.data.dayStates);
+  }, [calendarResource.data]);
 
   async function deleteEntry(entryId: number) {
     if (!companySession || !effectiveUserId) return;
@@ -438,7 +558,6 @@ export function DashboardPage() {
   }
 
   const createRecordHref = `/dashboard/records/create?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
-  const dayPickerHref = `/dashboard/day?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
   const userOptions = availableUsers.map((user) => ({
     value: String(user.id),
     label: user.fullName,
@@ -450,21 +569,45 @@ export function DashboardPage() {
           <div className="flex min-h-[5rem] flex-col items-center justify-center">
             {isTabletMode ? (
               <>
-                <Button
-                  className={
-                    summary.activeEntry
-                      ? "h-16 w-16 animate-[pulse_1.4s_ease-in-out_infinite] rounded-[999px] bg-destructive text-destructive-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                      : "h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                  }
-                  size="icon"
-                  type="button"
-                  disabled={!canUseTabletPunch}
-                  onClick={handleTabletPunch}
-                  aria-label={summary.activeEntry ? t("dashboard.stopWork") : t("dashboard.startWork")}
-                >
-                  {summary.activeEntry ? <Stop size={30} weight="fill" /> : <Play size={30} weight="fill" />}
-                </Button>
-                {canCreateRecord ? (
+                {isNowContext ? (
+                  <Button
+                    className={
+                      summary.activeEntry
+                        ? "h-16 w-16 animate-[pulse_1.4s_ease-in-out_infinite] rounded-[999px] bg-destructive text-destructive-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                        : "h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                    }
+                    size="icon"
+                    type="button"
+                    disabled={!canUseTabletPunch}
+                    onClick={handleTabletPunch}
+                    aria-label={summary.activeEntry ? t("dashboard.stopWork") : t("dashboard.startWork")}
+                  >
+                    {summary.activeEntry ? <Stop size={30} weight="fill" /> : <Play size={30} weight="fill" />}
+                  </Button>
+                ) : canCreateRecord ? (
+                  <Button
+                    asChild
+                    className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                    size="icon"
+                    type="button"
+                    onPointerDown={triggerHapticFeedback}
+                  >
+                    <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
+                      <Plus size={30} weight="bold" />
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button
+                    disabled
+                    className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out"
+                    size="icon"
+                    type="button"
+                    aria-label={t("dashboard.addRecordUnavailable")}
+                  >
+                    <Plus size={30} weight="bold" />
+                  </Button>
+                )}
+                {isNowContext && canCreateRecord ? (
                   <Button
                     asChild
                     variant="ghost"
@@ -498,9 +641,9 @@ export function DashboardPage() {
                 <Plus size={30} weight="bold" />
               </Button>
             )}
-            {!canCreateRecord ? (
-              <p className="mt-3 text-center text-sm text-muted-foreground">
-                {t("dashboard.employeesInsertLimit")}
+            {!canCreateRecord && createRecordBlockedMessage ? (
+              <p className="mt-3 max-w-[18rem] text-center text-xs leading-5 text-muted-foreground">
+                {createRecordBlockedMessage}
               </p>
             ) : null}
           </div>
@@ -569,78 +712,52 @@ export function DashboardPage() {
       />
       <PageLoadBoundary
         className="min-h-0 flex-none"
-        intro={
-          <PageIntro>
-            <PageLabel
-              title={t("dashboard.pageTitle")}
-              description={t("dashboard.pageDescription")}
-            />
-          </PageIntro>
-        }
         loading={dashboardResource.isLoading}
         refreshing={dashboardResource.isRefreshing}
         skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} minHeightClassName="min-h-[28rem]" />}
       >
       <Stack gap="lg" className="min-h-full flex-1">
-      {canSwitchUser ? (
-        <div className="rounded-2xl border border-border bg-card p-5">
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <div className="flex flex-col gap-3">
           <FormSection>
             <Field label={t("dashboard.workingAs")}>
-              <Combobox
-                value={effectiveUserId ? String(effectiveUserId) : ""}
-                onValueChange={(value) =>
-                  updateContext({ userId: Number(value) })
-                }
-                options={userOptions}
-                placeholder={t("dashboard.workingAs")}
-                searchPlaceholder={t("reports.search")}
-                emptyText="No users found."
-                searchable
-              />
+              {canSwitchUser ? (
+                <Combobox
+                  value={effectiveUserId ? String(effectiveUserId) : ""}
+                  onValueChange={(value) =>
+                    updateContext({ userId: Number(value) })
+                  }
+                  options={userOptions}
+                  placeholder={t("dashboard.workingAs")}
+                  searchPlaceholder={t("reports.search")}
+                  emptyText="No users found."
+                  searchable
+                />
+              ) : (
+                <div className="flex h-10 items-center rounded-md border border-input bg-transparent px-3 text-sm text-foreground">
+                  {selectedUserName}
+                </div>
+              )}
             </Field>
           </FormSection>
-        </div>
-      ) : null}
-
-      <div className="rounded-2xl border border-border bg-card p-5">
-        <div className="flex flex-col gap-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
-              <p className="text-sm text-muted-foreground">{selectedUserName}</p>
-              {isTabletMode ? (
-                <Link
-                  to={dayPickerHref}
-                  className="text-left text-2xl font-semibold tracking-[-0.04em] text-foreground transition-opacity hover:opacity-70"
-                >
-                  {selectedDate.toLocaleDateString(settings.locale, {
-                    weekday: "long",
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </Link>
-              ) : (
-                <Link
-                  to={dayPickerHref}
-                  className="text-left text-2xl font-semibold tracking-[-0.04em] text-foreground transition-opacity hover:opacity-70"
-                >
-                  {selectedDate.toLocaleDateString(settings.locale, {
-                    weekday: "long",
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </Link>
-              )}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                <span>{t("dashboard.recorded", { value: formatMinutes(dayMinutes) })}</span>
-                {summary.contractStats.currentContract ? (
-                  <span>{t("dashboard.perWeek", { value: summary.contractStats.currentContract.hoursPerWeek.toFixed(2) })}</span>
-                ) : null}
-              </div>
+              <p className="text-left text-lg font-semibold tracking-[-0.04em] text-foreground">
+                {selectedDate.toLocaleDateString(settings.locale, {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </p>
+              {summary.contractStats.currentContract ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("dashboard.perWeek", { value: summary.contractStats.currentContract.hoursPerWeek.toFixed(2) })}
+                </p>
+              ) : null}
             </div>
-            <div className="flex flex-col items-end gap-2">
-              <p className="w-[5.5rem] text-right text-sm text-muted-foreground">
+            <div className="flex items-center">
+              <p className="w-[5.25rem] text-right text-xs text-muted-foreground">
                 {new Intl.DateTimeFormat(settings.locale, {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -648,51 +765,40 @@ export function DashboardPage() {
                   timeZone: settings.timeZone,
                 }).format(now)}
               </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 border-t border-border/70 pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] text-muted-foreground">
+                {t("dashboard.expected", { value: formatMinutes(summary.contractStats.today.expectedMinutes) })}
+              </p>
               <Button
                 variant={isToday(selectedDate, settings.timeZone) ? "secondary" : "outline"}
+                size="sm"
+                className="h-7 px-2 text-[11px]"
                 onClick={() => updateContext({ day: parseLocalDay(getLocalNowSnapshot(new Date(), settings.timeZone).localDay) ?? new Date() })}
                 type="button"
               >
                 {t("dashboard.today")}
               </Button>
             </div>
+            <Calendar
+              selected={selectedDate}
+              onSelect={(date) => updateContext({ day: date })}
+              locale={settings.locale}
+              firstDayOfWeek={settings.firstDayOfWeek}
+              holidayDates={calendarHolidays.map((holiday) => holiday.date)}
+              dayStates={calendarDayStates}
+              onMonthChange={setVisibleMonth}
+              compact
+              className="rounded-xl border border-border bg-background"
+            />
           </div>
-
-          {!isTabletMode ? (
-            <div className="border-t border-border/70 pt-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-foreground">{t("dashboard.balance")}</p>
-                <p className="text-sm text-muted-foreground">
-                  {t("dashboard.total", { value: formatBalanceMinutes(summary.contractStats.totalBalanceMinutes) })}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
-                  {t("dashboard.expected", { value: formatMinutes(summary.contractStats.today.expectedMinutes) })}
-                </Badge>
-                <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
-                  {t("dashboard.recordedBadge", { value: formatMinutes(summary.contractStats.today.recordedMinutes) })}
-                </Badge>
-                <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
-                  {t("dashboard.balanceBadge", { value: formatBalanceMinutes(summary.contractStats.today.balanceMinutes) })}
-                </Badge>
-                <Badge variant="outline" className="h-8 border-border bg-background px-3 text-xs font-medium">
-                  {t("dashboard.perWeek", { value: summary.contractStats.currentContract?.hoursPerWeek.toFixed(2) ?? "0.00" })}
-                </Badge>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      <Stack gap="sm" className="rounded-2xl border border-border bg-card p-5">
-        <div>
-          <p className="text-sm font-medium text-foreground">{t("dashboard.records")}</p>
-        </div>
-
-        <div className="overflow-visible">
-          <Stack gap="xs">
+          <div className="flex flex-col gap-2 border-t border-border/70 pt-3">
+            <p className="text-sm font-medium text-foreground">{t("dashboard.records")}</p>
+            <div className="overflow-visible">
+              <Stack gap="xs">
             {entries.map((entry) => {
               const canEdit =
                 bypassDayLimits ||
@@ -724,15 +830,9 @@ export function DashboardPage() {
                   key={entry.id}
                   className="flex items-center gap-3"
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
-                    <span className="flex h-4 w-4 flex-none items-center justify-center self-center tablet:h-[1.125rem] tablet:w-[1.125rem]">
-                      <Circle
-                        size={14}
-                        weight="fill"
-                        className={getRecordEntryCircleClass(entry.entryType, isActiveWorkEntry)}
-                      />
-                    </span>
-                    <div className="min-w-0 truncate whitespace-nowrap text-sm font-medium leading-tight text-foreground">
+                  <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                    <RecordStatusIcon entryType={entry.entryType} active={isActiveWorkEntry} />
+                    <div className="shrink-0 whitespace-nowrap text-sm font-medium leading-tight text-foreground">
                       {entryHeadline}
                     </div>
                     <span
@@ -742,15 +842,15 @@ export function DashboardPage() {
                           : "shrink-0 truncate whitespace-nowrap rounded-full bg-muted px-2 py-1 text-xs font-medium leading-tight text-foreground"
                       }
                     >
-                      {entryMeta}
-                    </span>
+                        {entryMeta}
+                      </span>
                     {supportText ? (
                       <div className="min-w-0 flex-1 truncate whitespace-nowrap text-sm leading-tight text-muted-foreground">
                         {supportText}
                       </div>
                     ) : null}
                   </div>
-                  <div className="relative z-10 flex shrink-0 items-center justify-end gap-1 pl-1">
+                  <div className="relative z-10 flex shrink-0 items-center justify-end gap-1 self-center pl-1">
                     {canDelete ? (
                       <Button
                         variant="ghost"
@@ -809,9 +909,11 @@ export function DashboardPage() {
                 {t("dashboard.noRecords")}
               </p>
             ) : null}
-          </Stack>
+              </Stack>
+            </div>
+          </div>
         </div>
-      </Stack>
+      </div>
 
       </Stack>
       </PageLoadBoundary>

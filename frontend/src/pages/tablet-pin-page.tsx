@@ -177,15 +177,29 @@ export function TabletPinPage() {
                 {Array.from({ length: 4 }).map((_, index) => (
                   <span
                     key={index}
-                    className="h-4 w-4 rounded-full transition-colors duration-150"
+                    className="flex h-11 w-10 items-center justify-center rounded-lg border text-base font-semibold transition-[border-color,background-color,color,transform] duration-150 sm:h-12 sm:w-11"
                     style={{
-                      backgroundColor: errorState
+                      borderColor: errorState
                         ? "hsl(var(--destructive))"
                         : index < pinCode.length
+                          ? "hsl(var(--foreground) / 0.22)"
+                          : "hsl(var(--border))",
+                      backgroundColor: errorState
+                        ? "hsl(var(--destructive) / 0.18)"
+                        : index < pinCode.length
                           ? "hsl(var(--foreground))"
-                          : "hsl(var(--muted-foreground) / 0.28)"
+                          : "hsl(var(--muted) / 0.28)",
+                      color: errorState
+                        ? "hsl(var(--destructive))"
+                        : index < pinCode.length
+                          ? "hsl(var(--background))"
+                          : "hsl(var(--muted-foreground))"
                     }}
-                  />
+                  >
+                    <span className={cn("leading-none", index < pinCode.length ? "opacity-100" : "opacity-0")}>
+                      •
+                    </span>
+                  </span>
                 ))}
               </div>
               <p className={cn("min-h-[1.25rem] text-sm", errorState ? "text-destructive" : "text-muted-foreground")}>

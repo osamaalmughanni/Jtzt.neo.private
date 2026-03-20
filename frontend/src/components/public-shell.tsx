@@ -23,7 +23,7 @@ export function PublicShell({
     <AppFrame appShell>
       <AppHeaderStateProvider>
         <PublicShellContent
-          key={`${location.pathname}${location.search}${location.hash}`}
+          key={location.pathname}
           actions={actions}
         >
           {children}

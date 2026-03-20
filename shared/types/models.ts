@@ -219,6 +219,7 @@ export interface CompanySettings {
   insertDaysLimit: number;
   allowOneRecordPerDay: boolean;
   allowIntersectingRecords: boolean;
+  allowRecordsOnHolidays: boolean;
   country: string;
   tabletIdleTimeoutSeconds: number;
   autoBreakAfterMinutes: number;

@@ -13,6 +13,7 @@ import {
   combineLocalDayAndTimeToIsoInTimeZone,
   countEffectiveLeaveDays,
   diffCalendarDays,
+  enumerateLocalDays,
   formatLocalDay,
   getLocalNowSnapshot,
   toClockTimeValue,
@@ -42,6 +43,7 @@ const defaultSettings: CompanySettings = {
   insertDaysLimit: 30,
   allowOneRecordPerDay: false,
   allowIntersectingRecords: false,
+  allowRecordsOnHolidays: true,
   country: "AT",
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
@@ -59,7 +61,20 @@ function canBypassDayLimits(role: string | undefined) {
 }
 
 function isDayWithinLimit(day: string, limit: number, timeZone?: string) {
-  return diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day) <= limit;
+  const daysInPast = diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day);
+  return daysInPast <= 0 || daysInPast <= limit;
+}
+
+function getPastDayDistance(day: string, timeZone?: string) {
+  return Math.max(0, diffCalendarDays(getLocalNowSnapshot(new Date(), timeZone).localDay, day));
+}
+
+function getHolidayDisplayName(holiday: PublicHolidayRecord | undefined) {
+  if (!holiday) {
+    return null;
+  }
+
+  return holiday.localName?.trim() || holiday.name?.trim() || null;
 }
 
 function parseDayParam(value: string | null) {
@@ -119,14 +134,20 @@ function EntryScheduleFields({
 }) {
   return (
     <>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-        <Field className="flex-1" label={fromDateLabel}>
+      {entryType === "work" ? (
+        <Field label={fromDateLabel}>
           <DateInput value={startDate} locale={locale} onChange={onStartDateChange} />
         </Field>
-        <Field className="flex-1" label={toDateLabel}>
-          <DateInput value={endDate} locale={locale} onChange={onEndDateChange} />
-        </Field>
-      </div>
+      ) : (
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+          <Field className="flex-1" label={fromDateLabel}>
+            <DateInput value={startDate} locale={locale} onChange={onStartDateChange} />
+          </Field>
+          <Field className="flex-1" label={toDateLabel}>
+            <DateInput value={endDate} locale={locale} onChange={onEndDateChange} />
+          </Field>
+        </div>
+      )}
       {entryType === "work" ? (
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <Field className="flex-1" label={startTimeLabel}>
@@ -181,8 +202,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     canSwitchUser
       ? Number(searchParams.get("user") ?? companyIdentity?.user.id ?? 0) || companyIdentity?.user.id || 0
       : companyIdentity?.user.id || 0;
-  const backTo = `/dashboard?user=${effectiveUserId}&day=${selectedDay}`;
-  const usesDateRange = true;
+  const dashboardToday = getLocalNowSnapshot(new Date(), settings.timeZone).localDay;
+  const backTo = `/dashboard?user=${effectiveUserId}&day=${dashboardToday}`;
   const activeCustomFields = useMemo(
     () => settings.customFields.filter((field) => field.targets.includes(entryType)),
     [entryType, settings.customFields],
@@ -197,17 +218,39 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     users.find((user) => user.id === effectiveUserId)?.fullName ?? companyIdentity?.user.fullName ?? "User";
   const resolvedEndDate = endDate;
   const holidaySet = useMemo(() => new Set(holidays.map((holiday) => holiday.date)), [holidays]);
+  const blockedHoliday = useMemo(
+    () =>
+      !settings.allowRecordsOnHolidays
+        ? holidays.find((holiday) => enumerateLocalDays(startDate, resolvedEndDate).includes(holiday.date)) ?? null
+        : null,
+    [holidays, resolvedEndDate, settings.allowRecordsOnHolidays, startDate]
+  );
+  const holidayBlocked = blockedHoliday !== null;
   const leaveMetrics = useMemo(
     () => countEffectiveLeaveDays(startDate, resolvedEndDate, holidaySet),
     [holidaySet, resolvedEndDate, startDate],
   );
   const insertLocked = !bypassDayLimits && mode === "create" && !isDayWithinLimit(startDate, settings.insertDaysLimit, settings.timeZone);
   const editLocked = !bypassDayLimits && mode === "edit" && !isDayWithinLimit(startDate, settings.editDaysLimit, settings.timeZone);
-  const dayLimitError = insertLocked
-    ? t("recordEditor.employeesInsertLimit")
-    : editLocked
-      ? t("recordEditor.employeesEditLimit")
-      : null;
+  const startDatePastDistance = getPastDayDistance(startDate, settings.timeZone);
+  const dayLimitError = holidayBlocked
+    ? t("recordEditor.holidayBlocked", {
+        date: blockedHoliday?.date ?? startDate,
+        holiday: getHolidayDisplayName(blockedHoliday ?? undefined) ?? (blockedHoliday?.date ?? startDate),
+      })
+    : insertLocked
+      ? t("recordEditor.insertLimitDetailed", {
+          limit: settings.insertDaysLimit,
+          days: startDatePastDistance,
+          date: startDate,
+        })
+      : editLocked
+        ? t("recordEditor.editLimitDetailed", {
+            limit: settings.editDaysLimit,
+            days: startDatePastDistance,
+            date: startDate,
+          })
+        : null;
 
   useEffect(() => {
     if (!companySession) return;
@@ -254,8 +297,11 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     if (entryType !== "work") {
       setStartTime("");
       setEndTime("");
+      return;
     }
-  }, [entryType]);
+
+    setEndDate(startDate);
+  }, [entryType, startDate]);
 
   async function handleSave() {
     if (!companySession || !effectiveUserId) return;
@@ -413,10 +459,15 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
                 timeZone={settings.timeZone}
                 entryType={entryType}
                 startDate={startDate}
-                endDate={usesDateRange ? endDate : startDate}
+                endDate={endDate}
                 startTime={startTime}
                 endTime={endTime}
-                onStartDateChange={setStartDate}
+                onStartDateChange={(value) => {
+                  setStartDate(value);
+                  if (entryType === "work") {
+                    setEndDate(value);
+                  }
+                }}
                 onEndDateChange={setEndDate}
                 onStartTimeChange={setStartTime}
                 onEndTimeChange={setEndTime}

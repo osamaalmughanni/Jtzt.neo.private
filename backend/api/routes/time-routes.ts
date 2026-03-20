@@ -108,7 +108,8 @@ function enforceDayLimit(session: CompanyTokenPayload, limit: number, todayDay: 
   if (session.role === "admin" || session.role === "manager") {
     return;
   }
-  if (diffCalendarDays(todayDay, day) > limit) {
+  const daysInPast = diffCalendarDays(todayDay, day);
+  if (daysInPast > 0 && daysInPast > limit) {
     throw new Error(message);
   }
 }
@@ -165,6 +166,35 @@ async function enforceIntersectingRecords(
     )
   ) {
     throw new Error("Intersecting records are not allowed");
+  }
+}
+
+async function enforceHolidayRecordRule(
+  db: AppDatabase,
+  companyId: string,
+  settings: Awaited<ReturnType<typeof settingsService.getSettings>>,
+  candidate: {
+    startDate: string;
+    endDate?: string | null;
+  }
+) {
+  if (settings.allowRecordsOnHolidays) {
+    return;
+  }
+
+  const normalizedEndDate = candidate.endDate && candidate.endDate >= candidate.startDate ? candidate.endDate : candidate.startDate;
+  const holiday = normalizedEndDate === candidate.startDate
+    ? await settingsService.isPublicHoliday(db, companyId, candidate.startDate)
+    : await settingsService.findPublicHolidayInRange(db, companyId, candidate.startDate, normalizedEndDate);
+
+  if (holiday) {
+    const holidayName =
+      ("localName" in holiday && typeof holiday.localName === "string" && holiday.localName.trim().length > 0)
+        ? holiday.localName
+        : ("name" in holiday && typeof holiday.name === "string" && holiday.name.trim().length > 0)
+          ? holiday.name
+          : holiday.date;
+    throw new Error(`Records on public holidays are disabled (${holidayName}, ${holiday.date})`);
   }
 }
 
@@ -304,6 +334,10 @@ timeRoutes.post("/start", async (c) => {
   const snapshot = await settingsService.getBusinessNowSnapshot(db, session.companyId);
 
   try {
+    await enforceHolidayRecordRule(db, session.companyId, settings, {
+      startDate: snapshot.localDay,
+      endDate: null
+    });
     await enforceSingleRecordPerDay(db, session.companyId, session.userId, settings, snapshot.localDay);
     await enforceIntersectingRecords(db, session.companyId, session.userId, settings, {
       entryType: "work",
@@ -338,6 +372,10 @@ timeRoutes.post("/entry", async (c) => {
   const settings = await settingsService.getSettings(db, session.companyId);
   try {
     enforceDayLimit(session, settings.insertDaysLimit, todayDay, body.startDate, "Insert day limit reached");
+    await enforceHolidayRecordRule(db, session.companyId, settings, {
+      startDate: body.startDate,
+      endDate: body.endDate
+    });
     await enforceSingleRecordPerDay(db, session.companyId, targetUserId, settings, body.startDate, body.endDate);
     await enforceIntersectingRecords(db, session.companyId, targetUserId, settings, {
       entryType: body.entryType,
@@ -425,6 +463,10 @@ timeRoutes.put("/entry", async (c) => {
   const settings = await settingsService.getSettings(db, session.companyId);
   try {
     enforceDayLimit(session, settings.editDaysLimit, todayDay, body.startDate, "Edit day limit reached");
+    await enforceHolidayRecordRule(db, session.companyId, settings, {
+      startDate: body.startDate,
+      endDate: body.endDate
+    });
     await enforceSingleRecordPerDay(db, session.companyId, targetUserId, settings, body.startDate, body.endDate, body.entryId);
     await enforceIntersectingRecords(db, session.companyId, targetUserId, settings, {
       entryType: body.entryType,

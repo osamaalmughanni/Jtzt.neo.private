@@ -179,6 +179,9 @@ export async function ensureBootstrapState(db: AppDatabase, config: RuntimeConfi
   if (!settingsColumnNames.has("overtime_settings_json")) {
     await db.exec("ALTER TABLE company_settings ADD COLUMN overtime_settings_json TEXT NOT NULL DEFAULT '{}'");
   }
+  if (!settingsColumnNames.has("allow_records_on_holidays")) {
+    await db.exec("ALTER TABLE company_settings ADD COLUMN allow_records_on_holidays INTEGER NOT NULL DEFAULT 1");
+  }
 
   const invitationCodeColumns = await db.all<{ name: string }>(
     "SELECT name FROM pragma_table_info('invitation_codes')",

@@ -26,6 +26,7 @@ const defaultSettings: CompanySettings = {
   insertDaysLimit: 30,
   allowOneRecordPerDay: false,
   allowIntersectingRecords: false,
+  allowRecordsOnHolidays: true,
   country: "AT",
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,

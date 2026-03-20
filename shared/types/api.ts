@@ -210,6 +210,7 @@ export interface CompanySnapshot {
     insertDaysLimit: number;
     allowOneRecordPerDay: boolean;
     allowIntersectingRecords: boolean;
+    allowRecordsOnHolidays: boolean;
     country: string;
     tabletIdleTimeoutSeconds: number;
     autoBreakAfterMinutes: number;
@@ -305,6 +306,7 @@ export interface UpdateSettingsInput {
   insertDaysLimit: number;
   allowOneRecordPerDay: boolean;
   allowIntersectingRecords: boolean;
+  allowRecordsOnHolidays: boolean;
   country: string;
   tabletIdleTimeoutSeconds: number;
   autoBreakAfterMinutes: number;

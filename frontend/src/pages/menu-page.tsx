@@ -1,8 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { FormPage } from "@/components/form-layout";
-import { PageIntro } from "@/components/page-intro";
-import { PageLabel } from "@/components/page-label";
 import { Stack } from "@/components/stack";
 import { useAuth } from "@/lib/auth";
 
@@ -28,9 +26,6 @@ export function MenuPage() {
 
   return (
     <FormPage>
-      <PageIntro>
-        <PageLabel title={t("menu.title")} description={t("menu.description")} />
-      </PageIntro>
       <Stack gap="lg">
         <nav className="flex flex-col">
           {items.map((item) => (

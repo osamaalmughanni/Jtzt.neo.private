@@ -26,6 +26,7 @@ const defaultSettings: CompanySettings = {
   insertDaysLimit: 30,
   allowOneRecordPerDay: false,
   allowIntersectingRecords: false,
+  allowRecordsOnHolidays: true,
   country: "AT",
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
@@ -261,6 +262,22 @@ export function SettingsMenuPage() {
                     setSettings((current) => ({
                       ...current,
                       allowIntersectingRecords: checked,
+                    }))
+                  }
+                />
+              </div>
+            </Field>
+            <Field label={t("settings.allowRecordsOnHolidays")}>
+              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                <span className="text-sm text-foreground">
+                  {settings.allowRecordsOnHolidays ? t("settings.enabled") : t("settings.disabled")}
+                </span>
+                <Switch
+                  checked={settings.allowRecordsOnHolidays}
+                  onCheckedChange={(checked) =>
+                    setSettings((current) => ({
+                      ...current,
+                      allowRecordsOnHolidays: checked,
                     }))
                   }
                 />

@@ -22,13 +22,14 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
         insert_days_limit,
         allow_one_record_per_day,
         allow_intersecting_records,
+        allow_records_on_holidays,
         country,
         tablet_idle_timeout_seconds,
         auto_break_after_minutes,
         auto_break_duration_minutes,
         overtime_settings_json,
         custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(company_id) DO NOTHING`,
     [
       companyId,
@@ -41,6 +42,7 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
       30,
       0,
       0,
+      1,
       "AT",
       10,
       300,
@@ -99,6 +101,7 @@ export const settingsService = {
            insert_days_limit = ?,
            allow_one_record_per_day = ?,
            allow_intersecting_records = ?,
+           allow_records_on_holidays = ?,
            country = ?,
            tablet_idle_timeout_seconds = ?,
            auto_break_after_minutes = ?,
@@ -116,6 +119,7 @@ export const settingsService = {
         input.insertDaysLimit,
         input.allowOneRecordPerDay ? 1 : 0,
         input.allowIntersectingRecords ? 1 : 0,
+        input.allowRecordsOnHolidays ? 1 : 0,
         input.country,
         input.tabletIdleTimeoutSeconds,
         input.autoBreakAfterMinutes,
@@ -185,7 +189,7 @@ export const settingsService = {
     const settings = await this.getSettings(db, companyId);
     const year = Number(date.slice(0, 4));
     const { holidays } = await this.getPublicHolidays(db, companyId, settings.country, year);
-    return holidays.some((holiday: { date: string }) => holiday.date === date);
+    return holidays.find((holiday: { date: string }) => holiday.date === date) ?? null;
   },
 
   async findPublicHolidayInRange(db: AppDatabase, companyId: string, startDate: string, endDate: string) {
