@@ -150,13 +150,6 @@ export function ApiAccessPage() {
                 </Stack>
 
                 <Stack gap="md" className="min-w-0 rounded-2xl border border-border p-5">
-                  <Stack gap="sm">
-                    <Badge variant={status.configured ? "default" : "outline"}>
-                      {status.configured ? "Key active" : "Key missing"}
-                    </Badge>
-                    {docs ? <Badge variant="outline">{docs.tables.length} tables discovered</Badge> : null}
-                    {docs ? <Badge variant="outline">{docs.mutation.actions.length} write actions</Badge> : null}
-                  </Stack>
                   <Stack gap="xs">
                     <p className="text-base font-semibold text-foreground">Enterprise key model</p>
                     <p className="text-sm text-muted-foreground">
@@ -164,7 +157,14 @@ export function ApiAccessPage() {
                       scoping, and runtime schema validation for every request.
                     </p>
                   </Stack>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant={status.configured ? "default" : "outline"}>
+                      {status.configured ? "Key active" : "Key missing"}
+                    </Badge>
+                    {docs ? <Badge variant="outline">{docs.tables.length} tables discovered</Badge> : null}
+                    {docs ? <Badge variant="outline">{docs.mutation.actions.length} write actions</Badge> : null}
+                  </div>
+                  <div className="flex flex-col gap-3">
                     <Metric label="Auth header" value={docs?.auth.header ?? "X-API-Key"} />
                     <Metric label="Base path" value={docs ? `${baseUrl}${docs.auth.basePath}` : `${baseUrl}/api/external`} />
                     <Metric label="Created at" value={status.createdAt ?? "Not available"} />
@@ -195,7 +195,7 @@ export function ApiAccessPage() {
 
                 <TabsContent value="overview" className="mt-5">
                   <Stack gap="lg">
-                    <div className="grid gap-4 xl:grid-cols-2">
+                    <div className="flex flex-col gap-4">
                       <DocPanel
                         title="Endpoints"
                         description="Stable addresses. Schema intelligence lives in metadata and request bodies, not in URL sprawl."
@@ -231,7 +231,7 @@ export function ApiAccessPage() {
                 </TabsContent>
 
                 <TabsContent value="read" className="mt-5">
-                  <div className="grid gap-4 xl:grid-cols-2">
+                  <div className="flex flex-col gap-4">
                     <DocPanel
                       title="Read contract"
                       description="Use the schema endpoint to discover tables and columns, then POST query bodies to the generic query endpoint."
@@ -257,7 +257,7 @@ export function ApiAccessPage() {
                 </TabsContent>
 
                 <TabsContent value="write" className="mt-5">
-                  <div className="grid gap-4 2xl:grid-cols-3">
+                  <div className="flex flex-col gap-4">
                     <MutationCard
                       title="Insert"
                       description="Create company-scoped rows. company_id is injected automatically."
@@ -357,7 +357,7 @@ async function loadApiAccessData(token: string): Promise<ApiAccessPageData> {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl bg-muted/35 px-3 py-3">
+    <div className="flex flex-col gap-1 border border-border/70 bg-muted/35 px-3 py-3">
       <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
       <span className="break-words text-sm leading-6 text-foreground">{value}</span>
     </div>

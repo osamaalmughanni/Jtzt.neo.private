@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { diffClockTimeMinutes, getLocalNowSnapshot } from "@shared/utils/time";
 import type { UserContractInput } from "@shared/types/api";
 import type { ContractWeekday, UserContractScheduleDay, UserRole } from "@shared/types/models";
+import { Trash } from "phosphor-react";
 import { FormActions, FormFields, FormPage, FormPanel, FormSection, Field, FieldCombobox } from "@/components/form-layout";
 import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
@@ -239,29 +240,36 @@ function ContractCard({
   onRemove: (index: number) => void;
   t: (key: string, options?: Record<string, string | number>) => string;
 }) {
+  const isOpenEnded = contract.endDate === null;
+
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-background p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+    <div className="flex flex-col gap-4 rounded-xl border border-border bg-background p-4">
+      <div className="flex items-start justify-between gap-3 border-b border-border/70 pb-3">
+        <div className="flex min-w-0 flex-col gap-2">
           <p className="text-sm font-medium text-foreground">{t("userEditor.contract", { index: index + 1 })}</p>
-          <span className="rounded-full border border-border bg-muted px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            {getContractStatus(contract, t, settingsTimeZone)}
-          </span>
-          <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-700">
-            {t("userEditor.hoursPerWeekValue", { value: formatHours(contract.hoursPerWeek) })}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-border bg-muted px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+              {getContractStatus(contract, t, settingsTimeZone)}
+            </span>
+            <span className="rounded-full border border-border bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
+              {isOpenEnded ? t("userEditor.currentContractShort") : t("userEditor.currentContractClosedShort")}
+            </span>
+            <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-700">
+              {t("userEditor.hoursPerWeekValue", { value: formatHours(contract.hoursPerWeek) })}
+            </span>
+          </div>
         </div>
-        <Button variant="ghost" className="h-8 px-2" onClick={() => onRemove(index)} type="button">
-          {t("userEditor.remove")}
+        <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => onRemove(index)} type="button" aria-label={t("userEditor.remove")}>
+          <Trash size={16} />
         </Button>
       </div>
 
-      <div className="grid gap-3 border-t border-border/70 pt-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="flex flex-col gap-3">
         <Field label={t("userEditor.currentContract")}>
           <div className="flex h-11 items-center justify-between rounded-md bg-muted/30 px-3">
-            <span className="text-sm text-foreground">{t("userEditor.currentContractShort")}</span>
+            <span className="text-sm text-foreground">{isOpenEnded ? t("userEditor.currentContractShort") : t("userEditor.currentContractClosedShort")}</span>
             <Switch
-              checked={contract.endDate === null}
+              checked={isOpenEnded}
               onCheckedChange={(checked) =>
                 onSetField(index, "endDate", checked ? null : getLocalNowSnapshot(new Date(), settingsTimeZone).localDay)
               }
@@ -291,8 +299,8 @@ function ContractCard({
         </Field>
       </div>
 
-      <div className="flex flex-col gap-2 border-t border-border/70 pt-3">
-        <div className="mb-2 flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-2 border-t border-border/70 pt-4">
+        <div className="flex flex-col gap-1">
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{t("userEditor.schedule")}</p>
             <p className="text-xs text-muted-foreground">{t("userEditor.scheduleDescriptionCompact")}</p>
