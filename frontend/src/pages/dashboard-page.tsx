@@ -237,41 +237,20 @@ function RecordStatusIcon({
         : FirstAidKit;
 
   return (
-    <span
+    <Button
+      variant="ghost"
+      size="icon"
+      type="button"
       className={cn(
-        "inline-flex h-6 w-6 flex-none items-center justify-center self-center rounded-md border",
-        active ? getRecordEntryStatusClass(entryType, active) : className
+        "h-8 w-8 p-0 text-muted-foreground pointer-events-none",
+        active ? getRecordEntryStatusClass(entryType, active) : className,
       )}
+      onClick={(event) => event.preventDefault()}
+      tabIndex={-1}
+      aria-hidden="true"
     >
       <Icon size={14} weight={active ? "bold" : "fill"} className={active ? "animate-spin" : undefined} />
-    </span>
-  );
-}
-
-function RecordActionButton({
-  disabled = false,
-  onClick,
-  onPointerDown,
-  ariaLabel,
-  children,
-}: {
-  disabled?: boolean;
-  onClick?: () => void;
-  onPointerDown?: () => void;
-  ariaLabel: string;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      aria-label={ariaLabel}
-      onClick={onClick}
-      onPointerDown={onPointerDown}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-foreground transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-40"
-    >
-      {children}
-    </button>
+    </Button>
   );
 }
 
@@ -340,9 +319,9 @@ export function DashboardPage() {
     selectedUser?.fullName ?? companyIdentity?.user.fullName ?? "User";
   const selectedDayKey = formatLocalDay(selectedDate);
   const previousSelectedDayKeyRef = useRef(selectedDayKey);
-  const selectedDayPastDistance = getPastDayDistance(selectedDayKey, settings.timeZone);
-  const selectedDayFutureDistance = getFutureDayDistance(selectedDayKey, settings.timeZone);
   const todayDay = getLocalNowSnapshot(new Date(), settings.timeZone).localDay;
+  const selectedDayPastDistance = getPastDayDistance(selectedDayKey, todayDay);
+  const selectedDayFutureDistance = getFutureDayDistance(selectedDayKey, todayDay);
   const isNowContext = isToday(selectedDate, settings.timeZone);
   const holidayDateSet = useMemo(() => new Set(calendarHolidays.map((holiday) => holiday.date)), [calendarHolidays]);
   const selectedHoliday = useMemo(
@@ -963,38 +942,28 @@ export function DashboardPage() {
                         ) : null}
                       </div>
                       <div className="relative z-10 flex shrink-0 items-center justify-end gap-0.5 self-center">
-                          {canDelete ? (
-                            <RecordActionButton
-                              onPointerDown={triggerHapticFeedback}
-                              onClick={() => setPendingDeleteEntry(entry)}
-                              ariaLabel={t("dashboard.deleteRecord")}
-                            >
-                              <Trash size={16} weight="bold" />
-                            </RecordActionButton>
-                          ) : (
-                            <RecordActionButton
-                              disabled
-                              ariaLabel={t("dashboard.recordLocked")}
-                            >
-                              <Trash size={16} weight="bold" />
-                            </RecordActionButton>
-                          )}
-                          {canEdit ? (
-                            <RecordActionButton
-                              onPointerDown={triggerHapticFeedback}
-                              onClick={() => navigate(editHref)}
-                              ariaLabel={t("dashboard.editRecord")}
-                            >
-                              <PencilSimple size={16} weight="bold" />
-                            </RecordActionButton>
-                          ) : (
-                            <RecordActionButton
-                              disabled
-                              ariaLabel={t("dashboard.recordLocked")}
-                            >
-                              <PencilSimple size={16} weight="bold" />
-                            </RecordActionButton>
-                          )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 p-0 text-muted-foreground"
+                          disabled={!canDelete}
+                          onPointerDown={triggerHapticFeedback}
+                          onClick={() => canDelete && setPendingDeleteEntry(entry)}
+                          aria-label={canDelete ? t("dashboard.deleteRecord") : t("dashboard.recordLocked")}
+                        >
+                          <Trash size={16} weight="bold" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 p-0 text-muted-foreground"
+                          disabled={!canEdit}
+                          onPointerDown={triggerHapticFeedback}
+                          onClick={() => canEdit && navigate(editHref)}
+                          aria-label={canEdit ? t("dashboard.editRecord") : t("dashboard.recordLocked")}
+                        >
+                          <PencilSimple size={16} weight="bold" />
+                        </Button>
                       </div>
                     </div>
                   );

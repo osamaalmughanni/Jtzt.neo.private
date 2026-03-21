@@ -12,12 +12,24 @@ function resolveTimeZoneId(timeZone?: string | null) {
 }
 
 function parsePlainDate(value: string) {
-  if (!LOCAL_DAY_PATTERN.test(value)) {
+  if (!value) return null;
+
+  if (LOCAL_DAY_PATTERN.test(value)) {
+    try {
+      return Temporal.PlainDate.from(value);
+    } catch {
+      return null;
+    }
+  }
+
+  const instant = parseInstant(value);
+  if (!instant) {
     return null;
   }
 
   try {
-    return Temporal.PlainDate.from(value);
+    const zoned = instant.toZonedDateTimeISO(resolveSystemTimeZone());
+    return zoned.toPlainDate();
   } catch {
     return null;
   }
