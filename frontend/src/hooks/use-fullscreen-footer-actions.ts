@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowsIn, ArrowsOut } from "phosphor-react";
 import { toast } from "@/lib/toast";
 
@@ -9,8 +9,41 @@ type FooterAction = {
   onClick: () => void;
 };
 
+type WakeLockNavigator = Navigator & {
+  wakeLock?: {
+    request: (type: "screen") => Promise<WakeLockSentinel>;
+  };
+};
+
 export function useFullscreenFooterActions(): FooterAction[] {
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+
+  const wakeLockHeld = useCallback(() => wakeLockRef.current !== null, []);
+
+  const requestWakeLock = useCallback(async () => {
+    if (typeof navigator === "undefined") return;
+    const nav = navigator as WakeLockNavigator;
+    if (!nav.wakeLock?.request || wakeLockHeld()) return;
+    try {
+      const sentinel = await nav.wakeLock.request("screen");
+      wakeLockRef.current = sentinel;
+      sentinel.addEventListener("release", () => {
+        wakeLockRef.current = null;
+      });
+    } catch {
+      // best-effort; ignore failures in unsupported environments
+    }
+  }, [wakeLockHeld]);
+
+  const releaseWakeLock = useCallback(async () => {
+    if (!wakeLockRef.current) return;
+    try {
+      await wakeLockRef.current.release();
+    } finally {
+      wakeLockRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     const doc = document as Document & {
@@ -30,8 +63,28 @@ export function useFullscreenFooterActions(): FooterAction[] {
       document.removeEventListener("fullscreenchange", syncFullscreenState);
       document.removeEventListener("webkitfullscreenchange", syncFullscreenState as EventListener);
       document.removeEventListener("MSFullscreenChange", syncFullscreenState as EventListener);
+      releaseWakeLock();
     };
-  }, []);
+  }, [releaseWakeLock]);
+
+  useEffect(() => {
+    if (isFullscreen) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+  }, [isFullscreen, releaseWakeLock, requestWakeLock]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && isFullscreen) {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [isFullscreen]);
 
   return useMemo(
     () => [
