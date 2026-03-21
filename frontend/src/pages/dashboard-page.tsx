@@ -366,9 +366,12 @@ export function DashboardPage() {
   const timeOffAllowed = allowedEntryTypes.timeOffInLieu.allowed && summary.contractStats.timeOffInLieu.availableMinutes > 0;
   const leaveEntryAllowed = !selectedDayHasWorkEntry && !selectedDayHasLeaveEntry && (allowedEntryTypes.sickLeave.allowed || vacationAllowed || timeOffAllowed);
   const canCreateRecord = workEntryAllowed || leaveEntryAllowed;
+  const singleRecordBlocked = settings.allowOneRecordPerDay && entries.length > 0;
   const canUseTabletPunch = summary.activeEntry
     ? true
     : isNowContext && workEntryAllowed;
+  const singleRecordMessage = singleRecordBlocked ? t("dashboard.oneRecordPerDay") : null;
+  const canAddRecordButton = canCreateRecord && !singleRecordBlocked;
   const createRecordMessage =
     selectedDayPolicy.reason === "insert_limit"
       ? t("dashboard.insertLimitDetailed", {
@@ -656,7 +659,7 @@ export function DashboardPage() {
   return (
     <FormPage className="min-h-0 flex-none">
       <PageDock>
-        <div className="flex min-h-[5rem] flex-col items-center justify-center">
+        <div className="flex min-h-[5rem] flex-col items-center justify-center gap-2">
           {dashboardResource.isLoading ? null : isTabletMode ? (
             <>
               {dockShowsStop || dockShowsPlay ? (
@@ -674,7 +677,7 @@ export function DashboardPage() {
                 >
                   {summary.activeEntry ? <Stop size={30} weight="fill" /> : <Play size={30} weight="fill" />}
                 </Button>
-              ) : canCreateRecord ? (
+              ) : canAddRecordButton ? (
                 <Button
                   asChild
                   className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
@@ -697,18 +700,18 @@ export function DashboardPage() {
                   <Plus size={30} weight="bold" />
                 </Button>
               )}
-              {dockShowsPlay && canCreateRecord ? (
+              {dockShowsPlay && canAddRecordButton ? (
                 <Button
                   asChild
                   variant="ghost"
-                  className="mt-3 h-9 px-4 text-xs font-medium"
+                  className="h-9 px-4 text-xs font-medium"
                   onPointerDown={triggerHapticFeedback}
                 >
                   <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
                 </Button>
               ) : null}
             </>
-          ) : canCreateRecord ? (
+          ) : canAddRecordButton ? (
             <Button
               asChild
               className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
@@ -732,9 +735,11 @@ export function DashboardPage() {
             </Button>
           )}
           {!dashboardResource.isLoading && createRecordMessage ? (
-            <p className="mt-3 max-w-[18rem] text-center text-xs leading-5 text-muted-foreground">
-              {createRecordMessage}
-            </p>
+            <div className="flex w-full flex-col items-center gap-2 text-center">
+              <p className="text-center text-xs leading-5 text-muted-foreground">
+                {createRecordMessage}
+              </p>
+            </div>
           ) : null}
         </div>
       </PageDock>

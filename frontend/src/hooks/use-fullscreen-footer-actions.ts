@@ -110,6 +110,10 @@ export function useFullscreenFooterActions(): FooterAction[] {
 }
 
 async function requestElementFullscreen(element: HTMLElement) {
+  const normalized = element as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+    msRequestFullscreen?: () => Promise<void> | void;
+  };
   if (element.requestFullscreen) {
     try {
       await element.requestFullscreen({ navigationUI: "hide" });
@@ -119,12 +123,12 @@ async function requestElementFullscreen(element: HTMLElement) {
       return;
     }
   }
-  if (element.webkitRequestFullscreen) {
-    await element.webkitRequestFullscreen();
+  if (normalized.webkitRequestFullscreen) {
+    await normalized.webkitRequestFullscreen();
     return;
   }
-  if (element.msRequestFullscreen) {
-    await element.msRequestFullscreen();
+  if (normalized.msRequestFullscreen) {
+    await normalized.msRequestFullscreen();
     return;
   }
   throw new Error("This browser or embedded webview does not allow fullscreen mode.");
