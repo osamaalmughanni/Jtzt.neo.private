@@ -3,6 +3,7 @@ import { z } from "zod";
 import crypto from "node:crypto";
 import { authMiddleware, requireAdmin } from "../../auth/middleware";
 import { createCompanyDatabase } from "../../db/runtime-database";
+import { adminCsvMigrationService } from "../../services/admin-csv-migration";
 import { adminService } from "../../services/admin-service";
 import { authService } from "../../services/auth-service";
 import { systemService } from "../../services/system-service";
@@ -38,66 +39,6 @@ const deleteInvitationCodeSchema = z.object({
   invitationCodeId: z.number().int().positive()
 });
 
-function scheduleTempFileCleanup(filePath: string) {
-  void (async () => {
-    const { default: fs } = await import("node:fs");
-    const tryDelete = (attempt = 0) => {
-      fs.rm(filePath, { force: true }, (error) => {
-        if (!error) {
-          return;
-        }
-        if ((error as NodeJS.ErrnoException).code === "EBUSY" && attempt < 12) {
-          setTimeout(() => tryDelete(attempt + 1), 40 * (attempt + 1));
-        }
-      });
-    };
-    tryDelete();
-  })();
-}
-
-async function writeUploadedFileToTemp(file: File) {
-  const [{ default: fs }, os, path, { Readable }, { pipeline }] = await Promise.all([
-    import("node:fs"),
-    import("node:os"),
-    import("node:path"),
-    import("node:stream"),
-    import("node:stream/promises"),
-  ]);
-  const tempPath = path.join(os.tmpdir(), `jtzt-upload-${crypto.randomUUID()}.sqlite`);
-  const writable = fs.createWriteStream(tempPath);
-  await pipeline(Readable.fromWeb(file.stream() as any), writable);
-  return tempPath;
-}
-
-async function createReadStreamResponse(filePath: string, fileName: string) {
-  const [{ default: fs }, { Readable }] = await Promise.all([import("node:fs"), import("node:stream")]);
-
-  const tryDelete = (attempt = 0) => {
-    fs.rm(filePath, { force: true }, (error) => {
-      if (!error) {
-        return;
-      }
-      if ((error as NodeJS.ErrnoException).code === "EBUSY" && attempt < 12) {
-        setTimeout(() => tryDelete(attempt + 1), 40 * (attempt + 1));
-      }
-    });
-  };
-
-  const readStream = fs.createReadStream(filePath);
-  const cleanup = () => {
-    tryDelete();
-  };
-  readStream.on("close", cleanup);
-  readStream.on("error", cleanup);
-
-  return new Response(Readable.toWeb(readStream) as ReadableStream, {
-    headers: {
-      "Content-Type": "application/vnd.sqlite3",
-      "Content-Disposition": `attachment; filename="${fileName}"`,
-    },
-  });
-}
-
 export const adminRoutes = new Hono<AppRouteConfig>();
 
 adminRoutes.post("/auth/login", async (c) => {
@@ -117,6 +58,10 @@ adminRoutes.get("/me", (c) => {
 
 adminRoutes.get("/companies", async (c) => {
   return c.json({ companies: await systemService.listCompanies(c.get("systemDb")) });
+});
+
+adminRoutes.get("/migration-schema", async (c) => {
+  return c.json({ schema: await adminCsvMigrationService.getSchema() });
 });
 
 adminRoutes.get("/invitation-codes", async (c) => {
@@ -143,20 +88,22 @@ adminRoutes.post("/companies/create", async (c) => {
 
 adminRoutes.post("/companies/create/import", async (c) => {
   const formData = await c.req.formData();
-  const file = formData.get("file");
   const name = String(formData.get("name") ?? "").trim();
-  if (!(file instanceof File)) {
-    return c.json({ error: "SQLite company file is required" }, 400);
+  const files = formData.getAll("files").filter((value): value is File => value instanceof File);
+  if (files.length === 0) {
+    return c.json({ error: "CSV migration files are required" }, 400);
   }
 
-  const tempPath = await writeUploadedFileToTemp(file);
-  try {
-    const { importCompanyFromSqlite } = await import("../../services/admin-sqlite-transfer");
-    const imported = importCompanyFromSqlite(c.get("config"), tempPath, { companyName: name || undefined });
-    return c.json({ company: await systemService.getCompanyById(c.get("systemDb"), imported.companyId) });
-  } finally {
-    scheduleTempFileCleanup(tempPath);
-  }
+  const companyId = crypto.randomUUID();
+  const companyDb = await createCompanyDatabase(c.get("config"), companyId, c.env);
+  return c.json({
+    company: await adminCsvMigrationService.createCompanyFromCsv(
+      c.get("systemDb"),
+      companyDb,
+      { files, name: name || undefined },
+      companyId,
+    ),
+  });
 });
 
 adminRoutes.post("/companies/delete", async (c) => {
@@ -173,9 +120,15 @@ adminRoutes.get("/companies/:companyId/export", async (c) => {
     return c.json({ error: "Company not found" }, 404);
   }
 
-  const { exportCompanyToSqlite } = await import("../../services/admin-sqlite-transfer");
-  const { filePath, fileName } = exportCompanyToSqlite(c.get("config"), companyId);
-  return createReadStreamResponse(filePath, fileName);
+  const companyDb = await createCompanyDatabase(c.get("config"), companyId, c.env);
+  const exported = await adminCsvMigrationService.exportCompany(c.get("systemDb"), companyDb, companyId);
+  return c.json({
+    packageName: exported.packageName,
+    fileName: exported.fileName,
+    contentType: exported.contentType,
+    exportedAt: exported.exportedAt,
+    archiveBase64: exported.archiveBase64,
+  });
 });
 
 adminRoutes.post("/companies/:companyId/import", async (c) => {
@@ -186,19 +139,19 @@ adminRoutes.post("/companies/:companyId/import", async (c) => {
   }
 
   const formData = await c.req.formData();
-  const file = formData.get("file");
-  if (!(file instanceof File)) {
-    return c.json({ error: "SQLite company file is required" }, 400);
+  const files = formData.getAll("files").filter((value): value is File => value instanceof File);
+  if (files.length === 0) {
+    return c.json({ error: "CSV migration files are required" }, 400);
   }
 
-  const tempPath = await writeUploadedFileToTemp(file);
-  try {
-    const { importCompanyFromSqlite } = await import("../../services/admin-sqlite-transfer");
-    const imported = importCompanyFromSqlite(c.get("config"), tempPath, { companyId, companyName: company.name });
-    return c.json({ company: await systemService.getCompanyById(c.get("systemDb"), imported.companyId) });
-  } finally {
-    scheduleTempFileCleanup(tempPath);
-  }
+  const companyDb = await createCompanyDatabase(c.get("config"), companyId, c.env);
+  return c.json({
+    company: await adminCsvMigrationService.replaceCompanyFromCsv(c.get("systemDb"), companyDb, {
+      companyId,
+      companyName: company.name,
+      files,
+    }),
+  });
 });
 
 adminRoutes.post("/companies/admins/create", async (c) => {

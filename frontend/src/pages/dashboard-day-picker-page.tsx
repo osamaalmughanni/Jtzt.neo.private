@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { PublicHolidayRecord } from "@shared/types/models";
@@ -43,6 +43,8 @@ export function DashboardDayPickerPage() {
   const [dayStates, setDayStates] = useState<Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">>({});
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDayParam(searchParams.get("day"))));
   const selectedDate = parseDayParam(searchParams.get("day"));
+  const selectedDayKey = formatLocalDay(selectedDate);
+  const previousSelectedDayKeyRef = useRef(selectedDayKey);
   const userId = searchParams.get("user") ?? String(companyIdentity?.user.id ?? "");
   const numericUserId = Number(userId);
   const backTo = `/dashboard?user=${userId}&day=${formatLocalDay(selectedDate)}`;
@@ -95,8 +97,8 @@ export function DashboardDayPickerPage() {
       };
     }
   });
-  const selectedHoliday = holidays.find((holiday) => holiday.date === formatLocalDay(selectedDate));
-  const selectedDayState = dayStates[formatLocalDay(selectedDate)];
+  const selectedHoliday = holidays.find((holiday) => holiday.date === selectedDayKey);
+  const selectedDayState = dayStates[selectedDayKey];
 
   function handleSelect(date: Date) {
     navigate(`/dashboard?user=${userId}&day=${formatLocalDay(date)}`);
@@ -112,6 +114,13 @@ export function DashboardDayPickerPage() {
     setHolidays(pageResource.data.holidays);
     setDayStates(pageResource.data.dayStates);
   }, [pageResource.data]);
+
+  useEffect(() => {
+    if (previousSelectedDayKeyRef.current !== selectedDayKey) {
+      previousSelectedDayKeyRef.current = selectedDayKey;
+      setVisibleMonth(startOfMonth(selectedDate));
+    }
+  }, [selectedDate, selectedDayKey]);
 
   return (
     <FormPage>
@@ -173,6 +182,7 @@ export function DashboardDayPickerPage() {
         </div>
           <Calendar
             selected={selectedDate}
+            month={visibleMonth}
             onSelect={handleSelect}
             locale={settingsLocale}
             holidayDates={holidays.map((holiday) => holiday.date)}

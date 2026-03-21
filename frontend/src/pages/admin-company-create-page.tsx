@@ -24,7 +24,7 @@ type FormValues = z.infer<typeof schema>;
 export function AdminCompanyCreatePage() {
   const { adminSession } = useAuth();
   const navigate = useNavigate();
-  const [databaseFile, setDatabaseFile] = useState<File | null>(null);
+  const [databaseFiles, setDatabaseFiles] = useState<File[]>([]);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -38,10 +38,10 @@ export function AdminCompanyCreatePage() {
   async function onSubmit(values: FormValues) {
     if (!adminSession) return;
     try {
-      if (databaseFile) {
-        await api.createCompanyFromSnapshot(adminSession.token, {
+      if (databaseFiles.length > 0) {
+        await api.createCompanyFromCsvPackage(adminSession.token, {
           name: values.name,
-          file: databaseFile
+          files: databaseFiles
         });
       } else {
         if (values.adminFullName.trim().length < 2) throw new Error("Full name is required");
@@ -55,7 +55,7 @@ export function AdminCompanyCreatePage() {
         });
       }
       form.reset();
-      setDatabaseFile(null);
+      setDatabaseFiles([]);
       toast({ title: "Company created" });
       navigate("/admin/companies");
     } catch (error) {
@@ -91,13 +91,14 @@ export function AdminCompanyCreatePage() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <FormLabel>Import company snapshot</FormLabel>
+                <FormLabel>Import CSV migration package</FormLabel>
                 <FileInput
-                  file={databaseFile}
-                  accept=".sqlite,.db,application/vnd.sqlite3,application/octet-stream"
-                  placeholder="Upload a SQLite company backup"
+                  files={databaseFiles}
+                  multiple
+                  accept=".zip,.csv"
+                  placeholder="Upload one migration zip or company.csv plus all table CSV files"
                   buttonLabel="Select"
-                  onFileChange={setDatabaseFile}
+                  onFilesChange={setDatabaseFiles}
                 />
               </div>
               <FormField
@@ -107,7 +108,7 @@ export function AdminCompanyCreatePage() {
                   <FormItem>
                     <FormLabel>Admin full name</FormLabel>
                     <FormControl>
-                      <Input placeholder="Anna Berger" {...field} disabled={databaseFile !== null} />
+                      <Input placeholder="Anna Berger" {...field} disabled={databaseFiles.length > 0} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -120,7 +121,7 @@ export function AdminCompanyCreatePage() {
                   <FormItem>
                     <FormLabel>Admin username</FormLabel>
                     <FormControl>
-                      <Input placeholder="anna.berger" {...field} disabled={databaseFile !== null} />
+                      <Input placeholder="anna.berger" {...field} disabled={databaseFiles.length > 0} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -132,10 +133,10 @@ export function AdminCompanyCreatePage() {
                   name="adminPassword"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Admin password</FormLabel>
-                      <FormControl>
-                        <Input type="password" placeholder="Enter a secure password" {...field} disabled={databaseFile !== null} />
-                      </FormControl>
+                    <FormLabel>Admin password</FormLabel>
+                    <FormControl>
+                        <Input type="password" placeholder="Enter a secure password" {...field} disabled={databaseFiles.length > 0} />
+                    </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -143,7 +144,7 @@ export function AdminCompanyCreatePage() {
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
-                  {databaseFile ? "The uploaded SQLite backup will seed this company database." : "The company will get its own isolated company database."}
+                  {databaseFiles.length > 0 ? "The uploaded migration zip or unpacked CSV set will seed this company database." : "The company will get its own isolated company database."}
                 </p>
                 <Button type="submit" disabled={form.formState.isSubmitting}>
                   Create company

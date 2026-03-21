@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Briefcase, CalendarBlank, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
@@ -341,6 +341,7 @@ export function DashboardPage() {
   const selectedUserName =
     selectedUser?.fullName ?? companyIdentity?.user.fullName ?? "User";
   const selectedDayKey = formatLocalDay(selectedDate);
+  const previousSelectedDayKeyRef = useRef(selectedDayKey);
   const selectedDayPastDistance = getPastDayDistance(selectedDayKey, settings.timeZone);
   const selectedDayFutureDistance = getFutureDayDistance(selectedDayKey, settings.timeZone);
   const todayDay = getLocalNowSnapshot(new Date(), settings.timeZone).localDay;
@@ -566,8 +567,11 @@ export function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    setVisibleMonth(startOfMonth(selectedDate));
-  }, [selectedDayKey]);
+    if (previousSelectedDayKeyRef.current !== selectedDayKey) {
+      previousSelectedDayKeyRef.current = selectedDayKey;
+      setVisibleMonth(startOfMonth(selectedDate));
+    }
+  }, [selectedDate, selectedDayKey]);
 
   useEffect(() => {
     if (!calendarResource.data) {
@@ -913,7 +917,11 @@ export function DashboardPage() {
                   variant={isToday(selectedDate, settings.timeZone) ? "secondary" : "outline"}
                   size="sm"
                   className="h-7 px-2 text-[11px]"
-                  onClick={() => updateContext({ day: parseLocalDay(getLocalNowSnapshot(new Date(), settings.timeZone).localDay) ?? new Date() })}
+                  onClick={() => {
+                    const todayDate = parseLocalDay(getLocalNowSnapshot(new Date(), settings.timeZone).localDay) ?? new Date();
+                    setVisibleMonth(startOfMonth(todayDate));
+                    updateContext({ day: todayDate });
+                  }}
                   type="button"
                 >
                   {t("dashboard.today")}
@@ -923,6 +931,7 @@ export function DashboardPage() {
             {showCalendar ? (
               <Calendar
                 selected={selectedDate}
+                month={visibleMonth}
                 onSelect={(date) => updateContext({ day: date })}
                 locale={settings.locale}
                 firstDayOfWeek={settings.firstDayOfWeek}

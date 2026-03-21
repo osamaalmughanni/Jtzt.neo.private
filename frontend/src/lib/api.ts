@@ -1,6 +1,8 @@
 import type {
   AdminLoginInput,
   CompanyApiDocsResponse,
+  CompanyMigrationExportResponse,
+  CompanyMigrationSchemaResponse,
   CompanyApiKeyStatusResponse,
   CompanyListResponse,
   CompanyLoginInput,
@@ -115,6 +117,15 @@ function parseJsonSafely<T>(value: string): T | null {
 
 function getRequestMethod(init?: RequestInit) {
   return init?.method?.toUpperCase() ?? "GET";
+}
+
+function base64ToBytes(value: string) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 async function parseJsonResponse<T>(response: Response, path: string, method: string): Promise<T> {
@@ -483,10 +494,12 @@ export const api = {
     });
   },
 
-  async createCompanyFromSnapshot(token: string, input: { name: string; file: File }) {
+  async createCompanyFromCsvPackage(token: string, input: { name: string; files: File[] }) {
     const formData = new FormData();
     formData.set("name", input.name);
-    formData.set("file", input.file);
+    for (const file of input.files) {
+      formData.append("files", file);
+    }
 
     const response = await fetch("/api/admin/companies/create/import", {
       method: "POST",
@@ -545,28 +558,23 @@ export const api = {
     });
   },
 
-  async downloadCompanySnapshot(token: string, companyId: string) {
+  async downloadCompanyCsvPackage(token: string, companyId: string) {
     const path = `/api/admin/companies/${companyId}/export`;
-    const response = await fetch(path, {
+    const payload = await request<CompanyMigrationExportResponse>(path, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
-    if (!response.ok) {
-      throw await buildApiRequestError(response, path, "GET");
-    }
-
     return {
-      blob: await response.blob(),
-      fileName:
-        response.headers
-          .get("Content-Disposition")
-          ?.match(/filename="([^"]+)"/)?.[1] ?? `company-${companyId}.snapshot.json`
+      blob: new Blob([base64ToBytes(payload.archiveBase64)], { type: payload.contentType || "application/zip" }),
+      fileName: payload.fileName || `company-${companyId}.migration.zip`
     };
   },
 
-  async importCompanySnapshot(token: string, companyId: string, file: File) {
+  async importCompanyCsvPackage(token: string, companyId: string, files: File[]) {
     const formData = new FormData();
-    formData.set("file", file);
+    for (const file of files) {
+      formData.append("files", file);
+    }
 
     const path = `/api/admin/companies/${companyId}/import`;
     const response = await fetch(path, {
@@ -580,5 +588,11 @@ export const api = {
     }
 
     return parseJsonResponse<{ company: unknown }>(response, path, "POST");
+  },
+
+  getCompanyMigrationSchema(token: string) {
+    return request<CompanyMigrationSchemaResponse>("/api/admin/migration-schema", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
   }
 };

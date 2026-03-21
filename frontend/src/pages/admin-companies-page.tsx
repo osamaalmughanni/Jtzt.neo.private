@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FileInput } from "@/components/ui/file-input";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -32,6 +33,25 @@ function getInvitationBadge(code: InvitationCodeRecord) {
   return { label: "Active", className: "bg-primary text-primary-foreground border-primary" };
 }
 
+function ImportSelectionSummary({ files }: { files: File[] }) {
+  if (files.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex max-h-32 min-w-0 flex-col gap-2 overflow-auto rounded-xl border border-border bg-muted/20 p-3">
+      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Selected files</p>
+      <div className="flex flex-col gap-1">
+        {files.map((file) => (
+          <p key={`${file.name}-${file.size}`} className="break-all text-xs text-foreground">
+            {file.name}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function AdminCompaniesPage() {
   const { t } = useTranslation();
   const { adminSession } = useAuth();
@@ -41,16 +61,19 @@ export function AdminCompaniesPage() {
     adminUsername: "",
     adminPassword: "",
   });
-  const [createSnapshotFile, setCreateSnapshotFile] = useState<File | null>(null);
+  const [createMigrationFiles, setCreateMigrationFiles] = useState<File[]>([]);
   const [createInvitationNote, setCreateInvitationNote] = useState("");
   const [newAdmin, setNewAdmin] = useState({ companyId: "", username: "", password: "", fullName: "" });
   const [importingCompanyId, setImportingCompanyId] = useState<string | null>(null);
-  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importFiles, setImportFiles] = useState<File[]>([]);
   const [pendingDeleteCompany, setPendingDeleteCompany] = useState<{ id: string; name: string } | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
   const [createAdminSubmitting, setCreateAdminSubmitting] = useState(false);
+  const [schemaDialogOpen, setSchemaDialogOpen] = useState(false);
+  const [schemaLoading, setSchemaLoading] = useState(false);
+  const [migrationSchema, setMigrationSchema] = useState<Awaited<ReturnType<typeof api.getCompanyMigrationSchema>>["schema"] | null>(null);
 
   const adminResource = usePageResource<{
     companies: Awaited<ReturnType<typeof api.listCompanies>>["companies"];
@@ -93,6 +116,18 @@ export function AdminCompaniesPage() {
     [invitationCodes],
   );
 
+  function downloadTextFile(fileName: string, content: string, contentType: string) {
+    const blob = new Blob([content], { type: contentType });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+  }
+
   async function reloadAdminData() {
     await adminResource.reload();
   }
@@ -101,13 +136,13 @@ export function AdminCompaniesPage() {
     if (!adminSession) return;
     setCreateSubmitting(true);
     try {
-      if (createSnapshotFile) {
+      if (createMigrationFiles.length > 0) {
         if (newCompany.name.trim().length < 2) {
           throw new Error("Company name is required");
         }
-        await api.createCompanyFromSnapshot(adminSession.token, {
+        await api.createCompanyFromCsvPackage(adminSession.token, {
           name: newCompany.name.trim(),
-          file: createSnapshotFile,
+          files: createMigrationFiles,
         });
       } else {
         if (newCompany.name.trim().length < 2) throw new Error("Company name is required");
@@ -123,7 +158,7 @@ export function AdminCompaniesPage() {
       }
 
       setNewCompany({ name: "", adminFullName: "", adminUsername: "", adminPassword: "" });
-      setCreateSnapshotFile(null);
+      setCreateMigrationFiles([]);
       toast({ title: "Company created" });
       await reloadAdminData();
     } catch (error) {
@@ -203,43 +238,77 @@ export function AdminCompaniesPage() {
     }
   }
 
-  async function handleDownloadCompanySnapshot(companyId: string, companyName: string) {
+  async function handleDownloadCompanyCsvPackage(companyId: string, companyName: string) {
     if (!adminSession) return;
     try {
-      const { blob, fileName } = await api.downloadCompanySnapshot(adminSession.token, companyId);
-      const url = window.URL.createObjectURL(blob);
+      const exported = await api.downloadCompanyCsvPackage(adminSession.token, companyId);
+      const url = window.URL.createObjectURL(exported.blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = fileName || `${companyName}.snapshot.json`;
+      anchor.download = exported.fileName || `${companyName}.migration.zip`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
       window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
-      toast({ title: "Snapshot exported" });
+      toast({ title: `CSV package exported for ${companyName}` });
     } catch (error) {
       toast({
-        title: "Could not export snapshot",
+        title: "Could not export CSV package",
         description: error instanceof Error ? error.message : "Request failed",
       });
     }
   }
 
-  async function handleImportCompanySnapshot(companyId: string) {
-    if (!adminSession || !importFile) return;
+  async function handleImportCompanyCsvPackage(companyId: string) {
+    if (!adminSession || importFiles.length === 0) return;
     setImportingCompanyId(companyId);
     try {
-      await api.importCompanySnapshot(adminSession.token, companyId, importFile);
-      setImportFile(null);
-      toast({ title: "Snapshot imported" });
+      await api.importCompanyCsvPackage(adminSession.token, companyId, importFiles);
+      setImportFiles([]);
+      toast({ title: "CSV package imported" });
       await reloadAdminData();
     } catch (error) {
       toast({
-        title: "Could not import snapshot",
+        title: "Could not import CSV package",
         description: error instanceof Error ? error.message : "Request failed",
       });
     } finally {
       setImportingCompanyId(null);
     }
+  }
+
+  async function handleLoadMigrationSchema() {
+    if (!adminSession) return;
+    setSchemaLoading(true);
+    try {
+      const response = await api.getCompanyMigrationSchema(adminSession.token);
+      setMigrationSchema(response.schema);
+    } catch (error) {
+      toast({
+        title: "Could not load migration schema",
+        description: error instanceof Error ? error.message : "Request failed",
+      });
+    } finally {
+      setSchemaLoading(false);
+    }
+  }
+
+  async function handleCopyMigrationSchema() {
+    if (!migrationSchema) return;
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard unavailable");
+      }
+      await navigator.clipboard.writeText(JSON.stringify(migrationSchema, null, 2));
+      toast({ title: "Migration schema copied" });
+    } catch {
+      toast({ title: "Clipboard is not available in this browser" });
+    }
+  }
+
+  function handleDownloadMigrationSchema() {
+    if (!migrationSchema) return;
+    downloadTextFile("migration-schema.json", JSON.stringify(migrationSchema, null, 2), "application/json");
   }
 
   async function handleCreateCompanyAdmin() {
@@ -298,7 +367,7 @@ export function AdminCompaniesPage() {
               <FormPanel className="gap-4">
                 <div className="flex flex-col gap-1">
                   <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">Create company</p>
-                  <p className="text-sm text-muted-foreground">Create a fresh workspace or seed one from a SQLite company backup inside the same admin surface.</p>
+                  <p className="text-sm text-muted-foreground">Create a fresh workspace or seed one from a CSV migration package inside the same admin surface.</p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <Input
@@ -310,39 +379,83 @@ export function AdminCompaniesPage() {
                     value={newCompany.adminFullName}
                     onChange={(event) => setNewCompany((current) => ({ ...current, adminFullName: event.target.value }))}
                     placeholder="Admin full name"
-                    disabled={createSnapshotFile !== null}
+                    disabled={createMigrationFiles.length > 0}
                   />
                   <Input
                     value={newCompany.adminUsername}
                     onChange={(event) => setNewCompany((current) => ({ ...current, adminUsername: event.target.value }))}
                     placeholder="Admin username"
-                    disabled={createSnapshotFile !== null}
+                    disabled={createMigrationFiles.length > 0}
                   />
                   <Input
                     type="password"
                     value={newCompany.adminPassword}
                     onChange={(event) => setNewCompany((current) => ({ ...current, adminPassword: event.target.value }))}
                     placeholder="Admin password"
-                    disabled={createSnapshotFile !== null}
+                    disabled={createMigrationFiles.length > 0}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm font-medium text-foreground">Optional SQLite company import</p>
+                  <p className="text-sm font-medium text-foreground">Optional CSV package import</p>
                   <FileInput
-                    file={createSnapshotFile}
-                    accept=".sqlite,.db,application/vnd.sqlite3,application/octet-stream"
-                    placeholder="Upload a SQLite company backup"
+                    files={createMigrationFiles}
+                    multiple
+                    accept=".zip,.csv"
+                    placeholder="Upload one migration zip or company.csv plus all exported table CSV files"
                     buttonLabel="Select"
-                    onFileChange={setCreateSnapshotFile}
+                    onFilesChange={setCreateMigrationFiles}
                   />
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-muted-foreground">
-                    {createSnapshotFile ? "The uploaded SQLite backup will seed the company directly through SQLite." : "A standard company with one admin user will be created."}
+                    {createMigrationFiles.length > 0 ? "The uploaded migration zip or unpacked CSV set will seed the company directly from the exported relational package." : "A standard company with one admin user will be created."}
                   </p>
-                  <Button type="button" onClick={() => void handleCreateCompany()} disabled={createSubmitting}>
-                    {createSubmitting ? "Creating..." : "Create company"}
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Dialog
+                      open={schemaDialogOpen}
+                      onOpenChange={(open) => {
+                        setSchemaDialogOpen(open);
+                        if (open && migrationSchema === null && !schemaLoading) {
+                          void handleLoadMigrationSchema();
+                        }
+                      }}
+                    >
+                      <DialogTrigger asChild>
+                        <Button type="button" variant="outline">
+                          Schema support
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-5xl">
+                        <DialogHeader>
+                          <DialogTitle>Migration schema support</DialogTitle>
+                          <DialogDescription>Live JSON contract for the CSV migration package, generated from the current company schema.</DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-col gap-3">
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="button" variant="outline" onClick={() => void handleLoadMigrationSchema()} disabled={schemaLoading}>
+                              {schemaLoading ? "Refreshing..." : "Refresh schema"}
+                            </Button>
+                            <Button type="button" variant="outline" onClick={() => void handleCopyMigrationSchema()} disabled={!migrationSchema}>
+                              <Copy className="mr-2 h-4 w-4" />
+                              Copy JSON
+                            </Button>
+                            <Button type="button" variant="outline" onClick={handleDownloadMigrationSchema} disabled={!migrationSchema}>
+                              <Download className="mr-2 h-4 w-4" />
+                              Download JSON
+                            </Button>
+                          </div>
+                          <Textarea
+                            value={migrationSchema ? JSON.stringify(migrationSchema, null, 2) : (schemaLoading ? "Loading schema..." : "No schema loaded yet.")}
+                            readOnly
+                            className="min-h-[28rem] font-mono text-xs"
+                          />
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                    <Button type="button" onClick={() => void handleCreateCompany()} disabled={createSubmitting}>
+                      {createSubmitting ? "Creating..." : "Create company"}
+                    </Button>
+                  </div>
                 </div>
               </FormPanel>
 
@@ -405,9 +518,9 @@ export function AdminCompaniesPage() {
             </div>
 
             <FormPanel className="gap-4">
-              <div className="flex flex-col gap-1">
-                <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">Companies</p>
-                <p className="text-sm text-muted-foreground">Each company stays manageable from one card: SQLite backup control, admin provisioning, and deletion.</p>
+                <div className="flex flex-col gap-1">
+                  <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">Companies</p>
+                <p className="text-sm text-muted-foreground">Each company stays manageable from one card: CSV migration control, admin provisioning, and deletion.</p>
               </div>
               {companies.length === 0 ? (
                 <div className="border border-dashed border-border bg-muted/20 px-4 py-10 text-sm text-muted-foreground">
@@ -438,32 +551,36 @@ export function AdminCompaniesPage() {
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => void handleDownloadCompanySnapshot(company.id, company.name)}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void handleDownloadCompanyCsvPackage(company.id, company.name)}>
                           <Download className="mr-2 h-4 w-4" />
-                          Export SQLite
+                          Export CSV
                         </Button>
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button type="button" variant="outline" size="sm">
                               <Upload className="mr-2 h-4 w-4" />
-                              Import SQLite
+                              Import CSV
                             </Button>
                           </DialogTrigger>
-                          <DialogContent>
+                          <DialogContent className="w-[calc(100%-1rem)] max-w-[38rem] gap-5 overflow-hidden p-5 sm:p-6">
                             <DialogHeader>
-                              <DialogTitle>Import SQLite backup</DialogTitle>
-                              <DialogDescription>Upload a SQLite company backup to fully replace {company.name}.</DialogDescription>
+                              <DialogTitle>Import CSV package</DialogTitle>
+                              <DialogDescription className="max-w-full break-words pr-8">
+                                Upload one migration zip or the unpacked CSV set to fully replace {company.name}.
+                              </DialogDescription>
                             </DialogHeader>
-                            <div className="flex flex-col gap-4">
+                            <div className="flex min-w-0 flex-col gap-4">
                               <FileInput
-                                file={importFile}
-                                accept=".sqlite,.db,application/vnd.sqlite3,application/octet-stream"
-                                placeholder="Upload a SQLite company backup"
+                                files={importFiles}
+                                multiple
+                                accept=".zip,.csv"
+                                placeholder="Upload one migration zip or company.csv plus all exported table CSV files"
                                 buttonLabel="Select"
-                                onFileChange={setImportFile}
+                                onFilesChange={setImportFiles}
                               />
-                              <Button type="button" onClick={() => void handleImportCompanySnapshot(company.id)} disabled={!importFile || importingCompanyId === company.id}>
-                                {importingCompanyId === company.id ? "Importing..." : "Replace company from SQLite"}
+                              <ImportSelectionSummary files={importFiles} />
+                              <Button type="button" onClick={() => void handleImportCompanyCsvPackage(company.id)} disabled={importFiles.length === 0 || importingCompanyId === company.id}>
+                                {importingCompanyId === company.id ? "Importing..." : "Replace company from CSV"}
                               </Button>
                             </div>
                           </DialogContent>

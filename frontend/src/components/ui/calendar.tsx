@@ -25,6 +25,7 @@ function isSameDay(left: Date, right: Date) {
 
 export function Calendar({
   selected,
+  month,
   onSelect,
   firstDayOfWeek = 1,
   className,
@@ -36,6 +37,7 @@ export function Calendar({
   disableDate,
 }: {
   selected: Date;
+  month?: Date;
   onSelect: (date: Date) => void;
   firstDayOfWeek?: number;
   className?: string;
@@ -48,18 +50,24 @@ export function Calendar({
 }) {
   const { t, i18n } = useTranslation();
   const entryStateUi = useMemo(() => getEntryStateUi(t), [t]);
-  const [viewDate, setViewDate] = useState(startOfMonth(selected));
-  const selectedMonthKey = `${selected.getFullYear()}-${selected.getMonth()}`;
+  const [uncontrolledViewDate, setUncontrolledViewDate] = useState(startOfMonth(selected));
   const normalizedFirstDayOfWeek = ((Math.trunc(firstDayOfWeek) % 7) + 7) % 7;
   const displayLocale = (i18n.resolvedLanguage?.trim() || locale || "en-GB").trim();
+  const viewDate = startOfMonth(month ?? uncontrolledViewDate);
 
   useEffect(() => {
-    setViewDate(startOfMonth(selected));
-  }, [selectedMonthKey]);
+    if (!month) {
+      setUncontrolledViewDate(startOfMonth(selected));
+    }
+  }, [month, selected]);
 
-  useEffect(() => {
-    onMonthChange?.(viewDate);
-  }, [onMonthChange, viewDate]);
+  function updateViewDate(nextDate: Date) {
+    const normalized = startOfMonth(nextDate);
+    if (!month) {
+      setUncontrolledViewDate(normalized);
+    }
+    onMonthChange?.(normalized);
+  }
 
   const days = useMemo(() => {
     const first = startOfMonth(viewDate);
@@ -99,7 +107,7 @@ export function Calendar({
           size="sm"
           variant="ghost"
           className={navButtonClassName}
-          onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))}
+          onClick={() => updateViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))}
           type="button"
           aria-label={t("calendar.prev")}
         >
@@ -112,7 +120,7 @@ export function Calendar({
           size="sm"
           variant="ghost"
           className={navButtonClassName}
-          onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))}
+          onClick={() => updateViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))}
           type="button"
           aria-label={t("calendar.next")}
         >

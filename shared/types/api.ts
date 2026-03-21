@@ -308,6 +308,58 @@ export interface DeleteInvitationCodeInput {
   invitationCodeId: number;
 }
 
+export interface CompanyMigrationSchemaColumn {
+  name: string;
+  type: string;
+  nullable: boolean;
+  primaryKey: boolean;
+  example: string | number | null;
+  foreignKey?: {
+    column: string;
+    referencedTable: string;
+    referencedColumn: string;
+  } | null;
+}
+
+export interface CompanyMigrationSchemaTable {
+  tableName: string;
+  fileName: string;
+  importOrder: number;
+  rowScope: string;
+  columns: CompanyMigrationSchemaColumn[];
+}
+
+export interface CompanyMigrationSchemaResponse {
+  schema: {
+    format: {
+      key: string;
+      version: number;
+      encoding: string;
+      delimiter: string;
+      lineTerminator: string;
+      nullToken: string;
+      oneCsvPerTable: boolean;
+      schemaFileName: string;
+      metadataFileName: string;
+    };
+    companyMetadata: {
+      fileName: string;
+      description: string;
+      columns: CompanyMigrationSchemaColumn[];
+    };
+    tables: CompanyMigrationSchemaTable[];
+    notes: string[];
+  };
+}
+
+export interface CompanyMigrationExportResponse {
+  packageName: string;
+  fileName: string;
+  contentType: string;
+  exportedAt: string;
+  archiveBase64: string;
+}
+
 export interface SettingsResponse {
   settings: CompanySettings;
 }
