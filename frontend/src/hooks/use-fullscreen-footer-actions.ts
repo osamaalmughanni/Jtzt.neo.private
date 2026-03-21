@@ -32,7 +32,7 @@ export function useFullscreenFooterActions(): FooterAction[] {
         wakeLockRef.current = null;
       });
     } catch {
-      // best-effort; ignore failures in unsupported environments
+      // ignore unsupported environments
     }
   }, [wakeLockHeld]);
 
@@ -84,7 +84,17 @@ export function useFullscreenFooterActions(): FooterAction[] {
 
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [isFullscreen]);
+  }, [isFullscreen, requestWakeLock]);
+
+  const handleFullscreenToggle = useCallback(() => {
+    void toggleFullscreen()
+      .catch((error) => {
+        toast({
+          title: "Fullscreen unavailable",
+          description: error instanceof Error ? error.message : "This browser or device blocked fullscreen mode.",
+        });
+      });
+  }, []);
 
   return useMemo(
     () => [
@@ -92,66 +102,67 @@ export function useFullscreenFooterActions(): FooterAction[] {
         key: "toggle-fullscreen",
         label: isFullscreen ? "Exit fullscreen" : "Enter fullscreen",
         icon: isFullscreen ? ArrowsIn : ArrowsOut,
-        onClick: () => {
-          void toggleFullscreen().catch((error) => {
-            toast({
-              title: "Fullscreen unavailable",
-              description: error instanceof Error ? error.message : "This browser or device blocked fullscreen mode.",
-            });
-          });
-        },
+        onClick: handleFullscreenToggle,
       },
     ],
-    [isFullscreen],
+    [handleFullscreenToggle, isFullscreen],
   );
+}
+
+async function requestElementFullscreen(element: HTMLElement) {
+  if (element.requestFullscreen) {
+    try {
+      await element.requestFullscreen({ navigationUI: "hide" });
+      return;
+    } catch {
+      await element.requestFullscreen();
+      return;
+    }
+  }
+  if (element.webkitRequestFullscreen) {
+    await element.webkitRequestFullscreen();
+    return;
+  }
+  if (element.msRequestFullscreen) {
+    await element.msRequestFullscreen();
+    return;
+  }
+  throw new Error("This browser or embedded webview does not allow fullscreen mode.");
+}
+
+async function exitElementFullscreen() {
+  const doc = document as Document & {
+    webkitExitFullscreen?: () => Promise<void> | void;
+    msExitFullscreen?: () => Promise<void> | void;
+  };
+
+  if (doc.exitFullscreen) {
+    await doc.exitFullscreen();
+    return;
+  }
+  if (doc.webkitExitFullscreen) {
+    await doc.webkitExitFullscreen();
+    return;
+  }
+  if (doc.msExitFullscreen) {
+    await doc.msExitFullscreen();
+    return;
+  }
+  throw new Error("This browser does not expose a compatible fullscreen exit API.");
 }
 
 async function toggleFullscreen() {
   const doc = document as Document & {
-    webkitExitFullscreen?: () => Promise<void> | void;
-    msExitFullscreen?: () => Promise<void> | void;
     webkitFullscreenElement?: Element | null;
     msFullscreenElement?: Element | null;
   };
-  const root = document.documentElement as HTMLElement & {
-    webkitRequestFullscreen?: () => Promise<void> | void;
-    msRequestFullscreen?: () => Promise<void> | void;
-  };
   const fullscreenElement = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? doc.msFullscreenElement;
+  const root = document.documentElement as HTMLElement;
 
   if (fullscreenElement) {
-    if (doc.exitFullscreen) {
-      await doc.exitFullscreen();
-      return;
-    }
-    if (doc.webkitExitFullscreen) {
-      await doc.webkitExitFullscreen();
-      return;
-    }
-    if (doc.msExitFullscreen) {
-      await doc.msExitFullscreen();
-      return;
-    }
-    throw new Error("This browser does not expose a compatible fullscreen exit API.");
-  }
-
-  if (root.requestFullscreen) {
-    try {
-      await root.requestFullscreen({ navigationUI: "hide" });
-      return;
-    } catch {
-      await root.requestFullscreen();
-      return;
-    }
-  }
-  if (root.webkitRequestFullscreen) {
-    await root.webkitRequestFullscreen();
-    return;
-  }
-  if (root.msRequestFullscreen) {
-    await root.msRequestFullscreen();
+    await exitElementFullscreen();
     return;
   }
 
-  throw new Error("This browser or embedded webview does not allow fullscreen mode.");
+  await requestElementFullscreen(root);
 }

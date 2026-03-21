@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarBlank, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
+import { Briefcase, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import type {
   CompanyCustomField,
@@ -296,8 +296,6 @@ export function DashboardPage() {
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDayParam(searchParams.get("day"))));
   const [calendarHolidays, setCalendarHolidays] = useState<PublicHolidayRecord[]>([]);
   const [calendarDayStates, setCalendarDayStates] = useState<Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">>({});
-  const [isMobileViewport, setIsMobileViewport] = useState(false);
-  const [isMobileCalendarCollapsed, setIsMobileCalendarCollapsed] = useState(false);
 
   const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
   const selectedDate = useMemo(
@@ -553,20 +551,6 @@ export function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 639px)");
-
-    const syncViewport = () => {
-      const mobile = mediaQuery.matches;
-      setIsMobileViewport(mobile);
-      setIsMobileCalendarCollapsed((current) => (mobile ? current || true : false));
-    };
-
-    syncViewport();
-    mediaQuery.addEventListener("change", syncViewport);
-    return () => mediaQuery.removeEventListener("change", syncViewport);
-  }, []);
-
-  useEffect(() => {
     if (previousSelectedDayKeyRef.current !== selectedDayKey) {
       previousSelectedDayKeyRef.current = selectedDayKey;
       setVisibleMonth(startOfMonth(selectedDate));
@@ -686,7 +670,6 @@ export function DashboardPage() {
   const dockShowsPlay = isNowContext && workEntryAllowed && !summary.activeEntry;
   const dockShowsStop = Boolean(summary.activeEntry);
   const dockUsesPlus = !dockShowsStop && !dockShowsPlay;
-  const showCalendar = !isMobileViewport || !isMobileCalendarCollapsed;
   const userOptions = availableUsers.map((user) => ({
     value: String(user.id),
     label: user.fullName,
@@ -867,81 +850,61 @@ export function DashboardPage() {
               )}
             </div>
           </FormSection>
-          <div className="flex items-center justify-between gap-3">
-            <p className="min-w-0 truncate text-left text-base font-semibold tracking-[-0.04em] text-foreground sm:text-lg">
-              {selectedDate.toLocaleDateString(settings.locale, {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
-            </p>
-            <p className="shrink-0 text-right text-base font-semibold tracking-[-0.04em] text-muted-foreground sm:text-lg">
-              {new Intl.DateTimeFormat(settings.locale, {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-                timeZone: settings.timeZone,
-              }).format(now)}
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2 pt-1">
+          <div className="flex flex-col gap-0.5 pt-1">
             <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                {isMobileViewport ? (
-                  <Button
-                    variant={isMobileCalendarCollapsed ? "ghost" : "secondary"}
-                    size="sm"
-                    className="h-7 w-7 flex-none p-0"
-                    onClick={() => setIsMobileCalendarCollapsed((current) => !current)}
-                    type="button"
-                    aria-expanded={!isMobileCalendarCollapsed}
-                    aria-label={isMobileCalendarCollapsed ? "Expand calendar" : "Collapse calendar"}
-                  >
-                    <CalendarBlank size={14} weight={isMobileCalendarCollapsed ? "regular" : "fill"} />
-                  </Button>
-                ) : null}
-                <p className="min-w-0 truncate whitespace-nowrap text-[10px] text-muted-foreground sm:text-[11px]">
-                  {t("dashboard.expected", { value: formatMinutes(summary.contractStats.today.expectedMinutes) })}
-                  <span className="mx-1 opacity-50">/</span>
-                  {t("dashboard.recordedBadge", { value: formatMinutes(summary.contractStats.today.recordedMinutes) })}
-                  <span className="mx-1 opacity-50">/</span>
-                  {t("dashboard.vacationAvailable", { value: Math.max(0, summary.contractStats.vacation.availableDays).toFixed(1) })}
-                  <span className="mx-1 opacity-50">/</span>
-                  {t("dashboard.timeOffAvailable", { value: (Math.max(0, summary.contractStats.timeOffInLieu.availableMinutes) / 60).toFixed(1) })}
+              <div className="flex flex-col">
+                <p className="min-w-0 truncate text-base font-semibold tracking-[-0.04em] text-foreground sm:text-lg">
+                  {selectedDate.toLocaleDateString(settings.locale, {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </p>
+                <p className="text-[10px] font-semibold tracking-[-0.05em] text-muted-foreground">
+                  {new Intl.DateTimeFormat(settings.locale, {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                    timeZone: settings.timeZone,
+                  }).format(now)}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={isToday(selectedDate, settings.timeZone) ? "secondary" : "outline"}
-                  size="sm"
-                  className="h-7 px-2 text-[11px]"
-                  onClick={() => {
-                    const todayDate = parseLocalDay(getLocalNowSnapshot(new Date(), settings.timeZone).localDay) ?? new Date();
-                    setVisibleMonth(startOfMonth(todayDate));
-                    updateContext({ day: todayDate });
-                  }}
-                  type="button"
-                >
-                  {t("dashboard.today")}
-                </Button>
-              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-8 px-3 text-[11px] min-w-[5rem]"
+                onClick={() => {
+                  const todayDate = parseLocalDay(getLocalNowSnapshot(new Date(), settings.timeZone).localDay) ?? new Date();
+                  setVisibleMonth(startOfMonth(todayDate));
+                  updateContext({ day: todayDate });
+                }}
+                type="button"
+              >
+                {t("dashboard.today")}
+              </Button>
             </div>
-            {showCalendar ? (
-              <Calendar
-                selected={selectedDate}
-                month={visibleMonth}
-                onSelect={(date) => updateContext({ day: date })}
-                locale={settings.locale}
-                firstDayOfWeek={settings.firstDayOfWeek}
-                holidayDates={calendarHolidays.map((holiday) => holiday.date)}
-                dayStates={calendarDayStates}
-                onMonthChange={setVisibleMonth}
-                compact
-                className="rounded-xl border border-border bg-background"
-              />
-            ) : null}
+            <p className="text-[11px] text-muted-foreground">
+              {t("dashboard.expected", { value: formatMinutes(summary.contractStats.today.expectedMinutes) })}
+              <span className="mx-1 opacity-50">/</span>
+              {t("dashboard.recordedBadge", { value: formatMinutes(summary.contractStats.today.recordedMinutes) })}
+              <span className="mx-1 opacity-50">/</span>
+              {t("dashboard.vacationAvailable", { value: Math.max(0, summary.contractStats.vacation.availableDays).toFixed(1) })}
+              <span className="mx-1 opacity-50">/</span>
+              {t("dashboard.timeOffAvailable", { value: (Math.max(0, summary.contractStats.timeOffInLieu.availableMinutes) / 60).toFixed(1) })}
+            </p>
+            <Calendar
+              selected={selectedDate}
+              month={visibleMonth}
+              onSelect={(date) => updateContext({ day: date })}
+              locale={settings.locale}
+              firstDayOfWeek={settings.firstDayOfWeek}
+              holidayDates={calendarHolidays.map((holiday) => holiday.date)}
+              dayStates={calendarDayStates}
+              onMonthChange={setVisibleMonth}
+              compact
+              className="mt-2"
+            />
           </div>
           <div className="flex flex-col gap-2 rounded-xl border border-border bg-background p-3">
             <p className="text-sm font-medium text-foreground">{t("dashboard.records")}</p>
