@@ -17,10 +17,25 @@ pnpm-debug.log*
 # Environment files
 .env
 .env.*
-cloudflare/.dev.vars
-cloudflare/.dev.vars.*
+.env.local
+.env.*.local
+
+# Secrets and local credentials
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
 
 # Databases and runtime data
+data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
 data/*.db
 data/*.db-journal
 data/*.db-shm
@@ -29,6 +44,8 @@ data/*.sqlite
 data/*.sqlite3
 
 # Caches and temp files
+.wrangler/
+cloudflare/
 .cache/
 .temp/
 __pycache__/
