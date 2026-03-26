@@ -1,23 +1,14 @@
 import { serve } from "@hono/node-server";
-import { app } from "./api/app";
+import { createApp } from "./api/app";
 import { resolveRuntimeConfig } from "./runtime/env";
-import type { RuntimeBindings } from "./runtime/types";
 
 const config = await resolveRuntimeConfig();
-
-const bindings: RuntimeBindings = {
-  APP_ENV: config.appEnv,
-  APP_VERSION: config.appVersion,
-  JWT_SECRET: config.jwtSecret,
-  SESSION_TTL_HOURS: String(config.sessionTtlHours),
-  NODE_SYSTEM_SQLITE_PATH: config.nodeSystemSqlitePath,
-  NODE_COMPANY_SQLITE_DIR: config.nodeCompanySqliteDir,
-  ADMIN_ACCESS_TOKEN: config.adminAccessToken
-};
+const app = createApp(config);
 
 serve({
-  fetch: (request) => app.fetch(request, bindings),
-  port: Number(process.env.PORT ?? 3000)
+  fetch: (request) => app.fetch(request),
+  port: Number(process.env.PORT ?? 3000),
+  hostname: "0.0.0.0"
 });
 
 console.log(`Jtzt backend listening on http://localhost:${Number(process.env.PORT ?? 3000)}`);

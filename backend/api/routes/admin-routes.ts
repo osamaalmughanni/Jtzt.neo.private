@@ -3,7 +3,7 @@ import { z } from "zod";
 import crypto from "node:crypto";
 import { authMiddleware, requireAdmin } from "../../auth/middleware";
 import { createCompanyDatabase } from "../../db/runtime-database";
-import { adminCsvMigrationService } from "../../services/admin-csv-migration";
+import { adminSqliteMigrationService } from "../../services/admin-sqlite-migration";
 import { adminService } from "../../services/admin-service";
 import { authService } from "../../services/auth-service";
 import { systemService } from "../../services/system-service";
@@ -61,7 +61,7 @@ adminRoutes.get("/companies", async (c) => {
 });
 
 adminRoutes.get("/migration-schema", async (c) => {
-  return c.json({ schema: await adminCsvMigrationService.getSchema() });
+  return c.json({ schema: await adminSqliteMigrationService.getSchema() });
 });
 
 adminRoutes.get("/invitation-codes", async (c) => {
@@ -82,25 +82,25 @@ adminRoutes.post("/invitation-codes/delete", async (c) => {
 adminRoutes.post("/companies/create", async (c) => {
   const body = createCompanySchema.parse(await c.req.json());
   const companyId = crypto.randomUUID();
-  const companyDb = await createCompanyDatabase(c.get("config"), companyId, c.env);
+  const companyDb = await createCompanyDatabase(c.get("config"), companyId);
   return c.json({ company: await adminService.createCompany(c.get("systemDb"), companyDb, body, companyId) });
 });
 
 adminRoutes.post("/companies/create/import", async (c) => {
   const formData = await c.req.formData();
   const name = String(formData.get("name") ?? "").trim();
-  const files = formData.getAll("files").filter((value): value is File => value instanceof File);
-  if (files.length === 0) {
-    return c.json({ error: "CSV migration files are required" }, 400);
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return c.json({ error: "A SQLite migration file is required" }, 400);
   }
 
   const companyId = crypto.randomUUID();
-  const companyDb = await createCompanyDatabase(c.get("config"), companyId, c.env);
+  const companyDb = await createCompanyDatabase(c.get("config"), companyId);
   return c.json({
-    company: await adminCsvMigrationService.createCompanyFromCsv(
+    company: await adminSqliteMigrationService.createCompanyFromSQLite(
       c.get("systemDb"),
       companyDb,
-      { files, name: name || undefined },
+      { file, name: name || undefined },
       companyId,
     ),
   });
@@ -108,8 +108,8 @@ adminRoutes.post("/companies/create/import", async (c) => {
 
 adminRoutes.post("/companies/delete", async (c) => {
   const body = deleteCompanySchema.parse(await c.req.json());
-  const companyDb = await createCompanyDatabase(c.get("config"), body.companyId, c.env);
-  await adminService.deleteCompany(c.get("systemDb"), companyDb, body, { config: c.get("config"), bindings: c.env });
+  const companyDb = await createCompanyDatabase(c.get("config"), body.companyId);
+  await adminService.deleteCompany(c.get("systemDb"), companyDb, body, { config: c.get("config") });
   return c.json({ success: true });
 });
 
@@ -120,14 +120,14 @@ adminRoutes.get("/companies/:companyId/export", async (c) => {
     return c.json({ error: "Company not found" }, 404);
   }
 
-  const companyDb = await createCompanyDatabase(c.get("config"), companyId, c.env);
-  const exported = await adminCsvMigrationService.exportCompany(c.get("systemDb"), companyDb, companyId);
+  const companyDb = await createCompanyDatabase(c.get("config"), companyId);
+  const exported = await adminSqliteMigrationService.exportCompany(c.get("systemDb"), companyDb, companyId);
   return c.json({
     packageName: exported.packageName,
     fileName: exported.fileName,
     contentType: exported.contentType,
     exportedAt: exported.exportedAt,
-    archiveBase64: exported.archiveBase64,
+    fileBase64: exported.fileBase64,
   });
 });
 
@@ -139,30 +139,30 @@ adminRoutes.post("/companies/:companyId/import", async (c) => {
   }
 
   const formData = await c.req.formData();
-  const files = formData.getAll("files").filter((value): value is File => value instanceof File);
-  if (files.length === 0) {
-    return c.json({ error: "CSV migration files are required" }, 400);
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return c.json({ error: "A SQLite migration file is required" }, 400);
   }
 
-  const companyDb = await createCompanyDatabase(c.get("config"), companyId, c.env);
+  const companyDb = await createCompanyDatabase(c.get("config"), companyId);
   return c.json({
-    company: await adminCsvMigrationService.replaceCompanyFromCsv(c.get("systemDb"), companyDb, {
+    company: await adminSqliteMigrationService.replaceCompanyFromSQLite(c.get("systemDb"), companyDb, {
       companyId,
       companyName: company.name,
-      files,
+      file,
     }),
   });
 });
 
 adminRoutes.post("/companies/admins/create", async (c) => {
   const body = createCompanyAdminSchema.parse(await c.req.json());
-  const companyDb = await createCompanyDatabase(c.get("config"), body.companyId, c.env);
+  const companyDb = await createCompanyDatabase(c.get("config"), body.companyId);
   await adminService.createCompanyAdmin(c.get("systemDb"), companyDb, body);
   return c.json({ success: true });
 });
 
 adminRoutes.get("/stats", async (c) => {
   return c.json({
-    stats: await adminService.getSystemStats(c.get("systemDb"), (companyId) => createCompanyDatabase(c.get("config"), companyId, c.env)),
+    stats: await adminService.getSystemStats(c.get("systemDb"), (companyId) => createCompanyDatabase(c.get("config"), companyId)),
   });
 });

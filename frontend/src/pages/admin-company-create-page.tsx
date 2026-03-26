@@ -39,9 +39,9 @@ export function AdminCompanyCreatePage() {
     if (!adminSession) return;
     try {
       if (databaseFiles.length > 0) {
-        await api.createCompanyFromCsvPackage(adminSession.token, {
+        await api.createCompanyFromMigrationFile(adminSession.token, {
           name: values.name,
-          files: databaseFiles
+          file: databaseFiles[0]
         });
       } else {
         if (values.adminFullName.trim().length < 2) throw new Error("Full name is required");
@@ -91,12 +91,11 @@ export function AdminCompanyCreatePage() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <FormLabel>Import CSV migration package</FormLabel>
+                <FormLabel>Import SQLite migration file</FormLabel>
                 <FileInput
                   files={databaseFiles}
-                  multiple
-                  accept=".zip,.csv"
-                  placeholder="Upload one migration zip or company.csv plus all table CSV files"
+                  accept=".sqlite"
+                  placeholder="Upload one SQLite migration file"
                   buttonLabel="Select"
                   onFilesChange={setDatabaseFiles}
                 />
@@ -144,7 +143,7 @@ export function AdminCompanyCreatePage() {
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
-                  {databaseFiles.length > 0 ? "The uploaded migration zip or unpacked CSV set will seed this company database." : "The company will get its own isolated company database."}
+                  {databaseFiles.length > 0 ? "The uploaded SQLite file will seed this company database." : "The company will get its own isolated company database."}
                 </p>
                 <Button type="submit" disabled={form.formState.isSubmitting}>
                   Create company

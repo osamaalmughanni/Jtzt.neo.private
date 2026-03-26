@@ -61,7 +61,7 @@ authRoutes.post("/login", async (c) => {
   if (!company) {
     return c.json({ error: "Invalid company credentials" }, 401);
   }
-  const companyDb = await createCompanyDatabase(c.get("config"), company.id, c.env);
+  const companyDb = await createCompanyDatabase(c.get("config"), company.id);
   return c.json({ session: await authService.loginCompanyUser(systemDb, companyDb, c.get("config"), body) });
 });
 
@@ -69,7 +69,7 @@ authRoutes.post("/register-company", async (c) => {
   const body = companyRegistrationSchema.parse(await c.req.json());
   const systemDb = c.get("systemDb");
   const companyId = crypto.randomUUID();
-  const companyDb = await createCompanyDatabase(c.get("config"), companyId, c.env);
+  const companyDb = await createCompanyDatabase(c.get("config"), companyId);
   return c.json({ session: await authService.registerCompany(systemDb, companyDb, c.get("config"), body, companyId) });
 });
 
@@ -85,7 +85,7 @@ authRoutes.post("/tablet/login", async (c) => {
   if (!company) {
     return c.json({ error: "Invalid tablet code" }, 401);
   }
-  const companyDb = await createCompanyDatabase(c.get("config"), company.id, c.env);
+  const companyDb = await createCompanyDatabase(c.get("config"), company.id);
   return c.json({ session: await authService.loginTabletUser(systemDb, companyDb, c.get("config"), body) });
 });
 

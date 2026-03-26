@@ -335,15 +335,14 @@ export interface CompanyMigrationSchemaResponse {
       key: string;
       version: number;
       encoding: string;
-      delimiter: string;
-      lineTerminator: string;
-      nullToken: string;
-      oneCsvPerTable: boolean;
-      schemaFileName: string;
-      metadataFileName: string;
+      singleFile: boolean;
+      fileExtension: string;
+      packageTableName: string;
+      schemaSource: string;
+      systemSchemaSource: string;
     };
-    companyMetadata: {
-      fileName: string;
+    packageMetadata: {
+      tableName: string;
       description: string;
       columns: CompanyMigrationSchemaColumn[];
     };
@@ -352,12 +351,12 @@ export interface CompanyMigrationSchemaResponse {
   };
 }
 
-export interface CompanyMigrationExportResponse {
+export interface CompanyMigrationFileResponse {
   packageName: string;
   fileName: string;
   contentType: string;
   exportedAt: string;
-  archiveBase64: string;
+  fileBase64: string;
 }
 
 export interface SettingsResponse {

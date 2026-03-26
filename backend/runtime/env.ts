@@ -1,4 +1,4 @@
-import type { RuntimeBindings, RuntimeConfig } from "./types";
+import type { RuntimeConfig } from "./types";
 
 async function parseDotEnvFile(filePath: string) {
   const fs = await import("node:fs");
@@ -73,23 +73,15 @@ function validateRuntimeConfig(config: RuntimeConfig) {
   }
 }
 
-export async function resolveRuntimeConfig(bindings?: RuntimeBindings): Promise<RuntimeConfig> {
-  const isCloudflare = Boolean(bindings?.SYSTEM_DO);
-  const source: RuntimeBindings | Record<string, string> = isCloudflare ? (bindings ?? {}) : await getNodeEnvSource();
-  const nodeSystemSqlitePath = isCloudflare
-    ? "cloudflare://system-do"
-    : source.NODE_SYSTEM_SQLITE_PATH?.trim() || `${process.cwd()}/data/system.db`;
-  const nodeCompanySqliteDir = isCloudflare
-    ? "cloudflare://company-do"
-    : source.NODE_COMPANY_SQLITE_DIR?.trim() || `${process.cwd()}/data/companies`;
+export async function resolveRuntimeConfig(): Promise<RuntimeConfig> {
+  const source = await getNodeEnvSource();
   const config: RuntimeConfig = {
-    runtime: isCloudflare ? "cloudflare" : "node",
     appEnv: source.APP_ENV?.trim() || "development",
     appVersion: source.APP_VERSION?.trim() || "dev",
     jwtSecret: source.JWT_SECRET?.trim() || "jtzt-dev-secret-change-me",
     sessionTtlHours: toPositiveInteger(source.SESSION_TTL_HOURS, 12),
-    nodeSystemSqlitePath,
-    nodeCompanySqliteDir,
+    nodeSystemSqlitePath: source.NODE_SYSTEM_SQLITE_PATH?.trim() || `${process.cwd()}/data/system.db`,
+    nodeCompanySqliteDir: source.NODE_COMPANY_SQLITE_DIR?.trim() || `${process.cwd()}/data/companies`,
     adminAccessToken: source.ADMIN_ACCESS_TOKEN?.trim() || source.ADMIN_BOOTSTRAP_TOKEN?.trim() || "change-this-admin-token"
   };
 

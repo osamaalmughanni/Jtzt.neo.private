@@ -140,9 +140,13 @@ export function AdminCompaniesPage() {
         if (newCompany.name.trim().length < 2) {
           throw new Error("Company name is required");
         }
-        await api.createCompanyFromCsvPackage(adminSession.token, {
+        const migrationFile = createMigrationFiles[0];
+        if (!migrationFile) {
+          throw new Error("SQLite migration file is required");
+        }
+        await api.createCompanyFromMigrationFile(adminSession.token, {
           name: newCompany.name.trim(),
-          files: createMigrationFiles,
+          file: migrationFile,
         });
       } else {
         if (newCompany.name.trim().length < 2) throw new Error("Company name is required");
@@ -238,38 +242,42 @@ export function AdminCompaniesPage() {
     }
   }
 
-  async function handleDownloadCompanyCsvPackage(companyId: string, companyName: string) {
+  async function handleDownloadCompanyMigrationFile(companyId: string, companyName: string) {
     if (!adminSession) return;
     try {
-      const exported = await api.downloadCompanyCsvPackage(adminSession.token, companyId);
+      const exported = await api.downloadCompanyMigrationFile(adminSession.token, companyId);
       const url = window.URL.createObjectURL(exported.blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = exported.fileName || `${companyName}.migration.zip`;
+      anchor.download = exported.fileName || `${companyName}.migration.sqlite`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
       window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
-      toast({ title: `CSV package exported for ${companyName}` });
+      toast({ title: `SQLite package exported for ${companyName}` });
     } catch (error) {
       toast({
-        title: "Could not export CSV package",
+        title: "Could not export SQLite package",
         description: error instanceof Error ? error.message : "Request failed",
       });
     }
   }
 
-  async function handleImportCompanyCsvPackage(companyId: string) {
+  async function handleImportCompanyMigrationFile(companyId: string) {
     if (!adminSession || importFiles.length === 0) return;
     setImportingCompanyId(companyId);
     try {
-      await api.importCompanyCsvPackage(adminSession.token, companyId, importFiles);
+      const migrationFile = importFiles[0];
+      if (!migrationFile) {
+        throw new Error("SQLite migration file is required");
+      }
+      await api.importCompanyMigrationFile(adminSession.token, companyId, migrationFile);
       setImportFiles([]);
-      toast({ title: "CSV package imported" });
+      toast({ title: "SQLite package imported" });
       await reloadAdminData();
     } catch (error) {
       toast({
-        title: "Could not import CSV package",
+        title: "Could not import SQLite package",
         description: error instanceof Error ? error.message : "Request failed",
       });
     } finally {
@@ -367,7 +375,7 @@ export function AdminCompaniesPage() {
               <FormPanel className="gap-4">
                 <div className="flex flex-col gap-1">
                   <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">Create company</p>
-                  <p className="text-sm text-muted-foreground">Create a fresh workspace or seed one from a CSV migration package inside the same admin surface.</p>
+                  <p className="text-sm text-muted-foreground">Create a fresh workspace or seed one from a single SQLite migration file inside the same admin surface.</p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <Input
@@ -396,19 +404,18 @@ export function AdminCompaniesPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm font-medium text-foreground">Optional CSV package import</p>
+                  <p className="text-sm font-medium text-foreground">Optional SQLite migration import</p>
                   <FileInput
                     files={createMigrationFiles}
-                    multiple
-                    accept=".zip,.csv"
-                    placeholder="Upload one migration zip or company.csv plus all exported table CSV files"
+                    accept=".sqlite"
+                    placeholder="Upload one SQLite migration file"
                     buttonLabel="Select"
                     onFilesChange={setCreateMigrationFiles}
                   />
                 </div>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm text-muted-foreground">
-                    {createMigrationFiles.length > 0 ? "The uploaded migration zip or unpacked CSV set will seed the company directly from the exported relational package." : "A standard company with one admin user will be created."}
+                    {createMigrationFiles.length > 0 ? "The uploaded SQLite file will seed the company directly from the exported relational package." : "A standard company with one admin user will be created."}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Dialog
@@ -428,7 +435,7 @@ export function AdminCompaniesPage() {
                       <DialogContent className="max-w-5xl">
                         <DialogHeader>
                           <DialogTitle>Migration schema support</DialogTitle>
-                          <DialogDescription>Live JSON contract for the CSV migration package, generated from the current company schema.</DialogDescription>
+                          <DialogDescription>Live JSON contract for the SQLite migration package, generated from the current company schema.</DialogDescription>
                         </DialogHeader>
                         <div className="flex flex-col gap-3">
                           <div className="flex flex-wrap gap-2">
@@ -520,7 +527,7 @@ export function AdminCompaniesPage() {
             <FormPanel className="gap-4">
                 <div className="flex flex-col gap-1">
                   <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">Companies</p>
-                <p className="text-sm text-muted-foreground">Each company stays manageable from one card: CSV migration control, admin provisioning, and deletion.</p>
+                <p className="text-sm text-muted-foreground">Each company stays manageable from one card: SQLite migration control, admin provisioning, and deletion.</p>
               </div>
               {companies.length === 0 ? (
                 <div className="border border-dashed border-border bg-muted/20 px-4 py-10 text-sm text-muted-foreground">
@@ -551,36 +558,35 @@ export function AdminCompaniesPage() {
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => void handleDownloadCompanyCsvPackage(company.id, company.name)}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void handleDownloadCompanyMigrationFile(company.id, company.name)}>
                           <Download className="mr-2 h-4 w-4" />
-                          Export CSV
+                          Export SQLite
                         </Button>
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button type="button" variant="outline" size="sm">
                               <Upload className="mr-2 h-4 w-4" />
-                              Import CSV
+                              Import SQLite
                             </Button>
                           </DialogTrigger>
                           <DialogContent className="w-[calc(100%-1rem)] max-w-[38rem] gap-5 overflow-hidden p-5 sm:p-6">
                             <DialogHeader>
-                              <DialogTitle>Import CSV package</DialogTitle>
+                              <DialogTitle>Import SQLite package</DialogTitle>
                               <DialogDescription className="max-w-full break-words pr-8">
-                                Upload one migration zip or the unpacked CSV set to fully replace {company.name}.
+                                Upload one SQLite migration file to fully replace {company.name}.
                               </DialogDescription>
                             </DialogHeader>
                             <div className="flex min-w-0 flex-col gap-4">
                               <FileInput
                                 files={importFiles}
-                                multiple
-                                accept=".zip,.csv"
-                                placeholder="Upload one migration zip or company.csv plus all exported table CSV files"
+                                accept=".sqlite"
+                                placeholder="Upload one SQLite migration file"
                                 buttonLabel="Select"
                                 onFilesChange={setImportFiles}
                               />
                               <ImportSelectionSummary files={importFiles} />
-                              <Button type="button" onClick={() => void handleImportCompanyCsvPackage(company.id)} disabled={importFiles.length === 0 || importingCompanyId === company.id}>
-                                {importingCompanyId === company.id ? "Importing..." : "Replace company from CSV"}
+                              <Button type="button" onClick={() => void handleImportCompanyMigrationFile(company.id)} disabled={importFiles.length === 0 || importingCompanyId === company.id}>
+                                {importingCompanyId === company.id ? "Importing..." : "Replace company from SQLite"}
                               </Button>
                             </div>
                           </DialogContent>

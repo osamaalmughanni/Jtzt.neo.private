@@ -11,7 +11,7 @@ import type {
 } from "../../shared/types/api";
 import { destroyCompanyDatabase } from "../db/runtime-database";
 import { mapCompanySettings, mapCompanyUser, mapProject, mapTask, mapTimeEntry, mapUserContract, mapUserContractScheduleDay } from "../db/mappers";
-import type { AppDatabase, RuntimeBindings, RuntimeConfig } from "../runtime/types";
+import type { AppDatabase, RuntimeConfig } from "../runtime/types";
 import { systemService } from "./system-service";
 import { createLegacyContractSchedule } from "./user-contract-schedule";
 import { createDefaultOvertimeSettings } from "../../shared/utils/overtime";
@@ -372,7 +372,7 @@ export const adminService = {
     systemDb: AppDatabase,
     companyDb: AppDatabase,
     input: DeleteCompanyInput,
-    options?: { config?: RuntimeConfig; bindings?: RuntimeBindings },
+    options?: { config?: RuntimeConfig },
   ) {
     const company = await systemService.getCompanyById(systemDb, input.companyId);
     if (!company) {
@@ -381,7 +381,7 @@ export const adminService = {
     await deleteCompanyData(companyDb, input.companyId);
     await systemDb.run("DELETE FROM companies WHERE id = ?", [input.companyId]);
     if (options?.config) {
-      await destroyCompanyDatabase(options.config, input.companyId, options.bindings);
+      await destroyCompanyDatabase(options.config, input.companyId);
     }
   },
 

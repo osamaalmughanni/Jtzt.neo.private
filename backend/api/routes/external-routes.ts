@@ -48,7 +48,7 @@ externalRoutes.use("*", async (c, next) => {
   }
 
   c.set("externalCompany", company);
-  c.set("db", await createCompanyDatabase(c.get("config"), company.id, c.env));
+  c.set("db", await createCompanyDatabase(c.get("config"), company.id));
   await next();
 });
 

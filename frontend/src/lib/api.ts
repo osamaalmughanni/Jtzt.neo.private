@@ -1,7 +1,7 @@
 import type {
   AdminLoginInput,
   CompanyApiDocsResponse,
-  CompanyMigrationExportResponse,
+  CompanyMigrationFileResponse,
   CompanyMigrationSchemaResponse,
   CompanyApiKeyStatusResponse,
   CompanyListResponse,
@@ -494,12 +494,10 @@ export const api = {
     });
   },
 
-  async createCompanyFromCsvPackage(token: string, input: { name: string; files: File[] }) {
+  async createCompanyFromMigrationFile(token: string, input: { name: string; file: File }) {
     const formData = new FormData();
     formData.set("name", input.name);
-    for (const file of input.files) {
-      formData.append("files", file);
-    }
+    formData.set("file", input.file);
 
     const response = await fetch("/api/admin/companies/create/import", {
       method: "POST",
@@ -558,23 +556,21 @@ export const api = {
     });
   },
 
-  async downloadCompanyCsvPackage(token: string, companyId: string) {
+  async downloadCompanyMigrationFile(token: string, companyId: string) {
     const path = `/api/admin/companies/${companyId}/export`;
-    const payload = await request<CompanyMigrationExportResponse>(path, {
+    const payload = await request<CompanyMigrationFileResponse>(path, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
     return {
-      blob: new Blob([base64ToBytes(payload.archiveBase64)], { type: payload.contentType || "application/zip" }),
-      fileName: payload.fileName || `company-${companyId}.migration.zip`
+      blob: new Blob([base64ToBytes(payload.fileBase64)], { type: payload.contentType || "application/x-sqlite3" }),
+      fileName: payload.fileName || `company-${companyId}.migration.sqlite`
     };
   },
 
-  async importCompanyCsvPackage(token: string, companyId: string, files: File[]) {
+  async importCompanyMigrationFile(token: string, companyId: string, file: File) {
     const formData = new FormData();
-    for (const file of files) {
-      formData.append("files", file);
-    }
+    formData.set("file", file);
 
     const path = `/api/admin/companies/${companyId}/import`;
     const response = await fetch(path, {

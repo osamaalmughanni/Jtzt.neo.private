@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { ZodError } from "zod";
 import { adminRoutes } from "./routes/admin-routes";
 import { authRoutes } from "./routes/auth-routes";
@@ -10,11 +12,53 @@ import { settingsRoutes } from "./routes/settings-routes";
 import { timeRoutes } from "./routes/time-routes";
 import { userRoutes } from "./routes/user-routes";
 import { createSystemDatabase } from "../db/runtime-database";
-import { resolveRuntimeConfig } from "../runtime/env";
+import type { RuntimeConfig } from "../runtime/types";
 import type { AppRouteConfig } from "./context";
 
-export function createApp() {
+const FRONTEND_ROOT = path.resolve(process.cwd(), "dist/frontend");
+const MIME_TYPES: Record<string, string> = {
+  ".css": "text/css; charset=utf-8",
+  ".gif": "image/gif",
+  ".html": "text/html; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/octet-stream",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".txt": "text/plain; charset=utf-8",
+  ".webp": "image/webp",
+};
+
+function getFrontendPath(requestPath: string) {
+  const safePath = requestPath === "/" ? "/index.html" : requestPath;
+  const cleanPath = safePath.split("?")[0].split("#")[0];
+  const normalized = path.posix.normalize(cleanPath).replace(/^(\.\.(\/|\\|$))+/, "");
+  return path.join(FRONTEND_ROOT, normalized);
+}
+
+async function readFrontendResponse(requestPath: string) {
+  const assetPath = getFrontendPath(requestPath);
+  try {
+    const stat = await fs.stat(assetPath);
+    if (stat.isDirectory()) {
+      return await fs.readFile(path.join(assetPath, "index.html"));
+    }
+    return await fs.readFile(assetPath);
+  } catch {
+    return await fs.readFile(path.join(FRONTEND_ROOT, "index.html"));
+  }
+}
+
+export function createApp(config: RuntimeConfig) {
   const app = new Hono<AppRouteConfig>();
+
+  app.use("*", async (c, next) => {
+    c.set("config", config);
+    await next();
+  });
 
   app.use("/api/*", async (c, next) => {
     const requestId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -31,10 +75,8 @@ export function createApp() {
     await next();
   });
 
-  app.use("*", async (c, next) => {
-    const config = await resolveRuntimeConfig(c.env);
-    c.set("config", config);
-    const systemDb = await createSystemDatabase(config, c.env);
+  app.use("/api/*", async (c, next) => {
+    const systemDb = await createSystemDatabase(config);
     c.set("systemDb", systemDb);
     c.set("db", systemDb);
     await next();
@@ -53,10 +95,44 @@ export function createApp() {
     const config = c.get("config");
     return c.json({
       ok: true,
-      runtime: config.runtime,
       env: config.appEnv,
       version: config.appVersion
     });
+  });
+
+  app.get("/", async (c) => {
+    const body = await readFrontendResponse("/");
+    const contentType = MIME_TYPES[".html"];
+    return c.body(body, 200, { "Content-Type": contentType });
+  });
+
+  app.get("/*", async (c) => {
+    if (c.req.path.startsWith("/api/")) {
+      return c.json(
+        {
+          error: "API route not found",
+          method: c.req.method,
+          path: c.req.path,
+        },
+        404,
+      );
+    }
+
+    const requestPath = c.req.path === "/" ? "/index.html" : c.req.path;
+    const requestedFile = getFrontendPath(requestPath);
+    try {
+      const stat = await fs.stat(requestedFile);
+      if (stat.isFile()) {
+        const ext = path.extname(requestedFile).toLowerCase();
+        const body = await fs.readFile(requestedFile);
+        return c.body(body, 200, { "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream" });
+      }
+    } catch {
+      // fall through to SPA shell
+    }
+
+    const body = await readFrontendResponse("/index.html");
+    return c.body(body, 200, { "Content-Type": MIME_TYPES[".html"] });
   });
 
   app.notFound((c) => {
@@ -73,7 +149,7 @@ export function createApp() {
   app.onError((error, c) => {
     const config = (() => {
       try {
-        return c.get("config") as { runtime?: string; appEnv?: string } | undefined;
+        return c.get("config") as { appEnv?: string } | undefined;
       } catch {
         return undefined;
       }
@@ -84,7 +160,6 @@ export function createApp() {
       requestId,
       method: c.req.method,
       path: c.req.path,
-      runtime: config?.runtime ?? "unknown",
       env: config?.appEnv ?? "unknown",
       errorName,
     };
@@ -122,5 +197,3 @@ export function createApp() {
 
   return app;
 }
-
-export const app = createApp();

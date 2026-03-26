@@ -9,17 +9,18 @@
     "dev:backend": "tsx watch backend/server.ts",
     "build": "npm run build:backend && npm run build:frontend",
     "build:frontend": "vite build --config frontend/vite.config.ts",
-    "build:backend": "tsc -p tsconfig.backend.json",
+    "build:backend": "tsc -p tsconfig.backend.json && node scripts/fix-backend-imports.mjs",
     "typecheck": "tsc -p tsconfig.backend.json --noEmit && tsc -p frontend/tsconfig.json --noEmit",
     "test:time": "tsx tests/time-system.test.ts",
-    "cf:wrangler:version": "wrangler --version",
-    "cf:doctor": "python .deploy.py doctor",
-    "cf:prepare-dev": "python .deploy.py prepare-dev",
-    "cf:dev": "python .deploy.py prepare-dev && wrangler dev --config cloudflare/wrangler.jsonc",
-    "cf:write-config": "python .deploy.py write-config",
-    "cf:set-secret": "python .deploy.py set-secret",
-    "cf:deploy": "python .deploy.py deploy",
-    "cf:full": "python .deploy.py full"
+    "deploy:doctor": "python .deploy.py doctor",
+    "deploy:bootstrap": "python .deploy.py bootstrap",
+    "deploy:build": "python .deploy.py build",
+    "deploy:typecheck": "python .deploy.py typecheck",
+    "deploy:push": "python .deploy.py deploy",
+    "deploy:status": "python .deploy.py status",
+    "deploy:rollback": "python .deploy.py rollback",
+    "deploy:logs": "python .deploy.py logs",
+    "deploy:full": "python .deploy.py full"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
@@ -65,7 +66,6 @@
     "tailwindcss": "^3.4.14",
     "tsx": "^4.19.1",
     "typescript": "^5.6.3",
-    "vite": "^7.1.7",
-    "wrangler": "^4.75.0"
+    "vite": "^7.1.7"
   }
 }

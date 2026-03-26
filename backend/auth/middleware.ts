@@ -69,6 +69,6 @@ export const companyDbMiddleware = createMiddleware(async (c: Context, next: Nex
     throw new HTTPException(403, { message: "Company login required" });
   }
 
-  c.set("db", await createCompanyDatabase(c.get("config"), session.companyId, c.env));
+  c.set("db", await createCompanyDatabase(c.get("config"), session.companyId));
   await next();
 });
