@@ -463,7 +463,7 @@ Wants=network-online.target
 Type=simple
 EnvironmentFile={env['DEPLOY_ENV_PATH']}
 WorkingDirectory={env['DEPLOY_BASE_DIR']}/current
-ExecStart=/usr/bin/env node {env['DEPLOY_BASE_DIR']}/current/dist/backend/backend/server.js
+ExecStart=/usr/bin/env node {env['DEPLOY_BASE_DIR']}/current/dist/backend/server.js
 Restart=always
 RestartSec=2
 TimeoutStartSec=120
@@ -735,7 +735,7 @@ set +a
 cat > {release_dir}/schema-refresh.mjs <<'EOF'
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import {{ systemSchema, companySchema }} from './dist/backend/backend/db/schema.js';
+import {{ systemSchema, companySchema }} from './dist/backend/db/schema.js';
 
 const systemPath = process.env.NODE_SYSTEM_SQLITE_PATH || '/var/lib/jtzt/system.db';
 const companyDir = process.env.NODE_COMPANY_SQLITE_DIR || '/var/lib/jtzt/companies';
