@@ -47,19 +47,20 @@ export function CalculationPreviewTable({
           : "flex min-h-0 w-full min-w-0 flex-col gap-4 overflow-hidden rounded-2xl border border-border bg-card p-5"
       }
     >
-      <div className="flex min-w-0 flex-col gap-2">
-        <div className="min-w-0 flex flex-col gap-1">
-          <p className="text-sm font-medium text-foreground">{title}</p>
-        </div>
-        <div className="flex min-w-0 items-center justify-between gap-3">
-          <Badge variant="outline" className="rounded-full border-border bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+      <div className="flex min-w-0 flex-col gap-3">
+        <p className="min-w-0 text-sm font-medium text-foreground">{title}</p>
+        <div className="grid min-w-0 gap-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
+          <Badge
+            variant="outline"
+            className="h-9 w-fit shrink-0 whitespace-nowrap rounded-full border-border bg-muted/40 px-3 text-[11px] font-medium text-muted-foreground"
+          >
             {filteredRows.length} / {rows.length}
           </Badge>
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder={searchPlaceholder}
-            className="h-9 w-full min-w-0 max-w-sm"
+            className="h-9 w-full min-w-0 md:max-w-md"
           />
         </div>
       </div>

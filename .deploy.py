@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import select
 import secrets
 import shutil
 import shlex
@@ -36,6 +37,7 @@ import tarfile
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -107,6 +109,48 @@ def red(text: str) -> str:
 def fail(message: str, code: int = 1) -> None:
     print(f"[deploy:error] {message}", file=sys.stderr)
     raise SystemExit(code)
+
+
+def pause_on_success(timeout_seconds: int = 10) -> None:
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return
+
+    print("")
+    print(green(bold("DEPLOY SUCCESS")))
+    print(f"Press Enter to close now, or wait {timeout_seconds} seconds to close automatically.")
+    print("")
+    print(">", end=" ", flush=True)
+
+    deadline = datetime.now().timestamp() + timeout_seconds
+    if os.name == "nt":
+        try:
+            import msvcrt
+        except Exception:
+            input()
+            return
+
+        while True:
+            if msvcrt.kbhit():
+                key = msvcrt.getwch()
+                if key in ("\r", "\n"):
+                    print("")
+                    return
+                if key == "\x03":
+                    raise KeyboardInterrupt
+            if datetime.now().timestamp() >= deadline:
+                print("")
+                return
+            time.sleep(1)
+    else:
+        remaining = timeout_seconds
+        while remaining > 0:
+            ready, _, _ = select.select([sys.stdin], [], [], 1)
+            if ready:
+                sys.stdin.readline()
+                print("")
+                return
+            remaining -= 1
+        print("")
 
 
 def run(command: list[str], *, cwd: Path | None = None, capture_output: bool = False, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -860,6 +904,7 @@ def main() -> None:
         if args.command == "deploy":
             build_assets()
             deploy(build_release_env(env, allow_generate=False))
+            pause_on_success()
             return
         if args.command == "status":
             status(build_release_env(env, allow_generate=False))
@@ -879,6 +924,7 @@ def main() -> None:
             bootstrap(prepared)
             build_assets()
             deploy(build_release_env(prepared, allow_generate=False))
+            pause_on_success()
             return
 
         fail(f"unsupported command: {args.command}")

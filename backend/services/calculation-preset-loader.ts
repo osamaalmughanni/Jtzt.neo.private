@@ -3,10 +3,24 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { CalculationPresetRecord } from "../../shared/types/models";
 
-const PRESET_DIR = path.join(process.cwd(), "backend", "services", "calculation-presets");
+const PRESET_DIR_CANDIDATES = [
+  path.join(process.cwd(), "backend", "services", "calculation-presets"),
+  path.join(process.cwd(), "dist", "backend", "services", "calculation-presets"),
+];
+
+function resolvePresetDir() {
+  for (const candidate of PRESET_DIR_CANDIDATES) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return PRESET_DIR_CANDIDATES[0];
+}
 
 async function loadPresetModule(fileName: string) {
-  const filePath = path.join(PRESET_DIR, fileName);
+  const presetDir = resolvePresetDir();
+  const filePath = path.join(presetDir, fileName);
   const moduleUrl = `${pathToFileURL(filePath).href}?v=${fs.statSync(filePath).mtimeMs}`;
   const module = (await import(moduleUrl)) as {
     preset?: CalculationPresetRecord;
@@ -22,12 +36,13 @@ async function loadPresetModule(fileName: string) {
 }
 
 export async function loadBuiltinCalculationPresets() {
-  if (!fs.existsSync(PRESET_DIR)) {
+  const presetDir = resolvePresetDir();
+  if (!fs.existsSync(presetDir)) {
     return [] as CalculationPresetRecord[];
   }
 
   const files = fs
-    .readdirSync(PRESET_DIR)
+    .readdirSync(presetDir)
     .filter((file) => file.endsWith(".js"))
     .sort((left, right) => left.localeCompare(right));
 
