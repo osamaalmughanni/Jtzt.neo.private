@@ -18,7 +18,7 @@ import { useAuth } from "@/lib/auth";
 import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { formatCompanyDate, formatCompanyDateTime } from "@/lib/locale-format";
 import { normalizeReportDraftFields } from "@/lib/report-fields";
-import { exportReportExcel, exportReportPdf } from "@/lib/report-export";
+import { exportReportExcel, exportReportPdf, getReportColumnLabel } from "@/lib/report-export";
 import { loadReportDraft } from "@/lib/report-draft-storage";
 import { toast } from "@/lib/toast";
 
@@ -150,12 +150,13 @@ function OvertimeTimelineCell({ meta }: { meta: NonNullable<ReportResponse["repo
 }
 
 function OvertimeSummaryCell({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
+  const { t } = useTranslation();
   const rows = [
-    { label: "Target", value: formatDecimalHours(meta.targetMinutes) },
-    { label: "Actual", value: formatDecimalHours(meta.paidMinutes) },
-    { label: "Premium", value: meta.overtimeMinutes > 0 ? `+${meta.premiumPercent}%` : "--" },
-    { label: "Premium credit", value: meta.overtimeMinutes > 0 ? formatDecimalHours(meta.premiumCreditMinutes) : "--" },
-    { label: "Time-off credit", value: meta.overtimeMinutes > 0 ? formatDecimalHours(meta.timeOffInLieuCreditMinutes) : "--" },
+    { label: t("reports.overtimeTarget"), value: formatDecimalHours(meta.targetMinutes) },
+    { label: t("reports.overtimeActual"), value: formatDecimalHours(meta.paidMinutes) },
+    { label: t("reports.overtimePremium"), value: meta.overtimeMinutes > 0 ? `+${meta.premiumPercent}%` : "--" },
+    { label: t("reports.overtimePremiumCredit"), value: meta.overtimeMinutes > 0 ? formatDecimalHours(meta.premiumCreditMinutes) : "--" },
+    { label: t("reports.overtimeTimeOffCredit"), value: meta.overtimeMinutes > 0 ? formatDecimalHours(meta.timeOffInLieuCreditMinutes) : "--" },
   ];
 
   return (
@@ -591,7 +592,7 @@ export function ReportsPreviewPage() {
                           <tr className="border-b border-border bg-muted/40">
                             {resolvedColumns.map((column) => (
                               <th key={column.key} className="whitespace-nowrap px-4 py-3 text-left font-medium text-foreground">
-                                {column.label}
+                                {getReportColumnLabel(column, t)}
                               </th>
                             ))}
                           </tr>
@@ -644,7 +645,7 @@ export function ReportsPreviewPage() {
                                 className="flex h-12 shrink-0 items-center border-r border-border bg-background px-4"
                                 style={{ width: GANTT_LEFT_COLUMN_WIDTH }}
                               >
-                                <span className="text-sm font-medium text-foreground">Users</span>
+                                <span className="text-sm font-medium text-foreground">{t("reports.users")}</span>
                               </div>
                               <div className="relative h-12 shrink-0 overflow-hidden" style={{ width: timelineWidth }}>
                                 {timelineMonths.map((segment) => (
@@ -694,7 +695,7 @@ export function ReportsPreviewPage() {
                                           ))}
                                         {user.condensed.hiddenItemCount > 0 ? (
                                           <span className="inline-flex items-center rounded-full bg-foreground px-2.5 py-1 text-xs text-background">
-                                            +{user.condensed.hiddenItemCount} more
+                                            {t("reports.moreItems", { value: user.condensed.hiddenItemCount })}
                                           </span>
                                         ) : null}
                                       </div>
@@ -738,7 +739,7 @@ export function ReportsPreviewPage() {
                                           </div>
                                         ))}
                                         {user.condensed.totalLaneCount === 0 ? (
-                                          <div className="flex h-full items-center px-2 text-xs text-muted-foreground">No entries</div>
+                                          <div className="flex h-full items-center px-2 text-xs text-muted-foreground">{t("reports.noEntries")}</div>
                                         ) : null}
                                       </div>
                                     </div>

@@ -205,8 +205,8 @@ export function ReportsPage() {
       { value: "start", label: t("reports.start") },
       { value: "finish", label: t("reports.finish") },
       { value: "duration", label: t("reports.duration") },
-      { value: "overtime_state", label: "Overtime state" },
-      { value: "overtime_timeline", label: "Overtime timeline" },
+      { value: "overtime_state", label: t("reports.overtimeState") },
+      { value: "overtime_timeline", label: t("reports.overtimeTimeline") },
       { value: "note", label: t("reports.note") },
       { value: "cost", label: t("reports.cost") },
     );
@@ -267,8 +267,8 @@ export function ReportsPage() {
       { value: "start", label: t("reports.start") },
       { value: "finish", label: t("reports.finish") },
       { value: "duration", label: t("reports.duration") },
-      { value: "overtime_state", label: "Overtime state" },
-      { value: "overtime_timeline", label: "Overtime timeline" },
+      { value: "overtime_state", label: t("reports.overtimeState") },
+      { value: "overtime_timeline", label: t("reports.overtimeTimeline") },
       { value: "note", label: t("reports.note") },
       { value: "cost", label: t("reports.cost") },
     ];

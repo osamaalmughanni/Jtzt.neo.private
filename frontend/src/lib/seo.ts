@@ -19,6 +19,34 @@ function pageTitle(label: string) {
   return `${label} | ${SEO_SITE_NAME}`;
 }
 
+function resolvePrivateTitle(pathname: string) {
+  if (pathname === "/menu" || pathname === "/admin/menu") return pageTitle("Pages");
+  if (pathname === "/dashboard") return pageTitle("Overview");
+  if (pathname === "/dashboard/day") return pageTitle("Select Day");
+  if (pathname === "/dashboard/records/create") return pageTitle("Add Entry");
+  if (pathname.startsWith("/dashboard/records/") && pathname.endsWith("/edit")) return pageTitle("Edit Entry");
+  if (pathname === "/reports") return pageTitle("Reports");
+  if (pathname === "/reports/preview") return pageTitle("Report Preview");
+  if (pathname === "/users") return pageTitle("Users");
+  if (pathname === "/users/create") return pageTitle("Create User");
+  if (pathname.startsWith("/users/") && pathname.endsWith("/edit")) return pageTitle("Edit User");
+  if (pathname === "/fields") return pageTitle("Fields");
+  if (pathname === "/projects") return pageTitle("Projects");
+  if (pathname === "/projects/create") return pageTitle("Create Project");
+  if (pathname.startsWith("/projects/") && pathname.endsWith("/edit")) return pageTitle("Edit Project");
+  if (pathname === "/tasks") return pageTitle("Tasks");
+  if (pathname === "/tasks/create") return pageTitle("Create Task");
+  if (pathname.startsWith("/tasks/") && pathname.endsWith("/edit")) return pageTitle("Edit Task");
+  if (pathname === "/settings") return pageTitle("Settings");
+  if (pathname === "/settings/overtime") return pageTitle("Overtime Management");
+  if (pathname === "/api-access") return pageTitle("API Access");
+  if (pathname === "/tablet") return pageTitle("Tablet");
+  if (pathname === "/tablet/pin") return pageTitle("PIN");
+  if (pathname === "/admin") return pageTitle("Companies");
+  if (pathname === "/admin/companies") return pageTitle("Companies");
+  return null;
+}
+
 export const seoEntries = new Map<string, SeoEntry>([
   [
     "/learn",
@@ -103,30 +131,31 @@ export const seoEntries = new Map<string, SeoEntry>([
 ]);
 
 export function getSeoEntry(pathname: string): SeoEntry {
-  const privateTitles = new Map<string, string>([
-    ["/menu", pageTitle("Pages")],
-    ["/dashboard", pageTitle("Overview")],
-    ["/tablet/pin", pageTitle("PIN")],
-    ["/tablet", pageTitle("Tablet")],
-    ["/users", pageTitle("Users")],
-    ["/settings", pageTitle("Settings")],
-    ["/dashboard/records/create", pageTitle("Add Entry")],
-    ["/admin", pageTitle("Companies")],
-    ["/admin/menu", pageTitle("Pages")],
-    ["/admin/companies", pageTitle("Companies")]
-  ]);
-
   if (
     pathname.startsWith("/admin") ||
     pathname.startsWith("/settings") ||
     pathname.startsWith("/tablet") ||
+    pathname.startsWith("/reports") ||
+    pathname.startsWith("/projects") ||
+    pathname.startsWith("/tasks") ||
     pathname.startsWith("/dashboard/records") ||
+    pathname.startsWith("/users") ||
+    pathname.startsWith("/fields") ||
     pathname === "/menu" ||
     pathname === "/dashboard" ||
-    pathname.startsWith("/users")
+    pathname === "/dashboard/day"
   ) {
+    const title = resolvePrivateTitle(pathname);
+    if (!title) {
+      const message = `Missing private page title for route: ${pathname}`;
+      if (import.meta.env.DEV) {
+        throw new Error(message);
+      }
+      console.error(message);
+    }
+
     return {
-      title: privateTitles.get(pathname) ?? pageTitle("App"),
+      title: title ?? pageTitle("App"),
       description: "Private application area for authenticated Jtzt users.",
       robots: "noindex, nofollow",
       canonicalPath: pathname,
