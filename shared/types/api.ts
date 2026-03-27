@@ -169,6 +169,7 @@ export interface DeleteUserInput {
 export interface CreateProjectInput {
   name: string;
   description?: string;
+  budget: number;
   isActive?: boolean;
   allowAllUsers: boolean;
   allowAllTasks: boolean;
@@ -180,6 +181,7 @@ export interface UpdateProjectInput {
   projectId: number;
   name: string;
   description?: string | null;
+  budget: number;
   isActive: boolean;
   allowAllUsers: boolean;
   allowAllTasks: boolean;

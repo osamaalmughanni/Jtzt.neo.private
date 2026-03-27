@@ -17,8 +17,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
-function countProjectUsage(taskId: number, projectTasks: ProjectTaskManagementResponse["projectTasks"]) {
-  return projectTasks.filter((assignment) => assignment.taskId === taskId).length;
+function countProjectUsage(
+  taskId: number,
+  projects: ProjectTaskManagementResponse["projects"],
+  projectTasks: ProjectTaskManagementResponse["projectTasks"],
+) {
+  const assignedProjectIds = new Set(projectTasks.filter((assignment) => assignment.taskId === taskId).map((assignment) => assignment.projectId));
+  for (const project of projects) {
+    if (project.allowAllTasks) {
+      assignedProjectIds.add(project.id);
+    }
+  }
+  return assignedProjectIds.size;
 }
 
 export function TasksPage() {
@@ -93,7 +103,7 @@ export function TasksPage() {
           ) : (
             <div className="divide-y divide-border">
               {(data?.tasks ?? []).map((task) => {
-                const projectUsage = countProjectUsage(task.id, data?.projectTasks ?? []);
+                const projectUsage = countProjectUsage(task.id, data?.projects ?? [], data?.projectTasks ?? []);
 
                 return (
                   <div key={task.id} className="flex flex-col gap-2 px-5 py-4 text-sm text-foreground transition-colors hover:bg-muted/30">

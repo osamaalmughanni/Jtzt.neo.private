@@ -117,6 +117,7 @@ export interface ProjectRecord {
   id: number;
   name: string;
   description: string | null;
+  budget: number;
   isActive: boolean;
   allowAllUsers: boolean;
   allowAllTasks: boolean;

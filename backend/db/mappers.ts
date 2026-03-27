@@ -142,6 +142,7 @@ export function mapProject(row: any): ProjectRecord {
     id: row.id,
     name: row.name,
     description: row.description,
+    budget: Number(row.budget ?? 0),
     isActive: Boolean(row.is_active),
     allowAllUsers: Boolean(row.allow_all_users ?? 1),
     allowAllTasks: Boolean(row.allow_all_tasks ?? 1),

@@ -11,6 +11,7 @@ const activeOnlyQuerySchema = z.object({
 const createProjectSchema = z.object({
   name: z.string().min(2),
   description: z.string().optional(),
+  budget: z.number().nonnegative(),
   isActive: z.boolean().optional(),
   allowAllUsers: z.boolean(),
   allowAllTasks: z.boolean(),

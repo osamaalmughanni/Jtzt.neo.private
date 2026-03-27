@@ -34,7 +34,7 @@ export const taskService = {
     const projectFilter = options?.activeOnly ? "AND is_active = 1" : "";
     const taskFilter = options?.activeOnly ? "AND is_active = 1" : "";
     const projects = (await db.all(
-      `SELECT id, name, description, is_active, allow_all_users, allow_all_tasks, created_at
+      `SELECT id, name, description, budget, is_active, allow_all_users, allow_all_tasks, created_at
        FROM projects
        WHERE company_id = ? ${projectFilter}
        ORDER BY projects.name COLLATE NOCASE ASC, projects.created_at DESC`,
@@ -97,11 +97,12 @@ export const taskService = {
     await db.exec("BEGIN IMMEDIATE TRANSACTION");
     try {
       const result = await db.run(
-        "INSERT INTO projects (company_id, name, description, is_active, allow_all_users, allow_all_tasks, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO projects (company_id, name, description, budget, is_active, allow_all_users, allow_all_tasks, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
         companyId,
         input.name.trim(),
         normalizeText(input.description),
+        Number(input.budget ?? 0),
         input.isActive === false ? 0 : 1,
         allowAllUsers ? 1 : 0,
         allowAllTasks ? 1 : 0,
@@ -148,11 +149,12 @@ export const taskService = {
     try {
       await db.run(
         `UPDATE projects
-         SET name = ?, description = ?, is_active = ?, allow_all_users = ?, allow_all_tasks = ?
+         SET name = ?, description = ?, budget = ?, is_active = ?, allow_all_users = ?, allow_all_tasks = ?
          WHERE company_id = ? AND id = ?`,
         [
           input.name.trim(),
           normalizeText(input.description),
+          Number(input.budget ?? 0),
           input.isActive ? 1 : 0,
           allowAllUsers ? 1 : 0,
           allowAllTasks ? 1 : 0,

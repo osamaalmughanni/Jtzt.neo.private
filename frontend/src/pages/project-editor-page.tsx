@@ -22,6 +22,7 @@ import type { ProjectRecord } from "@shared/types/models";
 type ProjectFormState = {
   name: string;
   description: string;
+  budget: string;
   isActive: boolean;
   allowAllUsers: boolean;
   allowAllTasks: boolean;
@@ -33,6 +34,7 @@ function createEmptyForm(): ProjectFormState {
   return {
     name: "",
     description: "",
+    budget: "",
     isActive: true,
     allowAllUsers: true,
     allowAllTasks: true,
@@ -82,6 +84,7 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
         setForm({
           name: project.name,
           description: project.description ?? "",
+          budget: String(project.budget ?? 0),
           isActive: project.isActive,
           allowAllUsers: project.allowAllUsers,
           allowAllTasks: project.allowAllTasks,
@@ -111,6 +114,11 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
       toast({ title: t("projects.nameRequired") });
       return;
     }
+    const budget = Number(form.budget);
+    if (Number.isNaN(budget) || budget < 0) {
+      toast({ title: t("projects.budgetInvalid") });
+      return;
+    }
 
     try {
       setSaving(true);
@@ -123,6 +131,7 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
       const payload = {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
+        budget,
         isActive: form.isActive,
         allowAllUsers: form.allowAllUsers,
         allowAllTasks: form.allowAllTasks,
@@ -202,6 +211,16 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
                   value={form.description}
                   placeholder={t("projects.projectDescriptionPlaceholder", { defaultValue: "Short project description" })}
                   onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                />
+              </Field>
+              <Field label={t("projects.budget")}>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.budget}
+                  placeholder={t("projects.budgetPlaceholder", { defaultValue: "0.00" })}
+                  onChange={(event) => setForm((current) => ({ ...current, budget: event.target.value }))}
                 />
               </Field>
               <Field label={t("projects.active")}>

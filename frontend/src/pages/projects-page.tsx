@@ -97,6 +97,9 @@ export function ProjectsPage() {
                 const assignedTasks = countAssignments(project.id, data?.projectTasks ?? []);
                 const usersLabel = project.allowAllUsers ? t("projects.usersAll") : t("projects.usersSelectedHint", { value: assignedUsers });
                 const tasksLabel = project.allowAllTasks ? t("projects.tasksAll") : t("projects.tasksSelectedHint", { value: assignedTasks });
+                const budgetLabel = t("projects.budgetValue", {
+                  value: new Intl.NumberFormat().format(project.budget),
+                });
 
                 return (
                   <div key={project.id} className="flex flex-col gap-2 px-5 py-4 text-sm text-foreground transition-colors hover:bg-muted/30">
@@ -138,6 +141,9 @@ export function ProjectsPage() {
                         <Badge variant="outline" className="gap-1 rounded-full border-border bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                           <ListChecks size={11} weight="bold" />
                           {tasksLabel}
+                        </Badge>
+                        <Badge variant="outline" className="rounded-full border-border bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          {budgetLabel}
                         </Badge>
                       </div>
                     </div>

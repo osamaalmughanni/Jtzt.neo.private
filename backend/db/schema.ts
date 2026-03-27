@@ -170,6 +170,7 @@ CREATE TABLE IF NOT EXISTS projects (
   company_id TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
+  budget REAL NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
   allow_all_users INTEGER NOT NULL DEFAULT 1,
   allow_all_tasks INTEGER NOT NULL DEFAULT 1,
