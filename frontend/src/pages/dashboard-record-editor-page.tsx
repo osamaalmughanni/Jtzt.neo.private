@@ -19,6 +19,7 @@ import {
   getLocalNowSnapshot,
   toClockTimeValue,
 } from "@shared/utils/time";
+import { getCustomFieldsForTarget } from "@shared/utils/custom-fields";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import { CustomFieldInput } from "@/components/custom-field-input";
 import { EntryTypeTabs } from "@/components/entry-type-tabs";
@@ -217,7 +218,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       : companyIdentity?.user.id || 0;
   const backTo = `/dashboard?user=${effectiveUserId}&day=${dashboardDay}`;
   const activeCustomFields = useMemo(
-    () => settings.customFields.filter((field) => field.targets.includes(entryType)),
+    () => getCustomFieldsForTarget(settings.customFields, { scope: "time_entry", entryType }),
     [entryType, settings.customFields],
   );
   const projectUsersByProject = useMemo(

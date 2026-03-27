@@ -11,13 +11,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { CustomFieldInput } from "@/components/custom-field-input";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 import { MultiSelectFilter } from "@/components/multi-select-filter";
+import type { CompanyCustomField, CompanySettings } from "@shared/types/models";
 import type { ProjectTaskManagementResponse } from "@shared/types/api";
-import type { ProjectRecord } from "@shared/types/models";
+import { getCustomFieldsForTarget } from "@shared/utils/custom-fields";
 
 type ProjectFormState = {
   name: string;
@@ -28,6 +30,7 @@ type ProjectFormState = {
   allowAllTasks: boolean;
   userIds: number[];
   taskIds: number[];
+  customFieldValues: Record<string, string | number | boolean>;
 };
 
 function createEmptyForm(): ProjectFormState {
@@ -40,6 +43,7 @@ function createEmptyForm(): ProjectFormState {
     allowAllTasks: true,
     userIds: [],
     taskIds: [],
+    customFieldValues: {},
   };
 }
 
@@ -51,18 +55,23 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [settingsCustomFields, setSettingsCustomFields] = useState<CompanyCustomField[]>([]);
   const [form, setForm] = useState<ProjectFormState>(createEmptyForm);
 
-  const resource = usePageResource<ProjectTaskManagementResponse>({
+  const resource = usePageResource<ProjectTaskManagementResponse & { settings: CompanySettings }>({
     enabled: Boolean(companySession) && (mode === "create" || Boolean(projectId)),
     deps: [companySession?.token, mode, projectId, t],
     load: async () => {
       if (!companySession) {
-        return { users: [], projects: [], tasks: [], projectUsers: [], projectTasks: [] };
+        return { users: [], projects: [], tasks: [], projectUsers: [], projectTasks: [], settings: { customFields: [] } as unknown as CompanySettings };
       }
 
       try {
-        return await api.listProjectData(companySession.token);
+        const [projectData, settingsResponse] = await Promise.all([
+          api.listProjectData(companySession.token),
+          api.getSettings(companySession.token),
+        ]);
+        return { ...projectData, settings: settingsResponse.settings };
       } catch (error) {
         toast({
           title: t("projects.loadFailed"),
@@ -76,6 +85,7 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
   useEffect(() => {
     const data = resource.data;
     if (!data) return;
+    setSettingsCustomFields(data.settings.customFields);
     if (mode === "edit" && projectId) {
       const project = data.projects.find((item) => item.id === Number(projectId));
       if (project) {
@@ -90,10 +100,16 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
           allowAllTasks: project.allowAllTasks,
           userIds: assignedUserIds,
           taskIds: assignedTaskIds,
+          customFieldValues: project.customFieldValues ?? {},
         });
       }
     }
   }, [mode, projectId, resource.data]);
+
+  const projectCustomFields = useMemo(
+    () => getCustomFieldsForTarget(settingsCustomFields, { scope: "project" }),
+    [settingsCustomFields],
+  );
 
   const userOptions = useMemo(
     () =>
@@ -137,6 +153,7 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
         allowAllTasks: form.allowAllTasks,
         userIds: form.allowAllUsers ? [] : Array.from(new Set(form.userIds)),
         taskIds: form.allowAllTasks ? [] : Array.from(new Set(form.taskIds)),
+        customFieldValues: form.customFieldValues,
       };
 
       if (mode === "create") {
@@ -180,6 +197,16 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
 
   const title = mode === "create" ? t("projects.addProject") : t("projects.editProject");
   const description = t("projects.sheetDescription");
+
+  function setCustomFieldValue(fieldId: string, nextValue: string | number | boolean | undefined) {
+    setForm((current) => ({
+      ...current,
+      customFieldValues: {
+        ...current.customFieldValues,
+        [fieldId]: nextValue ?? "",
+      },
+    }));
+  }
 
   return (
     <FormPage>
@@ -261,6 +288,28 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
               </Field>
             </FormFields>
           </FormSection>
+
+          {projectCustomFields.length > 0 ? (
+            <FormSection>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium text-foreground">{t("projects.customFields")}</p>
+                <p className="text-xs text-muted-foreground">{t("projects.customFieldsDescription")}</p>
+              </div>
+              <FormFields>
+                {projectCustomFields.map((field) => (
+                  <Field key={field.id} label={field.label}>
+                    <CustomFieldInput
+                      field={field}
+                      value={form.customFieldValues[field.id]}
+                      locale={resource.data?.settings.locale ?? "en-GB"}
+                      onValueChange={(value) => setCustomFieldValue(field.id, value)}
+                      booleanLabels={{ yes: t("settings.enabled"), no: t("settings.disabled") }}
+                    />
+                  </Field>
+                ))}
+              </FormFields>
+            </FormSection>
+          ) : null}
 
           {!form.allowAllUsers ? (
             <FormSection>

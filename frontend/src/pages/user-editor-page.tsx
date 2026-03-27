@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { diffClockTimeMinutes, getLocalNowSnapshot } from "@shared/utils/time";
+import type { CompanyCustomField, CompanySettings, CompanyCustomFieldTarget, TimeEntryType } from "@shared/types/models";
 import type { UserContractInput } from "@shared/types/api";
 import type { ContractWeekday, UserContractScheduleBlock, UserContractScheduleDay, UserRole } from "@shared/types/models";
 import { PencilSimple, Plus, Trash } from "phosphor-react";
 import { FormActions, FormFields, FormPage, FormPanel, FormSection, Field, FieldCombobox } from "@/components/form-layout";
+import { CustomFieldInput } from "@/components/custom-field-input";
 import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageBackAction } from "@/components/page-back-action";
@@ -19,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { getCustomFieldsForTarget } from "@shared/utils/custom-fields";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { toast } from "@/lib/toast";
 
@@ -34,6 +37,7 @@ interface UserFormState {
   isActive: boolean;
   pinCode: string;
   email: string;
+  customFieldValues: Record<string, string | number | boolean>;
   contracts: UserContractInput[];
 }
 
@@ -106,6 +110,7 @@ function createEmptyForm(): UserFormState {
     isActive: true,
     pinCode: "",
     email: "",
+    customFieldValues: {},
     contracts: []
   };
 }
@@ -586,6 +591,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   const { companySession, companyIdentity } = useAuth();
   const [settingsLocale, setSettingsLocale] = useState("en-GB");
   const [settingsTimeZone, setSettingsTimeZone] = useState("Europe/Vienna");
+  const [settingsCustomFields, setSettingsCustomFields] = useState<CompanyCustomField[]>([]);
   const [form, setForm] = useState<UserFormState>(createEmptyForm);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -618,6 +624,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   const pageResource = usePageResource<{
     settingsLocale: string;
     settingsTimeZone: string;
+    settingsCustomFields: CompanyCustomField[];
     form: UserFormState;
   }>({
     enabled: Boolean(companySession) && (mode === "create" || Boolean(userId)),
@@ -627,6 +634,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
         return {
           settingsLocale: "en-GB",
           settingsTimeZone: "Europe/Vienna",
+          settingsCustomFields: [],
           form: createEmptyForm()
         };
       }
@@ -637,6 +645,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
           return {
             settingsLocale: settingsResponse.settings.locale,
             settingsTimeZone: settingsResponse.settings.timeZone,
+            settingsCustomFields: settingsResponse.settings.customFields,
             form: createEmptyForm()
           };
         }
@@ -645,6 +654,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
         return {
           settingsLocale: settingsResponse.settings.locale,
           settingsTimeZone: settingsResponse.settings.timeZone,
+          settingsCustomFields: settingsResponse.settings.customFields,
           form: {
             fullName: userResponse.user.fullName,
             username: userResponse.user.username,
@@ -653,6 +663,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
             isActive: userResponse.user.isActive,
             pinCode: userResponse.user.pinCode,
             email: userResponse.user.email ?? "",
+            customFieldValues: userResponse.user.customFieldValues ?? {},
             contracts: userResponse.user.contracts.map((contract) =>
               normalizeContract({
                 id: contract.id,
@@ -680,11 +691,27 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     if (!pageResource.data) return;
     setSettingsLocale(pageResource.data.settingsLocale);
     setSettingsTimeZone(pageResource.data.settingsTimeZone);
+    setSettingsCustomFields(pageResource.data.settingsCustomFields);
     setForm(pageResource.data.form);
   }, [pageResource.data]);
 
+  const userCustomFields = useMemo(
+    () => getCustomFieldsForTarget(settingsCustomFields, { scope: "user" }),
+    [settingsCustomFields],
+  );
+
   function setField<K extends keyof UserFormState>(key: K, value: UserFormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function setCustomFieldValue(fieldId: string, nextValue: string | number | boolean | undefined) {
+    setForm((current) => ({
+      ...current,
+      customFieldValues: {
+        ...current.customFieldValues,
+        [fieldId]: nextValue ?? "",
+      },
+    }));
   }
 
   function updateContract(index: number, updater: (contract: UserContractInput) => UserContractInput) {
@@ -815,6 +842,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
         isActive: form.isActive,
         pinCode: form.pinCode.trim(),
         email: form.email.trim() || null,
+        customFieldValues: form.customFieldValues,
         contracts: form.contracts.map((contract) => {
           const normalized = normalizeContract(contract);
           return {
@@ -893,6 +921,28 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
               onFieldChange={setField}
               t={t}
             />
+
+            {userCustomFields.length > 0 ? (
+              <FormSection>
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium text-foreground">{t("userEditor.customFields")}</p>
+                  <p className="text-xs text-muted-foreground">{t("userEditor.customFieldsDescription")}</p>
+                </div>
+                <FormFields className="flex flex-col gap-4">
+                  {userCustomFields.map((field) => (
+                    <Field key={field.id} label={field.label}>
+                      <CustomFieldInput
+                        field={field}
+                        value={form.customFieldValues[field.id]}
+                        locale={settingsLocale}
+                        onValueChange={(value) => setCustomFieldValue(field.id, value)}
+                        booleanLabels={{ yes: t("recordEditor.yes"), no: t("recordEditor.no") }}
+                      />
+                    </Field>
+                  ))}
+                </FormFields>
+              </FormSection>
+            ) : null}
 
             <UserContractsSection
               contracts={form.contracts}

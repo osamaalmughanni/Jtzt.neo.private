@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { CompanyCustomField, CompanyCustomFieldOption, CompanySettings, TimeEntryType } from "@shared/types/models";
+import type { CompanyCustomField, CompanyCustomFieldOption, CompanyCustomFieldTarget, CompanyCustomFieldType, CompanySettings, CustomFieldTargetScope, TimeEntryType } from "@shared/types/models";
+import { normalizeCustomField } from "@shared/utils/custom-fields";
 import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import { PageActionBar, PageActionBarActions, PageActionButton } from "@/components/page-action-bar";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormSection } from "@/components/form-layout";
@@ -44,7 +45,7 @@ function createField(): CompanyCustomField {
     id: crypto.randomUUID(),
     label: "",
     type: "text",
-    targets: ["work"],
+    targets: [{ scope: "time_entry", entryTypes: ["work"] }],
     required: false,
     placeholder: null,
     options: [],
@@ -93,7 +94,13 @@ export function FieldsPage() {
     { value: "boolean", label: t("fields.typeBoolean") },
     { value: "select", label: t("fields.typeSelect") },
   ];
-  const targetOptions: Array<{ value: TimeEntryType; label: string }> = [
+  const targetOptions: Array<{ value: CustomFieldTargetScope; label: string }> = [
+    { value: "time_entry", label: t("fields.targetTimeEntry") },
+    { value: "user", label: t("fields.targetUser") },
+    { value: "project", label: t("fields.targetProject") },
+    { value: "task", label: t("fields.targetTask") },
+  ];
+  const timeEntryTargetOptions: Array<{ value: TimeEntryType; label: string }> = [
     { value: "work", label: t("fields.targetWork") },
     { value: "vacation", label: t("fields.targetVacation") },
     { value: "time_off_in_lieu", label: t("fields.targetTimeOffInLieu") },
@@ -113,16 +120,69 @@ export function FieldsPage() {
     }));
   }
 
-  function toggleTarget(index: number, target: TimeEntryType) {
+  function toggleTargetScope(index: number, scope: CustomFieldTargetScope) {
     const field = settings.customFields[index];
-    const nextTargets = field.targets.includes(target)
-      ? field.targets.filter((value) => value !== target)
-      : [...field.targets, target];
+    const hasTarget = field.targets.some((target) => target.scope === scope);
+    const nextTargets = hasTarget
+      ? field.targets.filter((target) => target.scope !== scope)
+      : [
+          ...field.targets,
+          scope === "time_entry"
+            ? ({ scope: "time_entry" as const, entryTypes: ["work"] as TimeEntryType[] })
+            : ({ scope } as CompanyCustomFieldTarget),
+        ];
+    setField(index, {
+      ...field,
+      targets: nextTargets,
+    });
+  }
+
+  function toggleTimeEntryType(index: number, entryType: TimeEntryType) {
+    const field = settings.customFields[index];
+    const currentTarget = field.targets.find((target) => target.scope === "time_entry");
+    const currentEntryTypes = currentTarget?.entryTypes ?? [];
+    const nextEntryTypes = currentEntryTypes.includes(entryType)
+      ? currentEntryTypes.filter((value) => value !== entryType)
+      : [...currentEntryTypes, entryType];
+
+    const normalizedEntryTypes: TimeEntryType[] = nextEntryTypes.length > 0 ? nextEntryTypes : ["work"];
+    const nextTargets = field.targets.some((target) => target.scope === "time_entry")
+      ? field.targets.map((target) => target.scope === "time_entry" ? { scope: "time_entry" as const, entryTypes: normalizedEntryTypes } : target)
+      : [...field.targets, { scope: "time_entry" as const, entryTypes: normalizedEntryTypes }];
 
     setField(index, {
       ...field,
-      targets: nextTargets.length > 0 ? nextTargets : [target],
+      targets: nextTargets,
     });
+  }
+
+  function hasTargetScope(field: CompanyCustomField, scope: CustomFieldTargetScope) {
+    return field.targets.some((target) => target.scope === scope);
+  }
+
+  function getTimeEntryTarget(field: CompanyCustomField) {
+    return field.targets.find((target) => target.scope === "time_entry") ?? { scope: "time_entry" as const, entryTypes: ["work"] };
+  }
+
+  function getFieldTargetSummary(field: CompanyCustomField) {
+    const timeEntryLabelMap: Record<TimeEntryType, string> = {
+      work: t("fields.targetWork"),
+      vacation: t("fields.targetVacation"),
+      sick_leave: t("fields.targetSickLeave"),
+      time_off_in_lieu: t("fields.targetTimeOffInLieu"),
+    };
+
+    return field.targets
+      .map((target) => {
+        if (target.scope === "time_entry") {
+          const categories: TimeEntryType[] = target.entryTypes?.length ? target.entryTypes : ["work"];
+          return `${t("fields.targetTimeEntry")}: ${categories.map((entryType) => timeEntryLabelMap[entryType]).join(", ")}`;
+        }
+        if (target.scope === "user") return t("fields.targetUser");
+        if (target.scope === "project") return t("fields.targetProject");
+        return t("fields.targetTask");
+      })
+      .join(" · ");
   }
 
   function setOption(fieldIndex: number, optionIndex: number, nextOption: CompanyCustomFieldOption) {
@@ -145,19 +205,7 @@ export function FieldsPage() {
 
     try {
       const cleanedFields = settings.customFields.map((field) => {
-        const normalizedField = {
-          ...field,
-          label: field.label.trim(),
-          placeholder: field.placeholder?.trim() || null,
-          targets: Array.from(new Set(field.targets)),
-          options: field.type === "select"
-            ? field.options.map((option) => ({
-                ...option,
-                label: option.label.trim(),
-                value: option.id,
-              }))
-            : [],
-        };
+        const normalizedField = normalizeCustomField(field);
 
         if (normalizedField.label.length < 2) {
           throw new Error(t("fields.labelRequired"));
@@ -229,6 +277,9 @@ export function FieldsPage() {
                   <p className="text-sm text-muted-foreground">
                     {field.type === "select" ? t("fields.selectWithOptions") : t("fields.typeValue", { value: field.type })}
                   </p>
+                  <p className="text-xs text-muted-foreground">
+                    {getFieldTargetSummary(field)}
+                  </p>
                 </Stack>
                 <Button
                   variant="ghost"
@@ -268,17 +319,37 @@ export function FieldsPage() {
                   </div>
                 </Field>
                 <Field label={t("fields.appliesTo")}>
-                  <div className="flex flex-wrap gap-2">
-                    {targetOptions.map((target) => (
-                      <Button
-                        key={target.value}
-                        variant={field.targets.includes(target.value) ? "default" : "outline"}
-                        onClick={() => toggleTarget(index, target.value)}
-                        type="button"
-                      >
-                        {target.label}
-                      </Button>
-                    ))}
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      {targetOptions.map((target) => (
+                        <Button
+                          key={target.value}
+                          variant={hasTargetScope(field, target.value) ? "default" : "outline"}
+                          onClick={() => toggleTargetScope(index, target.value)}
+                          type="button"
+                        >
+                          {target.label}
+                        </Button>
+                      ))}
+                    </div>
+                    {hasTargetScope(field, "time_entry") ? (
+                      <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-muted/20 p-3">
+                        {timeEntryTargetOptions.map((target) => {
+                          const timeEntryTarget = getTimeEntryTarget(field);
+                          const active = timeEntryTarget.entryTypes?.includes(target.value) ?? false;
+                          return (
+                            <Button
+                              key={target.value}
+                              variant={active ? "default" : "outline"}
+                              onClick={() => toggleTimeEntryType(index, target.value)}
+                              type="button"
+                            >
+                              {target.label}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 </Field>
               </FormFields>

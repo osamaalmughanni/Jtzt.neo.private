@@ -13,6 +13,9 @@ import { LearnPage } from "@/pages/learn-page";
 import { LoginPage } from "@/pages/login-page";
 import { MenuPage } from "@/pages/menu-page";
 import { RegisterCompanyPage } from "@/pages/register-company-page";
+import { CalculationsPage } from "@/pages/calculations-page";
+import { CalculationEditorPage } from "@/pages/calculation-editor-page";
+import { CalculationPreviewPage } from "@/pages/calculation-preview-page";
 import { ReportsPage } from "@/pages/reports-page";
 import { ReportsPreviewPage } from "@/pages/reports-preview-page";
 import { ApiAccessPage } from "@/pages/api-access-page";
@@ -62,6 +65,10 @@ export function App() {
               <Route path="/users" element={<UsersPage />} />
               <Route path="/users/create" element={<UserEditorPage mode="create" />} />
               <Route path="/users/:userId/edit" element={<UserEditorPage mode="edit" />} />
+              <Route path="/calculations" element={<CalculationsPage />} />
+              <Route path="/calculations/create" element={<CalculationEditorPage mode="create" />} />
+              <Route path="/calculations/:calculationId/preview" element={<CalculationPreviewPage />} />
+              <Route path="/calculations/:calculationId/edit" element={<CalculationEditorPage mode="edit" />} />
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/create" element={<ProjectEditorPage mode="create" />} />

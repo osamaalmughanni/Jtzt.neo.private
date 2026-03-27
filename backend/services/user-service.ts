@@ -159,6 +159,7 @@ export const userService = {
         role,
         pin_code,
         email,
+        custom_field_values_json,
         created_at
       FROM users
       WHERE company_id = ? AND id = ? AND deleted_at IS NULL`,
@@ -254,8 +255,9 @@ export const userService = {
         is_active,
         pin_code,
         email,
+        custom_field_values_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         input.username.trim(),
@@ -265,6 +267,7 @@ export const userService = {
         input.isActive ? 1 : 0,
         input.pinCode,
         normalizeOptionalText(input.email),
+        JSON.stringify(input.customFieldValues ?? {}),
         new Date().toISOString()
       ]
     );
@@ -308,7 +311,8 @@ export const userService = {
          role = ?,
          is_active = ?,
          pin_code = ?,
-         email = ?
+         email = ?,
+         custom_field_values_json = ?
        WHERE company_id = ? AND id = ? AND deleted_at IS NULL`,
       [
         input.username.trim(),
@@ -318,6 +322,7 @@ export const userService = {
         input.isActive ? 1 : 0,
         input.pinCode,
         normalizeOptionalText(input.email),
+        JSON.stringify(input.customFieldValues ?? {}),
         companyId,
         input.userId
       ]

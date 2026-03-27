@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { diffCalendarDays } from "../../../shared/utils/time";
 import { evaluateTimeEntryPolicy, getRangeEndDay } from "../../../shared/utils/time-entry-policy";
-import { normalizeCustomFieldValue } from "../../../shared/utils/custom-fields";
+import { validateCustomFieldValuesForTarget } from "../../../shared/utils/custom-fields";
 import { authMiddleware, companyDbMiddleware, requireCompanyUser } from "../../auth/middleware";
 import type { CompanyTokenPayload } from "../../auth/jwt";
 import { settingsService } from "../../services/settings-service";
@@ -71,13 +71,6 @@ export const timeRoutes = new Hono<AppRouteConfig>();
 
 timeRoutes.use("*", authMiddleware, requireCompanyUser, companyDbMiddleware);
 
-function hasCustomFieldValue(value: string | number | boolean | undefined) {
-  if (typeof value === "string") return value.trim().length > 0;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value === "boolean") return true;
-  return false;
-}
-
 async function validateCustomFields(
   db: AppDatabase,
   companyId: string,
@@ -85,32 +78,7 @@ async function validateCustomFields(
   values: Record<string, string | number | boolean>
 ) {
   const settings = await settingsService.getSettings(db, companyId);
-  const applicableFields = settings.customFields.filter((field) => field.targets.includes(entryType));
-  const normalizedValues: Record<string, string | number | boolean> = {};
-  for (const field of applicableFields) {
-    const rawValue = values[field.id];
-    const normalizedValue = normalizeCustomFieldValue(field, rawValue);
-
-    if (field.type === "select" && hasCustomFieldValue(rawValue)) {
-      if (typeof rawValue !== "string") {
-        throw new Error(`${field.label} has an invalid selection`);
-      }
-
-      const optionMatches = field.options.some((option) => option.id === rawValue);
-      if (!optionMatches) {
-        throw new Error(`${field.label} has an invalid selection`);
-      }
-    }
-
-    if (field.required && !hasCustomFieldValue(normalizedValue)) {
-      throw new Error(`${field.label} is required`);
-    }
-
-    if (normalizedValue !== undefined) {
-      normalizedValues[field.id] = normalizedValue;
-    }
-  }
-  return normalizedValues;
+  return validateCustomFieldValuesForTarget(settings.customFields, { scope: "time_entry", entryType }, values);
 }
 
 function resolveTargetUserId(session: CompanyTokenPayload, requestedUserId?: number) {

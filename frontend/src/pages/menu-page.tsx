@@ -44,11 +44,12 @@ export function MenuPage() {
       ? [{ to: "/reports", title: t("menu.reports") }]
     : []),
     ...(companyIdentity?.user.role === "admin"
-      ? [
-          { to: "/users", title: t("menu.users") },
-          ...(projectsEnabled ? [{ to: "/projects", title: t("menu.projects") }] : []),
-          ...(tasksEnabled ? [{ to: "/tasks", title: t("menu.tasks") }] : []),
-          { to: "/fields", title: t("menu.fields") },
+          ? [
+              { to: "/users", title: t("menu.users") },
+              ...(projectsEnabled ? [{ to: "/projects", title: t("menu.projects") }] : []),
+              { to: "/calculations", title: t("menu.calculations") },
+              ...(tasksEnabled ? [{ to: "/tasks", title: t("menu.tasks") }] : []),
+              { to: "/fields", title: t("menu.fields") },
           { to: "/settings", title: t("menu.settings") },
           { to: "/api-access", title: "API" }
         ]

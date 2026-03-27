@@ -163,23 +163,26 @@ export const settingsService = {
       );
 
       if (removedCustomFieldIds.length > 0) {
-        const timeEntries = await db.all<{ id: number; custom_field_values_json: string }>(
-          "SELECT id, custom_field_values_json FROM time_entries WHERE company_id = ?",
-          [companyId]
-        );
-        for (const entry of timeEntries) {
-          const parsedValues = typeof entry.custom_field_values_json === "string" && entry.custom_field_values_json.length > 0
-            ? JSON.parse(entry.custom_field_values_json) as Record<string, string | number | boolean>
-            : {};
-          const nextValues = stripRemovedCustomFieldValues(parsedValues, removedCustomFieldIds);
-          if (JSON.stringify(nextValues) === JSON.stringify(parsedValues)) {
-            continue;
-          }
-
-          await db.run(
-            "UPDATE time_entries SET custom_field_values_json = ? WHERE id = ? AND company_id = ?",
-            [JSON.stringify(nextValues), entry.id, companyId]
+        const tables: Array<"users" | "projects" | "tasks" | "time_entries"> = ["users", "projects", "tasks", "time_entries"];
+        for (const table of tables) {
+          const rows = await db.all<{ id: number; custom_field_values_json: string }>(
+            `SELECT id, custom_field_values_json FROM ${table} WHERE company_id = ?`,
+            [companyId]
           );
+          for (const row of rows) {
+            const parsedValues = typeof row.custom_field_values_json === "string" && row.custom_field_values_json.length > 0
+              ? JSON.parse(row.custom_field_values_json) as Record<string, string | number | boolean>
+              : {};
+            const nextValues = stripRemovedCustomFieldValues(parsedValues, removedCustomFieldIds);
+            if (JSON.stringify(nextValues) === JSON.stringify(parsedValues)) {
+              continue;
+            }
+
+            await db.run(
+              `UPDATE ${table} SET custom_field_values_json = ? WHERE id = ? AND company_id = ?`,
+              [JSON.stringify(nextValues), row.id, companyId]
+            );
+          }
         }
       }
 

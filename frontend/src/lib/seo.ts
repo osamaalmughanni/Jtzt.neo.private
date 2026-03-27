@@ -31,6 +31,10 @@ function resolvePrivateTitle(pathname: string) {
   if (pathname === "/users/create") return pageTitle("Create User");
   if (pathname.startsWith("/users/") && pathname.endsWith("/edit")) return pageTitle("Edit User");
   if (pathname === "/fields") return pageTitle("Fields");
+  if (pathname === "/calculations") return pageTitle("Calculations");
+  if (pathname === "/calculations/create") return pageTitle("Create Calculation");
+  if (pathname.startsWith("/calculations/") && pathname.endsWith("/preview")) return pageTitle("Preview Calculation");
+  if (pathname.startsWith("/calculations/") && pathname.endsWith("/edit")) return pageTitle("Edit Calculation");
   if (pathname === "/projects") return pageTitle("Projects");
   if (pathname === "/projects/create") return pageTitle("Create Project");
   if (pathname.startsWith("/projects/") && pathname.endsWith("/edit")) return pageTitle("Edit Project");
@@ -141,6 +145,7 @@ export function getSeoEntry(pathname: string): SeoEntry {
     pathname.startsWith("/dashboard/records") ||
     pathname.startsWith("/users") ||
     pathname.startsWith("/fields") ||
+    pathname.startsWith("/calculations") ||
     pathname === "/menu" ||
     pathname === "/dashboard" ||
     pathname === "/dashboard/day"

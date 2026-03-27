@@ -22,7 +22,7 @@ import {
   parseLocalDay,
   toClockTimeValue,
 } from "@shared/utils/time";
-import { buildCustomFieldValueLabelLookup, resolveCustomFieldValueLabel } from "@shared/utils/custom-fields";
+import { buildCustomFieldValueLabelLookup, getCustomFieldsForTarget, resolveCustomFieldValueLabel } from "@shared/utils/custom-fields";
 import { formatMinutes } from "@shared/utils/time";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import { CustomFieldInput } from "@/components/custom-field-input";
@@ -468,7 +468,7 @@ export function DashboardPage() {
     }
   }, [availableProjects, availableTabletTasks, tabletPunchProjectId, tabletPunchTaskId]);
   const requiredTabletWorkFields = useMemo(
-    () => settings.customFields.filter((field) => field.targets.includes("work") && field.required),
+    () => getCustomFieldsForTarget(settings.customFields, { scope: "time_entry", entryType: "work" }).filter((field) => field.required),
     [settings.customFields]
   );
 

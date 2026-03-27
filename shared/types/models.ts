@@ -1,5 +1,6 @@
 export type UserRole = "employee" | "manager" | "admin";
 export type TimeEntryType = "work" | "vacation" | "sick_leave" | "time_off_in_lieu";
+export type CustomFieldTargetScope = "time_entry" | "user" | "project" | "task";
 export type CompanyCustomFieldType = "text" | "number" | "date" | "boolean" | "select";
 export type ContractWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type OvertimeCompensationType = "cash" | "time_off" | "cash_or_time_off";
@@ -7,6 +8,8 @@ export type OvertimePayoutDecisionMode = "company" | "employee" | "conditional";
 export type OvertimeConflictResolution = "stack" | "highest_only";
 export type OvertimeRuleTriggerKind = "daily_overtime" | "weekly_overtime" | "sunday_or_holiday" | "night_shift" | "daily_after_hours" | "weekly_after_hours";
 export type OvertimePresetId = "at_default" | "de_default" | "fr_35h" | "eu_custom";
+export type CalculationOutputMode = "table" | "chart" | "both";
+export type CalculationChartType = "bar" | "line" | "area" | "pie";
 
 export interface CompanyCustomFieldOption {
   id: string;
@@ -14,11 +17,16 @@ export interface CompanyCustomFieldOption {
   value: string;
 }
 
+export interface CompanyCustomFieldTarget {
+  scope: CustomFieldTargetScope;
+  entryTypes?: TimeEntryType[];
+}
+
 export interface CompanyCustomField {
   id: string;
   label: string;
   type: CompanyCustomFieldType;
-  targets: TimeEntryType[];
+  targets: CompanyCustomFieldTarget[];
   required: boolean;
   placeholder: string | null;
   options: CompanyCustomFieldOption[];
@@ -90,6 +98,7 @@ export interface CompanyUser {
   deletedAt?: string | null;
   pinCode?: string;
   email?: string | null;
+  customFieldValues: Record<string, string | number | boolean>;
   role: UserRole;
   createdAt: string;
 }
@@ -121,7 +130,37 @@ export interface ProjectRecord {
   isActive: boolean;
   allowAllUsers: boolean;
   allowAllTasks: boolean;
+  customFieldValues: Record<string, string | number | boolean>;
   createdAt: string;
+}
+
+export interface CalculationChartConfig {
+  type: CalculationChartType;
+  categoryColumn: string | null;
+  valueColumn: string | null;
+  seriesColumn: string | null;
+  stacked: boolean;
+}
+
+export interface CalculationRecord {
+  id: number;
+  name: string;
+  description: string | null;
+  sqlText: string;
+  outputMode: CalculationOutputMode;
+  chartConfig: CalculationChartConfig;
+  isBuiltin: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CalculationPresetRecord {
+  key: string;
+  name: string;
+  description: string;
+  sqlText: string;
+  outputMode: CalculationOutputMode;
+  chartConfig: CalculationChartConfig;
 }
 
 export interface TimeEntryRecord {
@@ -168,6 +207,7 @@ export interface CompanyUserDetail {
   role: UserRole;
   pinCode: string;
   email: string | null;
+  customFieldValues: Record<string, string | number | boolean>;
   contracts: UserContract[];
   createdAt: string;
 }
@@ -273,6 +313,7 @@ export interface TaskRecord {
   id: number;
   title: string;
   isActive: boolean;
+  customFieldValues: Record<string, string | number | boolean>;
   createdAt: string;
 }
 

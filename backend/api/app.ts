@@ -6,6 +6,7 @@ import { ZodError } from "zod";
 import { adminRoutes } from "./routes/admin-routes";
 import { authRoutes } from "./routes/auth-routes";
 import { externalRoutes } from "./routes/external-routes";
+import { calculationRoutes } from "./routes/calculation-routes";
 import { projectRoutes } from "./routes/project-routes";
 import { reportRoutes } from "./routes/report-routes";
 import { settingsRoutes } from "./routes/settings-routes";
@@ -89,6 +90,7 @@ export function createApp(config: RuntimeConfig) {
   app.route("/api/settings", settingsRoutes);
   app.route("/api/reports", reportRoutes);
   app.route("/api/projects", projectRoutes);
+  app.route("/api/calculations", calculationRoutes);
   app.route("/api/admin", adminRoutes);
 
   app.get("/api/health", (c) => {

@@ -7,6 +7,7 @@ import type {
   CompanyUserDetail,
   CompanyUserListItem,
   CompanyUserProfile,
+  CalculationRecord,
   ProjectTaskAssignmentRecord,
   ProjectUserAssignmentRecord,
   PublicHolidayRecord,
@@ -37,6 +38,10 @@ function parseJsonValue<T>(value: unknown, fallback: T): T {
   }
 }
 
+function parseCustomFieldValues(value: unknown) {
+  return parseJsonValue<Record<string, string | number | boolean>>(value, {});
+}
+
 export function mapCompanyRecord(row: any): CompanyRecord {
   return {
     id: row.id,
@@ -57,6 +62,7 @@ export function mapCompanyUser(row: any): CompanyUser {
     deletedAt: row.deleted_at ?? null,
     pinCode: row.pin_code ?? "0000",
     email: row.email ?? null,
+    customFieldValues: parseCustomFieldValues(row.custom_field_values_json),
     role: row.role,
     createdAt: row.created_at
   };
@@ -132,6 +138,7 @@ export function mapCompanyUserDetail(row: any, contracts: ReturnType<typeof mapU
     role: row.role,
     pinCode: row.pin_code ?? "0000",
     email: row.email ?? null,
+    customFieldValues: parseCustomFieldValues(row.custom_field_values_json),
     contracts,
     createdAt: row.created_at
   };
@@ -146,7 +153,28 @@ export function mapProject(row: any): ProjectRecord {
     isActive: Boolean(row.is_active),
     allowAllUsers: Boolean(row.allow_all_users ?? 1),
     allowAllTasks: Boolean(row.allow_all_tasks ?? 1),
+    customFieldValues: parseCustomFieldValues(row.custom_field_values_json),
     createdAt: row.created_at
+  };
+}
+
+export function mapCalculation(row: any): CalculationRecord {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? null,
+    sqlText: row.sql_text,
+    outputMode: row.output_mode,
+    chartConfig: parseJsonValue(row.chart_config_json, {
+      type: row.chart_type ?? "bar",
+      categoryColumn: row.chart_category_column ?? null,
+      valueColumn: row.chart_value_column ?? null,
+      seriesColumn: row.chart_series_column ?? null,
+      stacked: Boolean(row.chart_stacked ?? 0)
+    }),
+    isBuiltin: Boolean(row.is_builtin ?? 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 
@@ -163,7 +191,7 @@ export function mapTimeEntry(row: any): TimeEntryRecord {
     notes: row.notes,
     projectId: row.project_id ?? null,
     taskId: row.task_id ?? null,
-    customFieldValues: parseJsonValue(row.custom_field_values_json, {}),
+    customFieldValues: parseCustomFieldValues(row.custom_field_values_json),
     createdAt: row.created_at
   };
 }
@@ -189,7 +217,7 @@ export function mapTimeEntryView(row: any): TimeEntryView {
     effectiveDayCount: totalDayCount,
     excludedHolidayCount: 0,
     excludedWeekendCount: 0,
-    customFieldValues: parseJsonValue(row.custom_field_values_json, {}),
+    customFieldValues: parseCustomFieldValues(row.custom_field_values_json),
     createdAt: row.created_at
   };
 }
@@ -199,6 +227,7 @@ export function mapTask(row: any): TaskRecord {
     id: row.id,
     title: row.title,
     isActive: Boolean(row.is_active),
+    customFieldValues: parseCustomFieldValues(row.custom_field_values_json),
     createdAt: row.created_at
   };
 }

@@ -34,14 +34,14 @@ export const taskService = {
     const projectFilter = options?.activeOnly ? "AND is_active = 1" : "";
     const taskFilter = options?.activeOnly ? "AND is_active = 1" : "";
     const projects = (await db.all(
-      `SELECT id, name, description, budget, is_active, allow_all_users, allow_all_tasks, created_at
+      `SELECT id, name, description, budget, is_active, allow_all_users, allow_all_tasks, custom_field_values_json, created_at
        FROM projects
        WHERE company_id = ? ${projectFilter}
        ORDER BY projects.name COLLATE NOCASE ASC, projects.created_at DESC`,
       [companyId]
     )).map(mapProject);
     const tasks = (await db.all(
-      `SELECT id, title, is_active, created_at
+      `SELECT id, title, is_active, custom_field_values_json, created_at
        FROM tasks
        WHERE company_id = ? ${taskFilter}
        ORDER BY tasks.title COLLATE NOCASE ASC, tasks.created_at DESC`,
@@ -97,7 +97,7 @@ export const taskService = {
     await db.exec("BEGIN IMMEDIATE TRANSACTION");
     try {
       const result = await db.run(
-        "INSERT INTO projects (company_id, name, description, budget, is_active, allow_all_users, allow_all_tasks, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO projects (company_id, name, description, budget, is_active, allow_all_users, allow_all_tasks, custom_field_values_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
         companyId,
         input.name.trim(),
@@ -106,6 +106,7 @@ export const taskService = {
         input.isActive === false ? 0 : 1,
         allowAllUsers ? 1 : 0,
         allowAllTasks ? 1 : 0,
+        JSON.stringify(input.customFieldValues ?? {}),
         createdAt
         ]
       );
@@ -149,7 +150,7 @@ export const taskService = {
     try {
       await db.run(
         `UPDATE projects
-         SET name = ?, description = ?, budget = ?, is_active = ?, allow_all_users = ?, allow_all_tasks = ?
+         SET name = ?, description = ?, budget = ?, is_active = ?, allow_all_users = ?, allow_all_tasks = ?, custom_field_values_json = ?
          WHERE company_id = ? AND id = ?`,
         [
           input.name.trim(),
@@ -158,6 +159,7 @@ export const taskService = {
           input.isActive ? 1 : 0,
           allowAllUsers ? 1 : 0,
           allowAllTasks ? 1 : 0,
+          JSON.stringify(input.customFieldValues ?? {}),
           companyId,
           input.projectId
         ]
@@ -198,9 +200,10 @@ export const taskService = {
   },
 
   async createTask(db: AppDatabase, companyId: string, input: CreateTaskInput) {
-    await db.run("INSERT INTO tasks (company_id, title, created_at) VALUES (?, ?, ?)", [
+    await db.run("INSERT INTO tasks (company_id, title, custom_field_values_json, created_at) VALUES (?, ?, ?, ?)", [
       companyId,
       input.title.trim(),
+      JSON.stringify(input.customFieldValues ?? {}),
       new Date().toISOString()
     ]);
   },
@@ -209,11 +212,12 @@ export const taskService = {
     await ensureTaskExists(db, companyId, input.taskId);
     await db.run(
       `UPDATE tasks
-       SET title = ?, is_active = ?
+       SET title = ?, is_active = ?, custom_field_values_json = ?
        WHERE company_id = ? AND id = ?`,
       [
         input.title.trim(),
         input.isActive ? 1 : 0,
+        JSON.stringify(input.customFieldValues ?? {}),
         companyId,
         input.taskId
       ]

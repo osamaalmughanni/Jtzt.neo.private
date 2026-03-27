@@ -20,6 +20,7 @@ import { getCustomFieldOptionLabel, normalizeReportDraftFields } from "@/lib/rep
 import { createReportDraftId, loadReportDraft, saveReportDraft } from "@/lib/report-draft-storage";
 import { toast } from "@/lib/toast";
 import { MultiSelectFilter } from "@/components/multi-select-filter";
+import { getCustomFieldsForTarget } from "@shared/utils/custom-fields";
 
 const defaultSettings: CompanySettings = {
   currency: "EUR",
@@ -216,7 +217,7 @@ export function ReportsPage() {
 
   const customFieldOptions = useMemo(
     () =>
-      settings.customFields.map((field) => ({
+      getCustomFieldsForTarget(settings.customFields, { scope: "time_entry" }).map((field) => ({
         value: `custom:${field.id}`,
         label: getCustomFieldOptionLabel(field),
       })),
@@ -272,7 +273,7 @@ export function ReportsPage() {
       { value: "note", label: t("reports.note") },
       { value: "cost", label: t("reports.cost") },
     ];
-    const nextCustomFieldOptions = nextSettings.customFields.map((field) => ({
+    const nextCustomFieldOptions = getCustomFieldsForTarget(nextSettings.customFields, { scope: "time_entry" }).map((field) => ({
       value: `custom:${field.id}`,
       label: getCustomFieldOptionLabel(field),
     }));

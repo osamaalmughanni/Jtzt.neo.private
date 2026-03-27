@@ -169,8 +169,9 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         deleted_at,
         pin_code,
         email,
+        custom_field_values_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         user.username,
@@ -181,6 +182,7 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         user.deletedAt ?? null,
         user.pinCode,
         user.email,
+        JSON.stringify(user.customFieldValues ?? {}),
         user.createdAt
       ]
     );
@@ -188,11 +190,12 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
   }
 
   for (const project of snapshot.projects) {
-    const result = await db.run("INSERT INTO projects (company_id, name, description, is_active, created_at) VALUES (?, ?, ?, ?, ?)", [
+    const result = await db.run("INSERT INTO projects (company_id, name, description, is_active, custom_field_values_json, created_at) VALUES (?, ?, ?, ?, ?, ?)", [
       companyId,
       project.name,
       project.description,
       project.isActive ? 1 : 0,
+      JSON.stringify(project.customFieldValues ?? {}),
       project.createdAt
     ]);
   }
@@ -233,10 +236,11 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
   }
 
   for (const task of snapshot.tasks) {
-    await db.run("INSERT INTO tasks (company_id, title, is_active, created_at) VALUES (?, ?, ?, ?)", [
+    await db.run("INSERT INTO tasks (company_id, title, is_active, custom_field_values_json, created_at) VALUES (?, ?, ?, ?, ?)", [
       companyId,
       task.title,
       task.isActive ? 1 : 0,
+      JSON.stringify(task.customFieldValues ?? {}),
       task.createdAt
     ]);
   }
@@ -582,6 +586,7 @@ export const adminService = {
         deletedAt: user.deletedAt ?? null,
         pinCode: user.pinCode ?? "0000",
         email: user.email ?? null,
+        customFieldValues: user.customFieldValues ?? {},
         createdAt: user.createdAt
       }));
 
@@ -644,10 +649,10 @@ export const adminService = {
       [companyId]
     )).map(mapTimeEntry);
 
-    const projects = (await companyDb.all("SELECT id, name, description, is_active, created_at FROM projects WHERE company_id = ? ORDER BY id ASC", [companyId])).map(
+    const projects = (await companyDb.all("SELECT id, name, description, is_active, custom_field_values_json, created_at FROM projects WHERE company_id = ? ORDER BY id ASC", [companyId])).map(
       mapProject
     );
-    const tasks = (await companyDb.all("SELECT id, title, is_active, created_at FROM tasks WHERE company_id = ? ORDER BY id ASC", [companyId])).map(mapTask);
+    const tasks = (await companyDb.all("SELECT id, title, is_active, custom_field_values_json, created_at FROM tasks WHERE company_id = ? ORDER BY id ASC", [companyId])).map(mapTask);
     const publicHolidayCache = await companyDb.all<{ country_code: string; year: number; payload_json: string; fetched_at: string }>(
       "SELECT country_code, year, payload_json, fetched_at FROM public_holiday_cache WHERE company_id = ? ORDER BY year ASC, country_code ASC",
       [companyId]

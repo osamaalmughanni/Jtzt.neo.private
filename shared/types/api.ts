@@ -2,6 +2,10 @@ import type {
   CompanyCustomField,
   CompanySettings,
   CompanyRecord,
+  CalculationChartConfig,
+  CalculationOutputMode,
+  CalculationPresetRecord,
+  CalculationRecord,
   CompanyUserDetail,
   CompanyUserListItem,
   CompanyUserProfile,
@@ -147,6 +151,7 @@ export interface CreateUserInput {
   isActive: boolean;
   pinCode: string;
   email: string | null;
+  customFieldValues: Record<string, string | number | boolean>;
   contracts: UserContractInput[];
 }
 
@@ -159,6 +164,7 @@ export interface UpdateUserInput {
   isActive: boolean;
   pinCode: string;
   email: string | null;
+  customFieldValues: Record<string, string | number | boolean>;
   contracts: UserContractInput[];
 }
 
@@ -175,6 +181,7 @@ export interface CreateProjectInput {
   allowAllTasks: boolean;
   userIds?: number[];
   taskIds?: number[];
+  customFieldValues: Record<string, string | number | boolean>;
 }
 
 export interface UpdateProjectInput {
@@ -187,20 +194,61 @@ export interface UpdateProjectInput {
   allowAllTasks: boolean;
   userIds: number[];
   taskIds: number[];
+  customFieldValues: Record<string, string | number | boolean>;
 }
 
 export interface DeleteProjectInput {
   projectId: number;
 }
 
+export interface CreateCalculationInput {
+  name: string;
+  description?: string | null;
+  sqlText: string;
+  outputMode: CalculationOutputMode;
+  chartConfig: CalculationChartConfig;
+}
+
+export interface UpdateCalculationInput {
+  calculationId: number;
+  name: string;
+  description?: string | null;
+  sqlText: string;
+  outputMode: CalculationOutputMode;
+  chartConfig: CalculationChartConfig;
+}
+
+export interface CreateCalculationFromPresetInput {
+  presetKey: string;
+}
+
+export interface CalculationValidationIssue {
+  level: "error" | "warning";
+  message: string;
+}
+
+export interface CalculationValidationResponse {
+  valid: boolean;
+  issues: CalculationValidationIssue[];
+  columns: string[];
+  rows: Array<Record<string, string | number | null>>;
+}
+
+export interface CalculationListResponse {
+  calculations: CalculationRecord[];
+  presets: CalculationPresetRecord[];
+}
+
 export interface CreateTaskInput {
   title: string;
+  customFieldValues: Record<string, string | number | boolean>;
 }
 
 export interface UpdateTaskInput {
   taskId: number;
   title: string;
   isActive: boolean;
+  customFieldValues: Record<string, string | number | boolean>;
 }
 
 export interface DeleteTaskInput {
@@ -295,6 +343,7 @@ export interface CompanySnapshot {
     deletedAt: string | null;
     pinCode: string;
     email: string | null;
+    customFieldValues: Record<string, string | number | boolean>;
     createdAt: string;
   }>;
   userContracts: UserContract[];
@@ -317,12 +366,14 @@ export interface CompanySnapshot {
     name: string;
     description: string | null;
     isActive: boolean;
+    customFieldValues: Record<string, string | number | boolean>;
     createdAt: string;
   }>;
   tasks: Array<{
     id: number;
     title: string;
     isActive: boolean;
+    customFieldValues: Record<string, string | number | boolean>;
     createdAt: string;
   }>;
   publicHolidayCache: Array<{

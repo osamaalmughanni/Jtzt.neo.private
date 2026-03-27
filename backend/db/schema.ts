@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS users (
   deleted_at TEXT,
   pin_code TEXT NOT NULL DEFAULT '0000',
   email TEXT,
+  custom_field_values_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL
 );
 
@@ -174,6 +175,7 @@ CREATE TABLE IF NOT EXISTS projects (
   is_active INTEGER NOT NULL DEFAULT 1,
   allow_all_users INTEGER NOT NULL DEFAULT 1,
   allow_all_tasks INTEGER NOT NULL DEFAULT 1,
+  custom_field_values_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL
 );
 
@@ -185,6 +187,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   company_id TEXT NOT NULL,
   title TEXT NOT NULL,
   is_active INTEGER NOT NULL DEFAULT 1,
+  custom_field_values_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL
 );
 
@@ -214,4 +217,121 @@ CREATE TABLE IF NOT EXISTS project_tasks (
 
 CREATE INDEX IF NOT EXISTS idx_project_tasks_task
 ON project_tasks (task_id, project_id);
+
+CREATE VIEW IF NOT EXISTS custom_field_values AS
+  SELECT
+    company_id,
+    'user' AS entity_type,
+    id AS entity_id,
+    NULL AS entry_type,
+    json_each.key AS field_id,
+    json_each.value AS value_raw,
+    json_each.type AS value_type,
+    CASE
+      WHEN json_each.type IN ('integer', 'real') THEN CAST(json_each.value AS REAL)
+      ELSE NULL
+    END AS value_number,
+    CASE
+      WHEN json_each.type = 'true' THEN 1
+      WHEN json_each.type = 'false' THEN 0
+      ELSE NULL
+    END AS value_boolean
+  FROM users, json_each(users.custom_field_values_json)
+  UNION ALL
+  SELECT
+    company_id,
+    'project' AS entity_type,
+    id AS entity_id,
+    NULL AS entry_type,
+    json_each.key AS field_id,
+    json_each.value AS value_raw,
+    json_each.type AS value_type,
+    CASE
+      WHEN json_each.type IN ('integer', 'real') THEN CAST(json_each.value AS REAL)
+      ELSE NULL
+    END AS value_number,
+    CASE
+      WHEN json_each.type = 'true' THEN 1
+      WHEN json_each.type = 'false' THEN 0
+      ELSE NULL
+    END AS value_boolean
+  FROM projects, json_each(projects.custom_field_values_json)
+  UNION ALL
+  SELECT
+    company_id,
+    'task' AS entity_type,
+    id AS entity_id,
+    NULL AS entry_type,
+    json_each.key AS field_id,
+    json_each.value AS value_raw,
+    json_each.type AS value_type,
+    CASE
+      WHEN json_each.type IN ('integer', 'real') THEN CAST(json_each.value AS REAL)
+      ELSE NULL
+    END AS value_number,
+    CASE
+      WHEN json_each.type = 'true' THEN 1
+      WHEN json_each.type = 'false' THEN 0
+      ELSE NULL
+    END AS value_boolean
+  FROM tasks, json_each(tasks.custom_field_values_json)
+  UNION ALL
+  SELECT
+    company_id,
+    'time_entry' AS entity_type,
+    id AS entity_id,
+    entry_type,
+    json_each.key AS field_id,
+    json_each.value AS value_raw,
+    json_each.type AS value_type,
+    CASE
+      WHEN json_each.type IN ('integer', 'real') THEN CAST(json_each.value AS REAL)
+      ELSE NULL
+    END AS value_number,
+    CASE
+      WHEN json_each.type = 'true' THEN 1
+      WHEN json_each.type = 'false' THEN 0
+      ELSE NULL
+    END AS value_boolean
+  FROM time_entries, json_each(time_entries.custom_field_values_json);
+
+CREATE TABLE IF NOT EXISTS calculations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  sql_text TEXT NOT NULL,
+  output_mode TEXT NOT NULL DEFAULT 'both' CHECK(output_mode IN ('table', 'chart', 'both')),
+  chart_type TEXT NOT NULL DEFAULT 'bar' CHECK(chart_type IN ('bar', 'line', 'area', 'pie')),
+  chart_category_column TEXT,
+  chart_value_column TEXT,
+  chart_series_column TEXT,
+  chart_config_json TEXT NOT NULL DEFAULT '{}',
+  chart_stacked INTEGER NOT NULL DEFAULT 0,
+  is_builtin INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS calculation_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  calculation_id INTEGER NOT NULL,
+  version_number INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  sql_text TEXT NOT NULL,
+  output_mode TEXT NOT NULL,
+  chart_type TEXT NOT NULL,
+  chart_category_column TEXT,
+  chart_value_column TEXT,
+  chart_series_column TEXT,
+  chart_config_json TEXT NOT NULL DEFAULT '{}',
+  chart_stacked INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (calculation_id) REFERENCES calculations(id) ON DELETE CASCADE,
+  UNIQUE(calculation_id, version_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_calculation_versions_calculation
+ON calculation_versions (calculation_id, version_number DESC);
 `;

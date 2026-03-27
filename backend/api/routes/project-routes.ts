@@ -1,8 +1,12 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { authMiddleware, companyDbMiddleware, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
+import { settingsService } from "../../services/settings-service";
 import { taskService } from "../../services/task-service";
+import { validateCustomFieldValuesForTarget } from "../../../shared/utils/custom-fields";
 import type { AppRouteConfig } from "../context";
+
+const customFieldValuesSchema = z.record(z.union([z.string(), z.number(), z.boolean()])).default({});
 
 const activeOnlyQuerySchema = z.object({
   activeOnly: z.coerce.boolean().optional()
@@ -16,7 +20,8 @@ const createProjectSchema = z.object({
   allowAllUsers: z.boolean(),
   allowAllTasks: z.boolean(),
   userIds: z.array(z.number().int().positive()).optional(),
-  taskIds: z.array(z.number().int().positive()).optional()
+  taskIds: z.array(z.number().int().positive()).optional(),
+  customFieldValues: customFieldValuesSchema,
 });
 
 const updateProjectSchema = createProjectSchema.extend({
@@ -24,7 +29,8 @@ const updateProjectSchema = createProjectSchema.extend({
   description: z.string().nullable().optional(),
   isActive: z.boolean(),
   userIds: z.array(z.number().int().positive()),
-  taskIds: z.array(z.number().int().positive())
+  taskIds: z.array(z.number().int().positive()),
+  customFieldValues: customFieldValuesSchema,
 });
 
 const deleteProjectSchema = z.object({
@@ -66,7 +72,9 @@ projectRoutes.post("/", requireCompanyAdmin, async (c) => {
   }
 
   const body = createProjectSchema.parse(await c.req.json());
-  await taskService.createProject(c.get("db"), session.companyId, body);
+  const settings = await settingsService.getSettings(c.get("db"), session.companyId);
+  const customFieldValues = validateCustomFieldValuesForTarget(settings.customFields, { scope: "project" }, body.customFieldValues);
+  await taskService.createProject(c.get("db"), session.companyId, { ...body, customFieldValues });
   return c.json({ success: true });
 });
 
@@ -77,7 +85,9 @@ projectRoutes.put("/", requireCompanyAdmin, async (c) => {
   }
 
   const body = updateProjectSchema.parse(await c.req.json());
-  await taskService.updateProject(c.get("db"), session.companyId, body);
+  const settings = await settingsService.getSettings(c.get("db"), session.companyId);
+  const customFieldValues = validateCustomFieldValuesForTarget(settings.customFields, { scope: "project" }, body.customFieldValues);
+  await taskService.updateProject(c.get("db"), session.companyId, { ...body, customFieldValues });
   return c.json({ success: true });
 });
 
@@ -98,8 +108,10 @@ projectRoutes.post("/tasks", requireCompanyAdmin, async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
 
-  const body = createTaskSchema.parse(await c.req.json());
-  await taskService.createTask(c.get("db"), session.companyId, body);
+  const body = createTaskSchema.extend({ customFieldValues: customFieldValuesSchema }).parse(await c.req.json());
+  const settings = await settingsService.getSettings(c.get("db"), session.companyId);
+  const customFieldValues = validateCustomFieldValuesForTarget(settings.customFields, { scope: "task" }, body.customFieldValues);
+  await taskService.createTask(c.get("db"), session.companyId, { ...body, customFieldValues });
   return c.json({ success: true });
 });
 
@@ -109,8 +121,10 @@ projectRoutes.put("/tasks/item", requireCompanyAdmin, async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
 
-  const body = updateTaskSchema.parse(await c.req.json());
-  await taskService.updateTask(c.get("db"), session.companyId, body);
+  const body = updateTaskSchema.extend({ customFieldValues: customFieldValuesSchema }).parse(await c.req.json());
+  const settings = await settingsService.getSettings(c.get("db"), session.companyId);
+  const customFieldValues = validateCustomFieldValuesForTarget(settings.customFields, { scope: "task" }, body.customFieldValues);
+  await taskService.updateTask(c.get("db"), session.companyId, { ...body, customFieldValues });
   return c.json({ success: true });
 });
 

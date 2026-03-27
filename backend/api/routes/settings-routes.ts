@@ -7,6 +7,16 @@ import { settingsService } from "../../services/settings-service";
 import { systemService } from "../../services/system-service";
 import type { AppRouteConfig } from "../context";
 
+const customFieldTargetSchema = z.union([
+  z.object({ scope: z.literal("user") }),
+  z.object({ scope: z.literal("project") }),
+  z.object({ scope: z.literal("task") }),
+  z.object({
+    scope: z.literal("time_entry"),
+    entryTypes: z.array(z.enum(["work", "vacation", "sick_leave", "time_off_in_lieu"])).min(1),
+  }),
+]);
+
 const updateSettingsSchema = z.object({
   currency: z.string().min(3).max(3),
   locale: z.string().min(2).max(64),
@@ -56,7 +66,7 @@ const updateSettingsSchema = z.object({
       id: z.string().min(1).max(100),
       label: z.string().min(1).max(100),
       type: z.enum(["text", "number", "date", "boolean", "select"]),
-      targets: z.array(z.enum(["work", "vacation", "sick_leave", "time_off_in_lieu"])).min(1),
+      targets: z.array(customFieldTargetSchema).min(1),
       required: z.boolean(),
       placeholder: z.string().max(120).nullable(),
       options: z.array(
@@ -111,6 +121,11 @@ settingsRoutes.put("/", requireCompanyAdmin, async (c) => {
         ...option,
         value: option.value?.trim() || option.id,
       })),
+      targets: field.targets.map((target) =>
+        target.scope === "time_entry"
+          ? { scope: "time_entry" as const, entryTypes: Array.from(new Set(target.entryTypes)) }
+          : target
+      ),
     })),
   };
   return c.json({ settings: await settingsService.updateSettings(c.get("db"), session.companyId, normalizedBody) });

@@ -5,6 +5,7 @@ import { diffCalendarDays, enumerateLocalDays } from "../../shared/utils/time";
 import {
   buildCustomFieldCanonicalKey,
   buildCustomFieldValueLabelLookup,
+  getCustomFieldsForTarget,
   getCustomFieldLabel,
   resolveCustomFieldValueLabel,
 } from "../../shared/utils/custom-fields";
@@ -260,6 +261,7 @@ export const reportService = {
 
     const settings = await settingsService.getSettings(db, companyId);
     const customFieldValueLabels = buildCustomFieldValueLabelLookup(settings.customFields);
+    const timeEntryCustomFields = getCustomFieldsForTarget(settings.customFields, { scope: "time_entry" });
     const holidaySet = await getHolidaySet(db, companyId, settings.country, input.startDate, input.endDate);
     const placeholders = buildInClause(input.userIds);
     const rows = await db.all(
@@ -368,7 +370,7 @@ export const reportService = {
         return calculateWorkCostAmount(row.start_time, row.end_time, row.entry_date, settings, contractsByUser.get(row.user_id) ?? []);
       }
 
-      return getEntryValue(row, key, settings.customFields, customFieldValueLabels);
+      return getEntryValue(row, key, timeEntryCustomFields, customFieldValueLabels);
     };
 
     const validGroupBy = input.groupBy.filter((key, index, array) => key && array.indexOf(key) === index).slice(0, 8);
@@ -390,7 +392,7 @@ export const reportService = {
     const vacationOverview = await buildVacationOverview(db, companyId, rows, settings.locale, input.endDate);
 
     if (!grouped) {
-      const columns = input.columns.map((key) => getColumnDefinition(key, settings.customFields)).filter((value): value is ReportColumnDefinition => value !== null);
+      const columns = input.columns.map((key) => getColumnDefinition(key, timeEntryCustomFields)).filter((value): value is ReportColumnDefinition => value !== null);
       const detailRows = rows.map((row) => {
         const next: Record<string, string | number | null> = {};
         for (const column of columns) {
@@ -467,7 +469,7 @@ export const reportService = {
     const columnKeys = [...effectiveGroupBy, "entries", ...(input.columns.includes("duration") ? ["duration"] : []), ...(input.columns.includes("cost") ? ["cost"] : []), ...overtimeColumnKeys].filter(
       (key, index, array) => array.indexOf(key) === index
     );
-    const columns = columnKeys.map((key) => getColumnDefinition(key, settings.customFields)).filter((value): value is ReportColumnDefinition => value !== null);
+    const columns = columnKeys.map((key) => getColumnDefinition(key, timeEntryCustomFields)).filter((value): value is ReportColumnDefinition => value !== null);
     const groupedRowMeta: ReportRowMeta[] = [];
     const groupedRows = Array.from(bucketMap.values()).map((bucket) => {
       const overtimeMeta = aggregateOvertimeMeta(bucket.rowIds.map((id) => overtimeMetaByEntryId.get(id)).filter((value): value is NonNullable<typeof value> => value !== undefined));

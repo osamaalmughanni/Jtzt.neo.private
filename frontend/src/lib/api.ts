@@ -16,9 +16,13 @@ import type {
   CreateInvitationCodeInput,
   CreateCompanyInput,
   CreateProjectInput,
+  CreateCalculationFromPresetInput,
+  CreateCalculationInput,
   CreateTaskInput,
   DashboardResponse,
   DeleteProjectInput,
+  CalculationListResponse,
+  CalculationValidationResponse,
   DeleteTaskInput,
   DeleteInvitationCodeInput,
   DeleteCompanyInput,
@@ -39,6 +43,7 @@ import type {
   UpdateSettingsInput,
   UpdateOvertimeSettingsInput,
   UpdateProjectInput,
+  UpdateCalculationInput,
   UpdateTaskInput,
   UpdateTabletCodeInput,
   UpdateTabletCodeResponse,
@@ -435,6 +440,52 @@ export const api = {
   deleteProject(token: string, input: DeleteProjectInput) {
     return request<{ success: boolean }>("/api/projects", {
       method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  listCalculations(token: string) {
+    return request<CalculationListResponse>("/api/calculations", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  validateCalculation(token: string, input: { sqlText: string; chartConfig: CreateCalculationInput["chartConfig"] }) {
+    return request<CalculationValidationResponse>("/api/calculations/validate", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  createCalculation(token: string, input: CreateCalculationInput) {
+    return request<{ success: boolean; calculationId: number }>("/api/calculations", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  updateCalculation(token: string, input: UpdateCalculationInput) {
+    return request<{ success: boolean }>("/api/calculations", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  deleteCalculation(token: string, calculationId: number) {
+    return request<{ success: boolean }>("/api/calculations", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ calculationId })
+    });
+  },
+
+  createCalculationFromPreset(token: string, input: CreateCalculationFromPresetInput) {
+    return request<{ success: boolean; calculationId: number }>("/api/calculations/from-preset", {
+      method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify(input)
     });

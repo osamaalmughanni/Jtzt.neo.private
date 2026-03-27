@@ -4,7 +4,10 @@ import { HTTPException } from "hono/http-exception";
 import { authMiddleware, companyDbMiddleware, requireCompanyUser } from "../../auth/middleware";
 import { settingsService } from "../../services/settings-service";
 import { userService } from "../../services/user-service";
+import { validateCustomFieldValuesForTarget } from "../../../shared/utils/custom-fields";
 import type { AppRouteConfig, AppVariables } from "../context";
+
+const customFieldValuesSchema = z.record(z.union([z.string(), z.number(), z.boolean()])).default({});
 
 const contractSchema = z.object({
   id: z.number().int().positive().optional(),
@@ -45,6 +48,7 @@ const createUserSchema = z.object({
   isActive: z.boolean(),
   pinCode: z.string().regex(/^\d{4}$/),
   email: z.string().email().nullable(),
+  customFieldValues: customFieldValuesSchema,
   contracts: z.array(contractSchema).max(100)
 });
 
@@ -115,10 +119,12 @@ userRoutes.post("/", async (c) => {
   ensureAdmin(session);
 
   const body = createUserSchema.parse(await c.req.json());
+  const settings = await settingsService.getSettings(c.get("db"), session.companyId);
+  const customFieldValues = validateCustomFieldValuesForTarget(settings.customFields, { scope: "user" }, body.customFieldValues);
   const userId = await userService.createUser(
     c.get("db"),
     session.companyId,
-    body,
+    { ...body, customFieldValues },
     (await settingsService.getBusinessNowSnapshot(c.get("db"), session.companyId)).localDay
   );
   return c.json({ success: true, userId });
@@ -132,10 +138,12 @@ userRoutes.put("/", async (c) => {
   ensureAdmin(session);
 
   const body = updateUserSchema.parse(await c.req.json());
+  const settings = await settingsService.getSettings(c.get("db"), session.companyId);
+  const customFieldValues = validateCustomFieldValuesForTarget(settings.customFields, { scope: "user" }, body.customFieldValues);
   await userService.updateUser(
     c.get("db"),
     session.companyId,
-    body,
+    { ...body, customFieldValues },
     (await settingsService.getBusinessNowSnapshot(c.get("db"), session.companyId)).localDay
   );
   return c.json({ success: true });
