@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS company_settings (
   tablet_idle_timeout_seconds INTEGER NOT NULL DEFAULT 10,
   auto_break_after_minutes INTEGER NOT NULL DEFAULT 300,
   auto_break_duration_minutes INTEGER NOT NULL DEFAULT 30,
+  projects_enabled INTEGER NOT NULL DEFAULT 0,
+  tasks_enabled INTEGER NOT NULL DEFAULT 0,
   overtime_settings_json TEXT NOT NULL DEFAULT '{}',
   custom_fields_json TEXT NOT NULL DEFAULT '[]'
 );
@@ -78,6 +80,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('employee', 'manager', 'admin')),
   is_active INTEGER NOT NULL DEFAULT 1,
+  deleted_at TEXT,
   pin_code TEXT NOT NULL DEFAULT '0000',
   email TEXT,
   created_at TEXT NOT NULL
@@ -87,10 +90,12 @@ CREATE INDEX IF NOT EXISTS idx_users_name
 ON users (full_name);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_company_username
-ON users (company_id, username);
+ON users (company_id, username)
+WHERE deleted_at IS NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_company_pin_code
-ON users (company_id, pin_code);
+ON users (company_id, pin_code)
+WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS user_contracts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,20 +113,20 @@ CREATE TABLE IF NOT EXISTS user_contracts (
 CREATE INDEX IF NOT EXISTS idx_user_contracts_user
 ON user_contracts (user_id, start_date);
 
-CREATE TABLE IF NOT EXISTS user_contract_schedule_days (
+CREATE TABLE IF NOT EXISTS user_contract_schedule_blocks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   contract_id INTEGER NOT NULL,
   weekday INTEGER NOT NULL CHECK(weekday BETWEEN 1 AND 7),
-  is_working_day INTEGER NOT NULL DEFAULT 0,
+  block_order INTEGER NOT NULL DEFAULT 1,
   start_time TEXT,
   end_time TEXT,
   minutes INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (contract_id) REFERENCES user_contracts(id) ON DELETE CASCADE,
-  UNIQUE(contract_id, weekday)
+  UNIQUE(contract_id, weekday, block_order)
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_contract_schedule_days_contract
-ON user_contract_schedule_days (contract_id, weekday);
+CREATE INDEX IF NOT EXISTS idx_user_contract_schedule_blocks_contract
+ON user_contract_schedule_blocks (contract_id, weekday, block_order);
 
 CREATE TABLE IF NOT EXISTS time_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -133,9 +138,13 @@ CREATE TABLE IF NOT EXISTS time_entries (
   start_time TEXT NOT NULL,
   end_time TEXT,
   notes TEXT,
+  project_id INTEGER,
+  task_id INTEGER,
   custom_field_values_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_time_entries_user_day
@@ -162,6 +171,8 @@ CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   description TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
+  allow_all_users INTEGER NOT NULL DEFAULT 1,
+  allow_all_tasks INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
 
@@ -171,13 +182,35 @@ ON projects (is_active, created_at);
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   company_id TEXT NOT NULL,
-  project_id INTEGER NOT NULL,
   title TEXT NOT NULL,
   is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+  created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_tasks_project
-ON tasks (project_id, is_active, created_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_active
+ON tasks (is_active, created_at);
+
+CREATE TABLE IF NOT EXISTS project_users (
+  project_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, user_id),
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_users_user
+ON project_users (user_id, project_id);
+
+CREATE TABLE IF NOT EXISTS project_tasks (
+  project_id INTEGER NOT NULL,
+  task_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, task_id),
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_tasks_task
+ON project_tasks (task_id, project_id);
 `;

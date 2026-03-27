@@ -1,4 +1,3 @@
-import { CheckCheck, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -20,6 +19,7 @@ import { useAuth } from "@/lib/auth";
 import { getCustomFieldOptionLabel, normalizeReportDraftFields } from "@/lib/report-fields";
 import { createReportDraftId, loadReportDraft, saveReportDraft } from "@/lib/report-draft-storage";
 import { toast } from "@/lib/toast";
+import { MultiSelectFilter } from "@/components/multi-select-filter";
 
 const defaultSettings: CompanySettings = {
   currency: "EUR",
@@ -37,6 +37,8 @@ const defaultSettings: CompanySettings = {
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
+  projectsEnabled: false,
+  tasksEnabled: false,
   customFields: [],
   overtime: createDefaultOvertimeSettings(),
 };
@@ -46,85 +48,6 @@ type ReportOption = { value: string; label: string };
 type ReportDraft = ReportRequestInput & {
   periodPreset: string;
 };
-
-function InlineMultiSelector({
-  value,
-  onChange,
-  options,
-  search,
-  onSearchChange,
-  searchPlaceholder,
-  emptyText,
-}: {
-  value: string[];
-  onChange: (value: string[]) => void;
-  options: ReportOption[];
-  search: string;
-  onSearchChange: (value: string) => void;
-  searchPlaceholder: string;
-  emptyText: string;
-}) {
-  const filteredOptions = options.filter((option) => {
-    const normalizedSearch = search.trim().toLowerCase();
-    if (!normalizedSearch) return true;
-    return option.label.toLowerCase().includes(normalizedSearch);
-  });
-
-  function toggle(nextValue: string) {
-    if (value.includes(nextValue)) {
-      onChange(value.filter((item) => item !== nextValue));
-      return;
-    }
-
-    onChange([...value, nextValue]);
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <Input className="flex-1" placeholder={searchPlaceholder} value={search} onChange={(event) => onSearchChange(event.target.value)} />
-        <Button
-          aria-label="Select all"
-          size="icon"
-          type="button"
-          variant="ghost"
-          onClick={() => onChange(options.map((option) => option.value))}
-        >
-          <CheckCheck className="h-4 w-4" />
-        </Button>
-        <Button
-          aria-label="Clear selection"
-          size="icon"
-          type="button"
-          variant="ghost"
-          onClick={() => onChange([])}
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-      <div className="flex max-h-56 flex-col overflow-y-auto rounded-md border border-border">
-        {filteredOptions.length === 0 ? (
-          <div className="px-3 py-2 text-sm text-muted-foreground">{emptyText}</div>
-        ) : (
-          filteredOptions.map((option) => {
-            const selected = value.includes(option.value);
-            return (
-              <button
-                key={option.value}
-                type="button"
-                className={`flex items-center justify-between gap-3 border-b border-border px-3 py-2 text-left text-sm last:border-b-0 ${selected ? "bg-muted text-foreground" : "bg-background text-foreground"}`}
-                onClick={() => toggle(option.value)}
-              >
-                <span className="truncate text-foreground">{option.label}</span>
-                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${selected ? "bg-foreground" : "bg-border"}`} />
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
 
 function addDays(day: string, amount: number) {
   const parsed = parseLocalDay(day);
@@ -219,8 +142,6 @@ export function ReportsPage() {
   const { companySession } = useAuth();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
-  const [userSearch, setUserSearch] = useState("");
-  const [fieldSearch, setFieldSearch] = useState("");
   const draftId = searchParams.get("draft");
   const savedDraft = useMemo(() => loadReportDraft(draftId), [draftId]);
   const initializedDraftRef = useRef(false);
@@ -265,19 +186,33 @@ export function ReportsPage() {
     { value: "last_month", label: t("reports.lastMonth") },
   ], [t]);
 
-  const baseFieldOptions = useMemo<ReportOption[]>(() => [
-    { value: "user", label: t("reports.user") },
-    { value: "role", label: t("reports.role") },
-    { value: "type", label: t("reports.type") },
-    { value: "date", label: t("reports.date") },
-    { value: "start", label: t("reports.start") },
-    { value: "finish", label: t("reports.finish") },
-    { value: "duration", label: t("reports.duration") },
-    { value: "overtime_state", label: "Overtime state" },
-    { value: "overtime_timeline", label: "Overtime timeline" },
-    { value: "note", label: t("reports.note") },
-    { value: "cost", label: t("reports.cost") },
-  ], [t]);
+  const baseFieldOptions = useMemo<ReportOption[]>(() => {
+    const options: ReportOption[] = [
+      { value: "user", label: t("reports.user") },
+      { value: "role", label: t("reports.role") },
+      { value: "type", label: t("reports.type") },
+    ];
+
+    if (settings.projectsEnabled) {
+      options.push({ value: "project", label: t("reports.project") });
+    }
+    if (settings.tasksEnabled) {
+      options.push({ value: "task", label: t("reports.task") });
+    }
+
+    options.push(
+      { value: "date", label: t("reports.date") },
+      { value: "start", label: t("reports.start") },
+      { value: "finish", label: t("reports.finish") },
+      { value: "duration", label: t("reports.duration") },
+      { value: "overtime_state", label: "Overtime state" },
+      { value: "overtime_timeline", label: "Overtime timeline" },
+      { value: "note", label: t("reports.note") },
+      { value: "cost", label: t("reports.cost") },
+    );
+
+    return options;
+  }, [settings.projectsEnabled, settings.tasksEnabled, t]);
 
   const customFieldOptions = useMemo(
     () =>
@@ -289,15 +224,29 @@ export function ReportsPage() {
   );
 
   const allFieldOptions = useMemo(() => [...baseFieldOptions, ...customFieldOptions], [baseFieldOptions, customFieldOptions]);
-  const groupingOptions = useMemo<ReportOption[]>(() => [
-    { value: "", label: t("reports.noGrouping") },
-    { value: "user", label: t("reports.user") },
-    { value: "role", label: t("reports.role") },
-    { value: "type", label: t("reports.type") },
-    { value: "date", label: t("reports.day") },
-    { value: "month", label: t("reports.thisMonth") },
-    ...customFieldOptions,
-  ], [customFieldOptions, t]);
+  const groupingOptions = useMemo<ReportOption[]>(() => {
+    const options: ReportOption[] = [
+      { value: "", label: t("reports.noGrouping") },
+      { value: "user", label: t("reports.user") },
+      { value: "role", label: t("reports.role") },
+      { value: "type", label: t("reports.type") },
+    ];
+
+    if (settings.projectsEnabled) {
+      options.push({ value: "project", label: t("reports.project") });
+    }
+    if (settings.tasksEnabled) {
+      options.push({ value: "task", label: t("reports.task") });
+    }
+
+    options.push(
+      { value: "date", label: t("reports.day") },
+      { value: "month", label: t("reports.thisMonth") },
+      ...customFieldOptions,
+    );
+
+    return options;
+  }, [customFieldOptions, settings.projectsEnabled, settings.tasksEnabled, t]);
 
   const selectedGroups = draft.groupBy.length > 0 ? draft.groupBy : [""];
   const userOptions = useMemo(() => users.map((user) => ({ value: String(user.id), label: user.fullName })), [users]);
@@ -307,16 +256,32 @@ export function ReportsPage() {
       return;
     }
 
-    const nextCustomFieldOptions = pageResource.data.settings.customFields.map((field) => ({
+    const nextSettings = pageResource.data.settings;
+    const nextBaseFieldOptions: ReportOption[] = [
+      { value: "user", label: t("reports.user") },
+      { value: "role", label: t("reports.role") },
+      { value: "type", label: t("reports.type") },
+      ...(nextSettings.projectsEnabled ? [{ value: "project", label: t("reports.project") }] : []),
+      ...(nextSettings.tasksEnabled ? [{ value: "task", label: t("reports.task") }] : []),
+      { value: "date", label: t("reports.date") },
+      { value: "start", label: t("reports.start") },
+      { value: "finish", label: t("reports.finish") },
+      { value: "duration", label: t("reports.duration") },
+      { value: "overtime_state", label: "Overtime state" },
+      { value: "overtime_timeline", label: "Overtime timeline" },
+      { value: "note", label: t("reports.note") },
+      { value: "cost", label: t("reports.cost") },
+    ];
+    const nextCustomFieldOptions = nextSettings.customFields.map((field) => ({
       value: `custom:${field.id}`,
       label: getCustomFieldOptionLabel(field),
     }));
-    const allFieldValues = getAllFieldValues(baseFieldOptions, nextCustomFieldOptions);
-    setSettings(pageResource.data.settings);
+    const allFieldValues = getAllFieldValues(nextBaseFieldOptions, nextCustomFieldOptions);
+    setSettings(nextSettings);
     setUsers(pageResource.data.users);
     if (!initializedDraftRef.current) {
       setDraft((current) => {
-        const normalized = normalizeReportDraftFields(current, pageResource.data!.settings);
+        const normalized = normalizeReportDraftFields(current, nextSettings);
         return {
           ...current,
           userIds: current.userIds.length > 0 ? current.userIds : pageResource.data!.users.map((user) => user.id),
@@ -329,7 +294,7 @@ export function ReportsPage() {
     }
 
     setDraft((current) => {
-      const normalized = normalizeReportDraftFields(current, pageResource.data!.settings);
+      const normalized = normalizeReportDraftFields(current, nextSettings);
       return {
         ...current,
         groupBy: normalized.groupBy,
@@ -445,28 +410,28 @@ export function ReportsPage() {
 
         <FormSection>
           <Field label={t("reports.users")}>
-            <InlineMultiSelector
+            <MultiSelectFilter
               value={draft.userIds.map(String)}
               onChange={(values) => setDraft((current) => ({ ...current, userIds: values.map(Number) }))}
               options={userOptions}
-              search={userSearch}
-              onSearchChange={setUserSearch}
               searchPlaceholder={t("reports.search")}
               emptyText={t("reports.noResults")}
+              selectAllLabel={t("reports.selectAll", { defaultValue: "Select all" })}
+              clearLabel={t("reports.clearSelection", { defaultValue: "Clear selection" })}
             />
           </Field>
         </FormSection>
 
         <FormSection>
           <Field label={t("reports.userFields")}>
-            <InlineMultiSelector
+            <MultiSelectFilter
               value={draft.columns}
               onChange={(values) => setDraft((current) => ({ ...current, columns: values }))}
               options={allFieldOptions}
-              search={fieldSearch}
-              onSearchChange={setFieldSearch}
               searchPlaceholder={t("reports.search")}
               emptyText={t("reports.noResults")}
+              selectAllLabel={t("reports.selectAll", { defaultValue: "Select all" })}
+              clearLabel={t("reports.clearSelection", { defaultValue: "Clear selection" })}
             />
           </Field>
         </FormSection>

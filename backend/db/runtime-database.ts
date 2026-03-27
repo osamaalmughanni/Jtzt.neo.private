@@ -3,12 +3,12 @@ import type { AppDatabase, RuntimeConfig } from "../runtime/types";
 
 export async function createSystemDatabase(config: RuntimeConfig): Promise<AppDatabase> {
   const { createNodeDatabase } = await import("./node-sqlite-database");
-  return createNodeDatabase(config.nodeSystemSqlitePath, systemSchema, "system");
+  return await createNodeDatabase(config.nodeSystemSqlitePath, systemSchema, "system");
 }
 
 export async function createCompanyDatabase(config: RuntimeConfig, companyId: string): Promise<AppDatabase> {
   const [{ createNodeDatabase }, path] = await Promise.all([import("./node-sqlite-database"), import("node:path")]);
-  return createNodeDatabase(path.join(config.nodeCompanySqliteDir, `${companyId}.sqlite`), companySchema, "company");
+  return await createNodeDatabase(path.join(config.nodeCompanySqliteDir, `${companyId}.sqlite`), companySchema, "company");
 }
 
 export async function destroyCompanyDatabase(config: RuntimeConfig, companyId: string) {

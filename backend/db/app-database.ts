@@ -2,11 +2,16 @@ export type DatabaseKind = "system" | "company";
 
 function hardenCompanySchema(exec: (sql: string) => void) {
   exec(`
+    DROP INDEX IF EXISTS idx_users_company_username;
+    DROP INDEX IF EXISTS idx_users_company_pin_code;
+
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_company_username
-    ON users (company_id, username);
+    ON users (company_id, username)
+    WHERE deleted_at IS NULL;
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_company_pin_code
-    ON users (company_id, pin_code);
+    ON users (company_id, pin_code)
+    WHERE deleted_at IS NULL;
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_public_holiday_cache_company_country_year
     ON public_holiday_cache (company_id, country_code, year);

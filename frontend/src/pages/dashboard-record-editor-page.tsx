@@ -8,6 +8,7 @@ import type {
   PublicHolidayRecord,
   TimeEntryType,
 } from "@shared/types/models";
+import type { ProjectTaskManagementResponse } from "@shared/types/api";
 import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import { evaluateTimeEntryPolicy, getAllowedEntryTypesForDay, getFutureDayDistance, getPastDayDistance } from "@shared/utils/time-entry-policy";
 import {
@@ -26,6 +27,7 @@ import { PageBackAction } from "@/components/page-back-action";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
 import { Textarea } from "@/components/ui/textarea";
@@ -49,6 +51,8 @@ const defaultSettings: CompanySettings = {
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
+  projectsEnabled: false,
+  tasksEnabled: false,
   customFields: [],
   overtime: createDefaultOvertimeSettings(),
 };
@@ -81,6 +85,16 @@ function enumerateYears(startDate: string, endDate: string) {
     year += 1;
   }
   return Array.from(years);
+}
+
+function groupAssignments<T extends { projectId: number }>(rows: T[]) {
+  const grouped = new Map<number, T[]>();
+  for (const row of rows) {
+    const current = grouped.get(row.projectId) ?? [];
+    current.push(row);
+    grouped.set(row.projectId, current);
+  }
+  return grouped;
 }
 
 interface DashboardRecordEditorPageProps {
@@ -170,6 +184,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const [searchParams] = useSearchParams();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
+  const [projectData, setProjectData] = useState<ProjectTaskManagementResponse | null>(null);
   const initialEntryType = (searchParams.get("type") as TimeEntryType | null) ?? "work";
   const [entryType, setEntryType] = useState<TimeEntryType>(
     initialEntryType === "vacation" || initialEntryType === "sick_leave" || initialEntryType === "time_off_in_lieu" ? initialEntryType : "work"
@@ -180,6 +195,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const [endTime, setEndTime] = useState("");
   const [notes, setNotes] = useState("");
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, string | number | boolean>>({});
+  const [projectId, setProjectId] = useState<string>("");
+  const [taskId, setTaskId] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(mode === "edit");
   const [deleting, setDeleting] = useState(false);
@@ -203,6 +220,74 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     () => settings.customFields.filter((field) => field.targets.includes(entryType)),
     [entryType, settings.customFields],
   );
+  const projectUsersByProject = useMemo(
+    () => groupAssignments(projectData?.projectUsers ?? []),
+    [projectData?.projectUsers],
+  );
+  const projectTasksByProject = useMemo(
+    () => groupAssignments(projectData?.projectTasks ?? []),
+    [projectData?.projectTasks],
+  );
+  const userProjects = useMemo(() => {
+    const projects = projectData?.projects ?? [];
+    const userId = effectiveUserId;
+    return projects.filter((project) => {
+      if (project.allowAllUsers) {
+        return true;
+      }
+
+      const assignments = projectUsersByProject.get(project.id) ?? [];
+      return assignments.some((assignment) => assignment.userId === userId);
+    });
+  }, [effectiveUserId, projectData?.projects, projectUsersByProject]);
+  const selectedProjectId = projectId ? Number(projectId) : null;
+  const selectedProject = userProjects.find((project) => project.id === selectedProjectId) ?? null;
+  const availableTasks = useMemo(() => {
+    if (!selectedProject || !projectData?.tasks) {
+      return [];
+    }
+
+    if (selectedProject.allowAllTasks) {
+      return projectData.tasks.filter((task) => task.isActive);
+    }
+
+    const taskAssignments = projectTasksByProject.get(selectedProject.id) ?? [];
+    const allowedTaskIds = new Set(taskAssignments.map((assignment) => assignment.taskId));
+    return projectData.tasks.filter((task) => task.isActive && allowedTaskIds.has(task.id));
+  }, [projectData?.tasks, projectTasksByProject, selectedProject]);
+  const projectOptions = useMemo(
+    () => userProjects.map((project) => ({
+      value: String(project.id),
+      label: project.description?.trim() ? `${project.name} - ${project.description.trim()}` : project.name,
+    })),
+    [userProjects],
+  );
+  const taskOptions = useMemo(
+    () => availableTasks.map((task) => ({
+      value: String(task.id),
+      label: task.title,
+    })),
+    [availableTasks],
+  );
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      if (taskId) {
+        setTaskId("");
+      }
+      return;
+    }
+
+    if (!userProjects.some((project) => project.id === selectedProjectId)) {
+      setProjectId("");
+      setTaskId("");
+      return;
+    }
+
+    if (taskId && !availableTasks.some((task) => task.id === Number(taskId))) {
+      setTaskId("");
+    }
+  }, [availableTasks, selectedProjectId, taskId, userProjects]);
   const selectedUserName =
     users.find((user) => user.id === effectiveUserId)?.fullName ?? companyIdentity?.user.fullName ?? "User";
   const resolvedEndDate = endDate;
@@ -339,6 +424,17 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   }, [canSwitchUser, companySession]);
 
   useEffect(() => {
+    if (!companySession || (!settings.projectsEnabled && !settings.tasksEnabled)) {
+      setProjectData(null);
+      return;
+    }
+
+    void api.listProjectData(companySession.token, true)
+      .then((response) => setProjectData(response))
+      .catch(() => setProjectData(null));
+  }, [companySession, settings.projectsEnabled, settings.tasksEnabled]);
+
+  useEffect(() => {
     if (!companySession || settings.country.length !== 2) return;
     const nextYears = enumerateYears(startDate, resolvedEndDate);
     void Promise.all(nextYears.map((year) => api.getPublicHolidays(companySession.token, settings.country, year)))
@@ -415,6 +511,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
         setStartTime(toClockTimeValue(response.entry.startTime, settings.timeZone));
         setEndTime(toClockTimeValue(response.entry.endTime, settings.timeZone));
         setNotes(response.entry.notes);
+        setProjectId(response.entry.projectId ? String(response.entry.projectId) : "");
+        setTaskId(response.entry.taskId ? String(response.entry.taskId) : "");
         setCustomFieldValues(response.entry.customFieldValues);
       })
       .catch((error) =>
@@ -430,6 +528,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     if (entryType !== "work") {
       setStartTime("");
       setEndTime("");
+      setProjectId("");
+      setTaskId("");
       return;
     }
 
@@ -477,6 +577,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       if (entryType === "work") {
         if (!startTime) throw new Error(t("recordEditor.startTimeRequired"));
         if (!endTime) throw new Error(t("recordEditor.endTimeRequired"));
+        if (settings.projectsEnabled && !projectId) throw new Error(t("recordEditor.projectRequired"));
+        if (settings.tasksEnabled && !taskId) throw new Error(t("recordEditor.taskRequired"));
       }
       for (const field of activeCustomFields) {
         const value = customFieldValues[field.id];
@@ -500,6 +602,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
               startTime: workStartTime,
               endTime: workEndTime,
               notes,
+              projectId: projectId ? Number(projectId) : null,
+              taskId: taskId ? Number(taskId) : null,
               customFieldValues,
             }
           : {
@@ -509,6 +613,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
               startTime: null,
               endTime: null,
               notes,
+              projectId: null,
+              taskId: null,
               customFieldValues,
             };
 
@@ -643,6 +749,36 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
                 startTimeLabel={t("recordEditor.startTime")}
                 endTimeLabel={t("recordEditor.endTime")}
               />
+              {entryType === "work" && settings.projectsEnabled ? (
+                <Field label={t("recordEditor.project")}>
+                  <Combobox
+                    value={projectId}
+                    onValueChange={(value) => {
+                      setProjectId(value);
+                      setTaskId("");
+                    }}
+                    options={projectOptions}
+                    placeholder={t("recordEditor.projectPlaceholder")}
+                    searchPlaceholder={t("recordEditor.projectSearchPlaceholder")}
+                    emptyText={t("recordEditor.noProjects")}
+                    searchable
+                  />
+                </Field>
+              ) : null}
+              {entryType === "work" && settings.tasksEnabled ? (
+                <Field label={t("recordEditor.task")}>
+                  <Combobox
+                    value={taskId}
+                    onValueChange={setTaskId}
+                    options={taskOptions}
+                    placeholder={projectId ? t("recordEditor.taskPlaceholder") : t("recordEditor.selectProjectFirst")}
+                    searchPlaceholder={t("recordEditor.taskSearchPlaceholder")}
+                    emptyText={projectId ? t("recordEditor.noTasks") : t("recordEditor.selectProjectFirst")}
+                    searchable
+                    disabled={!projectId}
+                  />
+                </Field>
+              ) : null}
               {activeCustomFields.map((field) => (
                 <Field key={field.id} label={field.label}>
                   <CustomFieldInput

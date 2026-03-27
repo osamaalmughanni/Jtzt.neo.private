@@ -21,6 +21,10 @@ import { OvertimeSettingsPage } from "@/pages/overtime-settings-page";
 import { TabletCodePage } from "@/pages/tablet-code-page";
 import { TabletPinPage } from "@/pages/tablet-pin-page";
 import { FieldsPage } from "@/pages/fields-page";
+import { ProjectEditorPage } from "@/pages/project-editor-page";
+import { ProjectsPage } from "@/pages/projects-page";
+import { TaskEditorPage } from "@/pages/task-editor-page";
+import { TasksPage } from "@/pages/tasks-page";
 import { UsersPage } from "@/pages/users-page";
 import { UserEditorPage } from "@/pages/user-editor-page";
 
@@ -59,6 +63,12 @@ export function App() {
               <Route path="/users/create" element={<UserEditorPage mode="create" />} />
               <Route path="/users/:userId/edit" element={<UserEditorPage mode="edit" />} />
               <Route path="/fields" element={<FieldsPage />} />
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects/create" element={<ProjectEditorPage mode="create" />} />
+              <Route path="/projects/:projectId/edit" element={<ProjectEditorPage mode="edit" />} />
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="/tasks/create" element={<TaskEditorPage mode="create" />} />
+              <Route path="/tasks/:taskId/edit" element={<TaskEditorPage mode="edit" />} />
               <Route path="/settings" element={<SettingsMenuPage />} />
               <Route path="/settings/overtime" element={<OvertimeSettingsPage />} />
               <Route path="/api-access" element={<ApiAccessPage />} />

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "frontend/src/**/*.ts",
+    "frontend/src/**/*.tsx",
+    "backend/**/*.ts",
+    "shared/**/*.ts"
+  ]
+}

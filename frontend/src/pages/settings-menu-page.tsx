@@ -32,6 +32,8 @@ const defaultSettings: CompanySettings = {
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
+  projectsEnabled: false,
+  tasksEnabled: false,
   customFields: [],
   overtime: createDefaultOvertimeSettings(),
 };
@@ -345,6 +347,41 @@ export function SettingsMenuPage() {
                   }))
                 }
               />
+            </Field>
+            <Field label={t("settings.projectsEnabled")}>
+              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                <span className="text-sm text-foreground">
+                  {settings.projectsEnabled ? t("settings.enabled") : t("settings.disabled")}
+                </span>
+                <Switch
+                  checked={settings.projectsEnabled}
+                  onCheckedChange={(checked) =>
+                    setSettings((current) => ({
+                      ...current,
+                      projectsEnabled: checked,
+                      tasksEnabled: checked ? current.tasksEnabled : false,
+                    }))
+                  }
+                />
+              </div>
+            </Field>
+            <Field label={t("settings.tasksEnabled")}>
+              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                <span className="text-sm text-foreground">
+                  {settings.tasksEnabled ? t("settings.enabled") : t("settings.disabled")}
+                </span>
+                <Switch
+                  checked={settings.tasksEnabled}
+                  disabled={!settings.projectsEnabled}
+                  onCheckedChange={(checked) =>
+                    setSettings((current) => ({
+                      ...current,
+                      projectsEnabled: checked ? true : current.projectsEnabled,
+                      tasksEnabled: checked,
+                    }))
+                  }
+                />
+              </div>
             </Field>
           </FormFields>
         </FormSection>

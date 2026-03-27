@@ -1,58 +1,108 @@
 import type { UserContractInput } from "../../shared/types/api";
-import type { ContractWeekday, UserContract, UserContractScheduleDay } from "../../shared/types/models";
+import type { ContractWeekday, UserContract, UserContractScheduleBlock, UserContractScheduleDay } from "../../shared/types/models";
 import { diffClockTimeMinutes, getIsoDayOfWeek, isValidClockTime } from "../../shared/utils/time";
 
 const CONTRACT_WEEKDAYS: ContractWeekday[] = [1, 2, 3, 4, 5, 6, 7];
 const DEFAULT_START_TIME = "09:00";
+const DEFAULT_END_TIME = "17:00";
 
 function roundHours(totalMinutes: number) {
   return Math.round((totalMinutes / 60) * 100) / 100;
 }
 
-function buildLegacyWeekdayMinutes(hoursPerWeek: number) {
-  return Math.max(0, Math.round((hoursPerWeek * 60) / 5));
-}
+function buildScheduleBlock(startTime: string, endTime: string): UserContractScheduleBlock {
+  const minutes = diffClockTimeMinutes(startTime, endTime);
+  if (minutes === null) {
+    throw new Error("Contract block end time must be after the start time");
+  }
 
-function buildScheduleDay(weekday: ContractWeekday, isWorkingDay: boolean, startTime: string | null, endTime: string | null): UserContractScheduleDay {
-  const minutes = isWorkingDay && startTime && endTime ? diffClockTimeMinutes(startTime, endTime) ?? 0 : 0;
   return {
-    weekday,
-    isWorkingDay,
-    startTime: isWorkingDay ? startTime : null,
-    endTime: isWorkingDay ? endTime : null,
+    startTime,
+    endTime,
     minutes
   };
 }
 
-export function createDefaultContractSchedule(): UserContractScheduleDay[] {
-  return CONTRACT_WEEKDAYS.map((weekday) => ({
+function buildScheduleDay(weekday: ContractWeekday, blocks: UserContractScheduleBlock[]): UserContractScheduleDay {
+  const totalMinutes = blocks.reduce((sum, block) => sum + block.minutes, 0);
+  return {
     weekday,
-    isWorkingDay: weekday <= 5,
-    startTime: weekday <= 5 ? "09:00" : null,
-    endTime: weekday <= 5 ? "17:00" : null,
-    minutes: weekday <= 5 ? 480 : 0
-  }));
+    isWorkingDay: blocks.length > 0,
+    blocks,
+    minutes: totalMinutes
+  };
 }
 
-export function createLegacyContractSchedule(hoursPerWeek: number): UserContractScheduleDay[] {
-  const weekdayMinutes = buildLegacyWeekdayMinutes(hoursPerWeek);
-  const endHour = Math.floor((9 * 60 + weekdayMinutes) / 60).toString().padStart(2, "0");
-  const endMinute = ((9 * 60 + weekdayMinutes) % 60).toString().padStart(2, "0");
-  const endTime = weekdayMinutes > 0 ? `${endHour}:${endMinute}` : null;
-
+export function createDefaultContractSchedule(): UserContractScheduleDay[] {
   return CONTRACT_WEEKDAYS.map((weekday) =>
-    buildScheduleDay(
-      weekday,
-      weekday <= 5 && weekdayMinutes > 0,
-      weekday <= 5 && weekdayMinutes > 0 ? DEFAULT_START_TIME : null,
-      weekday <= 5 && weekdayMinutes > 0 ? endTime : null
-    )
+    weekday <= 5
+      ? buildScheduleDay(weekday, [buildScheduleBlock(DEFAULT_START_TIME, DEFAULT_END_TIME)])
+      : buildScheduleDay(weekday, [])
   );
+}
+
+function normalizeScheduleBlocks(
+  blocks: UserContractScheduleBlock[],
+  onError: (message: string) => never,
+  lenient = false
+) {
+  const normalized = blocks
+    .map((block) => ({
+      startTime: block.startTime ?? "",
+      endTime: block.endTime ?? "",
+      minutes: Number(block.minutes ?? 0)
+    }))
+    .filter((block) => block.startTime.length > 0 || block.endTime.length > 0)
+    .sort((left, right) => left.startTime.localeCompare(right.startTime));
+
+  const resolved: Array<{ startTime: string; endTime: string; minutes: number }> = [];
+  let previousEnd = "";
+
+  for (const block of normalized) {
+    if (!isValidClockTime(block.startTime) || !isValidClockTime(block.endTime)) {
+      if (lenient) {
+        continue;
+      }
+      onError("Working day blocks require valid start and end times");
+    }
+
+    const minutes = diffClockTimeMinutes(block.startTime, block.endTime);
+    if (minutes === null) {
+      if (lenient) {
+        continue;
+      }
+      onError("Working day blocks must end after they start");
+    }
+
+    if (previousEnd && block.startTime < previousEnd) {
+      if (lenient) {
+        continue;
+      }
+      onError("Working day blocks cannot overlap");
+    }
+
+    resolved.push({
+      startTime: block.startTime,
+      endTime: block.endTime,
+      minutes
+    });
+    previousEnd = block.endTime;
+  }
+
+  if (resolved.length === 0) {
+    if (lenient) {
+      return [];
+    }
+    onError("Working days require at least one time block");
+  }
+
+  return resolved;
 }
 
 export function normalizeContractSchedule(
   schedule: UserContractScheduleDay[],
-  onError: (message: string) => never
+  onError: (message: string) => never,
+  lenient = false
 ): { schedule: UserContractScheduleDay[]; hoursPerWeek: number } {
   if (!Array.isArray(schedule) || schedule.length !== 7) {
     onError("Contract schedule must contain exactly seven days");
@@ -62,9 +112,13 @@ export function normalizeContractSchedule(
     .map((day) => ({
       weekday: day.weekday,
       isWorkingDay: Boolean(day.isWorkingDay),
-      startTime: day.startTime ?? null,
-      endTime: day.endTime ?? null,
-      minutes: Number(day.minutes ?? 0)
+      blocks: Array.isArray(day.blocks)
+        ? day.blocks.map((block) => ({
+            startTime: block.startTime ?? "",
+            endTime: block.endTime ?? "",
+            minutes: Number(block.minutes ?? 0)
+          }))
+        : []
     }))
     .sort((left, right) => left.weekday - right.weekday);
 
@@ -75,28 +129,26 @@ export function normalizeContractSchedule(
       onError("Contract schedule weekdays must cover Monday to Sunday exactly once");
     }
 
+    const normalizedBlocks = day.isWorkingDay ? normalizeScheduleBlocks(day.blocks, onError, lenient) : [];
+
     if (!day.isWorkingDay) {
-      day.startTime = null;
-      day.endTime = null;
-      day.minutes = 0;
+      day.blocks = [];
       continue;
     }
 
-    if (!day.startTime || !day.endTime || !isValidClockTime(day.startTime) || !isValidClockTime(day.endTime)) {
-      onError("Working days require a valid start and end time");
-    }
-
-    const minutes = diffClockTimeMinutes(day.startTime, day.endTime);
-    if (minutes === null) {
-      onError("Contract end time must be after the start time on the same day");
-    }
-
-    day.minutes = minutes;
+    day.blocks = normalizedBlocks;
   }
 
-  const totalMinutes = normalized.reduce((sum, day) => sum + day.minutes, 0);
+  const finalized = normalized.map((day) => ({
+    weekday: day.weekday,
+    isWorkingDay: day.blocks.length > 0,
+    blocks: day.blocks,
+    minutes: day.blocks.reduce((sum, block) => sum + block.minutes, 0)
+  }));
+
+  const totalMinutes = finalized.reduce((sum, day) => sum + day.minutes, 0);
   return {
-    schedule: normalized,
+    schedule: finalized,
     hoursPerWeek: roundHours(totalMinutes)
   };
 }
@@ -105,7 +157,7 @@ export function buildContractInputWithDerivedHours(
   contract: UserContractInput,
   onError: (message: string) => never
 ): UserContractInput {
-  const normalized = normalizeContractSchedule(contract.schedule?.length === 7 ? contract.schedule : createLegacyContractSchedule(contract.hoursPerWeek), onError);
+  const normalized = normalizeContractSchedule(contract.schedule, onError);
   return {
     ...contract,
     hoursPerWeek: normalized.hoursPerWeek,
@@ -122,10 +174,45 @@ export function buildUserContract(row: {
   payment_per_hour: number;
   annual_vacation_days?: number | null;
   created_at: string;
-}, schedule: UserContractScheduleDay[]): UserContract {
-  const normalized = normalizeContractSchedule(schedule.length === 7 ? schedule : createLegacyContractSchedule(row.hours_per_week), (message) => {
-    throw new Error(message);
-  });
+}, schedule: Array<{
+  weekday: number;
+  block_order: number;
+  start_time: string;
+  end_time: string;
+  minutes: number;
+}>): UserContract {
+  const scheduleByWeekday = new Map<ContractWeekday, UserContractScheduleBlock[]>();
+  for (const weekday of CONTRACT_WEEKDAYS) {
+    scheduleByWeekday.set(weekday, []);
+  }
+
+  const sortedBlocks = [...schedule].sort((left, right) =>
+    left.weekday - right.weekday || left.block_order - right.block_order || left.start_time.localeCompare(right.start_time)
+  );
+
+  for (const rowBlock of sortedBlocks) {
+    const weekday = rowBlock.weekday as ContractWeekday;
+    const blocks = scheduleByWeekday.get(weekday);
+    if (!blocks) {
+      continue;
+    }
+    blocks.push({
+      startTime: rowBlock.start_time,
+      endTime: rowBlock.end_time,
+      minutes: Number(rowBlock.minutes ?? 0)
+    });
+  }
+
+  const normalizedSchedule = CONTRACT_WEEKDAYS.map((weekday) =>
+    buildScheduleDay(weekday, scheduleByWeekday.get(weekday) ?? [])
+  );
+  const normalized = normalizeContractSchedule(
+    normalizedSchedule,
+    (message) => {
+      throw new Error(message);
+    },
+    true
+  );
 
   return {
     id: row.id,
@@ -146,5 +233,6 @@ export function getContractScheduledMinutesForDay(contract: UserContract, day: s
     return 0;
   }
 
-  return contract.schedule.find((scheduleDay) => scheduleDay.weekday === weekday)?.minutes ?? 0;
+  const scheduleDay = contract.schedule.find((entry) => entry.weekday === weekday);
+  return scheduleDay ? scheduleDay.blocks.reduce((sum, block) => sum + block.minutes, 0) : 0;
 }

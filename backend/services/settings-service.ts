@@ -2,6 +2,7 @@ import { HTTPException } from "hono/http-exception";
 import type { UpdateOvertimeSettingsInput, UpdateSettingsInput } from "../../shared/types/api";
 import { getLocalNowSnapshot, normalizeTimeZone } from "../../shared/utils/time";
 import { createDefaultOvertimeSettings, normalizeOvertimeSettings } from "../../shared/utils/overtime";
+import { getRemovedCustomFieldIds, normalizeCustomFields, stripRemovedCustomFieldValues } from "../../shared/utils/custom-fields";
 import { mapCompanySettings } from "../db/mappers";
 import type { AppDatabase } from "../runtime/types";
 
@@ -28,9 +29,11 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
         tablet_idle_timeout_seconds,
         auto_break_after_minutes,
         auto_break_duration_minutes,
+        projects_enabled,
+        tasks_enabled,
         overtime_settings_json,
         custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(company_id) DO NOTHING`,
     [
       companyId,
@@ -49,6 +52,8 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
       10,
       300,
       30,
+      0,
+      0,
       JSON.stringify(createDefaultOvertimeSettings()),
       "[]"
     ]
@@ -91,48 +96,98 @@ export const settingsService = {
 
   async updateSettings(db: AppDatabase, companyId: string, input: UpdateSettingsInput) {
     await ensureSettingsRow(db, companyId);
-    await db.run(
-      `UPDATE company_settings
-         SET
-           currency = ?,
-           locale = ?,
-           time_zone = ?,
-           date_time_format = ?,
-           first_day_of_week = ?,
-           edit_days_limit = ?,
-           insert_days_limit = ?,
-           allow_one_record_per_day = ?,
-           allow_intersecting_records = ?,
-           allow_records_on_holidays = ?,
-           allow_future_records = ?,
-           country = ?,
-           tablet_idle_timeout_seconds = ?,
-           auto_break_after_minutes = ?,
-           auto_break_duration_minutes = ?,
-           overtime_settings_json = ?,
-           custom_fields_json = ?
-         WHERE company_id = ?`,
-      [
-        input.currency,
-        input.locale,
-        normalizeSettingsTimeZone(input.timeZone),
-        input.dateTimeFormat,
-        input.firstDayOfWeek,
-        input.editDaysLimit,
-        input.insertDaysLimit,
-        input.allowOneRecordPerDay ? 1 : 0,
-        input.allowIntersectingRecords ? 1 : 0,
-        input.allowRecordsOnHolidays ? 1 : 0,
-        input.allowFutureRecords ? 1 : 0,
-        input.country,
-        input.tabletIdleTimeoutSeconds,
-        input.autoBreakAfterMinutes,
-        input.autoBreakDurationMinutes,
-        JSON.stringify(normalizeOvertimeSettings(input.overtime)),
-        JSON.stringify(input.customFields),
-        companyId
-      ]
+    const previousRow = await db.first<{ custom_fields_json: string }>(
+      "SELECT custom_fields_json FROM company_settings WHERE company_id = ?",
+      [companyId]
     );
+    const previousCustomFields = normalizeCustomFields(
+      previousRow ? JSON.parse(previousRow.custom_fields_json || "[]") : []
+    );
+    const nextCustomFields = normalizeCustomFields(input.customFields);
+    const removedCustomFieldIds = getRemovedCustomFieldIds(previousCustomFields, nextCustomFields);
+    const nextTimeZone = normalizeSettingsTimeZone(input.timeZone);
+    const nextOvertimeJson = JSON.stringify(normalizeOvertimeSettings(input.overtime));
+    const nextProjectsEnabled = Boolean(input.projectsEnabled);
+    const nextTasksEnabled = Boolean(input.tasksEnabled);
+    if (nextTasksEnabled && !nextProjectsEnabled) {
+      throw new HTTPException(400, { message: "Tasks require projects to be enabled" });
+    }
+
+    await db.exec("BEGIN IMMEDIATE TRANSACTION");
+    try {
+      await db.run(
+        `UPDATE company_settings
+           SET
+             currency = ?,
+             locale = ?,
+             time_zone = ?,
+             date_time_format = ?,
+             first_day_of_week = ?,
+             edit_days_limit = ?,
+             insert_days_limit = ?,
+             allow_one_record_per_day = ?,
+             allow_intersecting_records = ?,
+             allow_records_on_holidays = ?,
+             allow_future_records = ?,
+             country = ?,
+             tablet_idle_timeout_seconds = ?,
+             auto_break_after_minutes = ?,
+             auto_break_duration_minutes = ?,
+             projects_enabled = ?,
+             tasks_enabled = ?,
+             overtime_settings_json = ?,
+             custom_fields_json = ?
+           WHERE company_id = ?`,
+        [
+          input.currency,
+          input.locale,
+          nextTimeZone,
+          input.dateTimeFormat,
+          input.firstDayOfWeek,
+          input.editDaysLimit,
+          input.insertDaysLimit,
+          input.allowOneRecordPerDay ? 1 : 0,
+          input.allowIntersectingRecords ? 1 : 0,
+          input.allowRecordsOnHolidays ? 1 : 0,
+          input.allowFutureRecords ? 1 : 0,
+          input.country,
+          input.tabletIdleTimeoutSeconds,
+          input.autoBreakAfterMinutes,
+          input.autoBreakDurationMinutes,
+          nextProjectsEnabled ? 1 : 0,
+          nextTasksEnabled ? 1 : 0,
+          nextOvertimeJson,
+          JSON.stringify(nextCustomFields),
+          companyId
+        ]
+      );
+
+      if (removedCustomFieldIds.length > 0) {
+        const timeEntries = await db.all<{ id: number; custom_field_values_json: string }>(
+          "SELECT id, custom_field_values_json FROM time_entries WHERE company_id = ?",
+          [companyId]
+        );
+        for (const entry of timeEntries) {
+          const parsedValues = typeof entry.custom_field_values_json === "string" && entry.custom_field_values_json.length > 0
+            ? JSON.parse(entry.custom_field_values_json) as Record<string, string | number | boolean>
+            : {};
+          const nextValues = stripRemovedCustomFieldValues(parsedValues, removedCustomFieldIds);
+          if (JSON.stringify(nextValues) === JSON.stringify(parsedValues)) {
+            continue;
+          }
+
+          await db.run(
+            "UPDATE time_entries SET custom_field_values_json = ? WHERE id = ? AND company_id = ?",
+            [JSON.stringify(nextValues), entry.id, companyId]
+          );
+        }
+      }
+
+      await db.exec("COMMIT");
+    } catch (error) {
+      await db.exec("ROLLBACK");
+      throw error;
+    }
 
     return this.getSettings(db, companyId);
   },

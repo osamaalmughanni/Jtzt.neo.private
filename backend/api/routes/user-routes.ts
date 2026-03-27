@@ -25,8 +25,13 @@ const contractSchema = z.object({
         z.literal(7)
       ]),
       isWorkingDay: z.boolean(),
-      startTime: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
-      endTime: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+      blocks: z.array(
+        z.object({
+          startTime: z.string().regex(/^\d{2}:\d{2}$/),
+          endTime: z.string().regex(/^\d{2}:\d{2}$/),
+          minutes: z.number().int().min(0)
+        })
+      ),
       minutes: z.number().int().min(0)
     })
   ).length(7)
@@ -56,6 +61,10 @@ const userIdParamsSchema = z.object({
   userId: z.coerce.number().int().positive()
 });
 
+const usersQuerySchema = z.object({
+  activeOnly: z.coerce.boolean().optional()
+});
+
 export const userRoutes = new Hono<AppRouteConfig>();
 
 userRoutes.use("*", authMiddleware, requireCompanyUser, companyDbMiddleware);
@@ -83,7 +92,8 @@ userRoutes.get("/", async (c) => {
   }
   ensureManagerOrAdmin(session);
 
-  return c.json({ users: await userService.listUsers(c.get("db"), session.companyId) });
+  const query = usersQuerySchema.parse(c.req.query());
+  return c.json({ users: await userService.listUsers(c.get("db"), session.companyId, { activeOnly: query.activeOnly }) });
 });
 
 userRoutes.get("/:userId", async (c) => {

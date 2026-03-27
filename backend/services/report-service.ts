@@ -2,12 +2,18 @@ import { HTTPException } from "hono/http-exception";
 import type { ReportColumnDefinition, ReportRequestInput, ReportRowMeta } from "../../shared/types/api";
 import type { CompanyCustomField, TimeEntryType, UserContract } from "../../shared/types/models";
 import { diffCalendarDays, enumerateLocalDays } from "../../shared/utils/time";
+import {
+  buildCustomFieldCanonicalKey,
+  buildCustomFieldValueLabelLookup,
+  getCustomFieldLabel,
+  resolveCustomFieldValueLabel,
+} from "../../shared/utils/custom-fields";
 import { calculateLeaveCompensation, calculateWorkCostAmount, calculateWorkDurationMinutes } from "./time-entry-metrics-service";
 import { aggregateOvertimeMeta, buildOvertimeReportMeta } from "./overtime-report-service";
 import { settingsService } from "./settings-service";
 import { vacationBalanceService } from "./vacation-balance-service";
 import type { AppDatabase } from "../runtime/types";
-import { mapUserContractScheduleDay } from "../db/mappers";
+import { mapUserContractScheduleBlock } from "../db/mappers";
 import { buildUserContract } from "./user-contract-schedule";
 
 type ReportRow = {
@@ -15,6 +21,8 @@ type ReportRow = {
   user_id: number;
   full_name: string;
   role: string;
+  project_name: string | null;
+  task_title: string | null;
   entry_type: TimeEntryType;
   entry_date: string;
   end_date: string | null;
@@ -29,6 +37,8 @@ type ContractRow = UserContract;
 const baseColumns: Record<string, ReportColumnDefinition> = {
   user: { key: "user", label: "User", kind: "text" },
   role: { key: "role", label: "Role", kind: "text" },
+  project: { key: "project", label: "Project", kind: "text" },
+  task: { key: "task", label: "Task", kind: "text" },
   type: { key: "type", label: "Type", kind: "text" },
   date: { key: "date", label: "Date", kind: "date" },
   start: { key: "start", label: "Start", kind: "datetime" },
@@ -44,15 +54,6 @@ const baseColumns: Record<string, ReportColumnDefinition> = {
 
 function normalizeLookupValue(value: string) {
   return value.trim().toLowerCase();
-}
-
-function buildCustomFieldCanonicalKey(fieldId: string) {
-  return `custom:${fieldId}`;
-}
-
-function getCustomFieldLabel(field: CompanyCustomField) {
-  const cleaned = field.label.trim();
-  return cleaned.length > 0 ? cleaned : field.id;
 }
 
 function getCustomFieldKeyMatches(field: CompanyCustomField, key: string) {
@@ -218,26 +219,23 @@ async function buildVacationOverview(
   );
 }
 
-function getCustomFieldDisplayValue(field: CompanyCustomField | undefined, rawValue: string | number | boolean | null) {
-  if (!field || rawValue === null) return rawValue;
-  if (field.type === "boolean" && typeof rawValue === "boolean") return rawValue ? "Yes" : "No";
-  if (field.type === "select" && typeof rawValue === "string") {
-    const option = field.options.find((item) => item.value === rawValue);
-    return option?.label ?? rawValue;
-  }
-  return rawValue;
-}
-
-function getEntryValue(entry: ReportRow, key: string, customFields: CompanyCustomField[]) {
+function getEntryValue(
+  entry: ReportRow,
+  key: string,
+  customFields: CompanyCustomField[],
+  customFieldValueLabels: Map<string, string>,
+) {
   const customValues = parseJsonRecord(entry.custom_field_values_json);
   if (key.startsWith("custom:") || key.startsWith("field-") || customFields.some((item) => getCustomFieldKeyMatches(item, key))) {
     const field = customFields.find((item) => getCustomFieldKeyMatches(item, key));
     const valueKey = field?.id ?? (key.startsWith("custom:") ? key.slice("custom:".length) : key);
-    return getCustomFieldDisplayValue(field, customValues[valueKey] ?? null);
+    return resolveCustomFieldValueLabel(field, customValues[valueKey] ?? null, customFieldValueLabels);
   }
 
   if (key === "user") return entry.full_name;
   if (key === "role") return normalizeRole(entry.role);
+  if (key === "project") return entry.project_name ?? "";
+  if (key === "task") return entry.task_title ?? "";
   if (key === "type") return getTypeLabel(entry.entry_type);
   if (key === "date") return entry.entry_date;
   if (key === "start") return entry.entry_type === "work" ? entry.start_time : entry.entry_date;
@@ -261,6 +259,7 @@ export const reportService = {
     if (input.endDate < input.startDate) throw new HTTPException(400, { message: "End date must be on or after start date" });
 
     const settings = await settingsService.getSettings(db, companyId);
+    const customFieldValueLabels = buildCustomFieldValueLabelLookup(settings.customFields);
     const holidaySet = await getHolidaySet(db, companyId, settings.country, input.startDate, input.endDate);
     const placeholders = buildInClause(input.userIds);
     const rows = await db.all(
@@ -269,6 +268,8 @@ export const reportService = {
         te.user_id,
         u.full_name,
         u.role,
+        p.name AS project_name,
+        t.title AS task_title,
         te.entry_type,
         te.entry_date,
         te.end_date,
@@ -278,6 +279,8 @@ export const reportService = {
         te.custom_field_values_json
        FROM time_entries te
        INNER JOIN users u ON u.id = te.user_id
+       LEFT JOIN projects p ON p.id = te.project_id
+       LEFT JOIN tasks t ON t.id = te.task_id
        WHERE te.company_id = ?
          AND te.user_id IN (${placeholders})
          AND te.entry_date <= ?
@@ -315,28 +318,28 @@ export const reportService = {
           `SELECT
             contract_id,
             weekday,
-            is_working_day,
+            block_order,
             start_time,
             end_time,
             minutes
-           FROM user_contract_schedule_days
+           FROM user_contract_schedule_blocks
            WHERE contract_id IN (${contractRows.map(() => "?").join(", ")})
-           ORDER BY contract_id ASC, weekday ASC`,
+           ORDER BY contract_id ASC, weekday ASC, block_order ASC`,
           contractRows.map((row) => row.id)
         ) as Array<{
           contract_id: number;
           weekday: number;
-          is_working_day: number;
+          block_order: number;
           start_time: string | null;
           end_time: string | null;
           minutes: number;
         }>;
 
     const contractsByUser = new Map<number, ContractRow[]>();
-    const scheduleByContract = new Map<number, ReturnType<typeof mapUserContractScheduleDay>[]>();
+    const scheduleByContract = new Map<number, ReturnType<typeof mapUserContractScheduleBlock>[]>();
     for (const row of contractScheduleRows) {
       const next = scheduleByContract.get(row.contract_id) ?? [];
-      next.push(mapUserContractScheduleDay(row));
+      next.push(mapUserContractScheduleBlock(row));
       scheduleByContract.set(row.contract_id, next);
     }
     for (const row of contractRows) {
@@ -365,7 +368,7 @@ export const reportService = {
         return calculateWorkCostAmount(row.start_time, row.end_time, row.entry_date, settings, contractsByUser.get(row.user_id) ?? []);
       }
 
-      return getEntryValue(row, key, settings.customFields);
+      return getEntryValue(row, key, settings.customFields, customFieldValueLabels);
     };
 
     const validGroupBy = input.groupBy.filter((key, index, array) => key && array.indexOf(key) === index).slice(0, 8);

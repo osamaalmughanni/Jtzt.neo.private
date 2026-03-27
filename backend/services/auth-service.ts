@@ -89,7 +89,7 @@ export const authService = {
     );
 
     const userRow = await companyDb.first(
-      "SELECT id, username, full_name, password_hash, role, is_active, pin_code, created_at FROM users WHERE company_id = ? AND username = ?",
+      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE company_id = ? AND username = ? AND deleted_at IS NULL",
       [company.id, input.adminUsername]
     );
 
@@ -128,7 +128,7 @@ export const authService = {
     }
 
     const userRow = await companyDb.first(
-      "SELECT id, username, full_name, password_hash, role, is_active, pin_code, created_at FROM users WHERE company_id = ? AND username = ?",
+      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE company_id = ? AND username = ? AND deleted_at IS NULL",
       [company.id, input.username]
     );
 
@@ -174,7 +174,7 @@ export const authService = {
     }
 
     const userRow = await companyDb.first(
-      "SELECT id, username, full_name, password_hash, role, is_active, pin_code, created_at FROM users WHERE company_id = ? AND pin_code = ?",
+      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE company_id = ? AND pin_code = ? AND deleted_at IS NULL",
       [company.id, input.pinCode.trim()]
     ) as Record<string, unknown> | null;
 
@@ -211,7 +211,7 @@ export const authService = {
       throw new HTTPException(404, { message: "Company not found" });
     }
 
-    const row = await companyDb.first("SELECT id, username, full_name, role FROM users WHERE company_id = ? AND id = ?", [
+    const row = await companyDb.first("SELECT id, username, full_name, role FROM users WHERE company_id = ? AND id = ? AND deleted_at IS NULL", [
       payload.companyId,
       payload.userId
     ]);

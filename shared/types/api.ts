@@ -47,6 +47,8 @@ export interface AdminMeResponse {
 
 export interface StartTimerInput {
   notes?: string;
+  projectId?: number | null;
+  taskId?: number | null;
   customFieldValues?: Record<string, string | number | boolean>;
 }
 
@@ -64,6 +66,8 @@ export interface UpdateTimeEntryInput {
   startTime: string | null;
   endTime: string | null;
   notes: string;
+  projectId?: number | null;
+  taskId?: number | null;
   customFieldValues: Record<string, string | number | boolean>;
 }
 
@@ -98,6 +102,8 @@ export interface CreateManualTimeEntryInput {
   startTime: string | null;
   endTime: string | null;
   notes: string;
+  projectId?: number | null;
+  taskId?: number | null;
   customFieldValues: Record<string, string | number | boolean>;
 }
 
@@ -163,11 +169,48 @@ export interface DeleteUserInput {
 export interface CreateProjectInput {
   name: string;
   description?: string;
+  isActive?: boolean;
+  allowAllUsers: boolean;
+  allowAllTasks: boolean;
+  userIds?: number[];
+  taskIds?: number[];
+}
+
+export interface UpdateProjectInput {
+  projectId: number;
+  name: string;
+  description?: string | null;
+  isActive: boolean;
+  allowAllUsers: boolean;
+  allowAllTasks: boolean;
+  userIds: number[];
+  taskIds: number[];
+}
+
+export interface DeleteProjectInput {
+  projectId: number;
 }
 
 export interface CreateTaskInput {
-  projectId: number;
   title: string;
+}
+
+export interface UpdateTaskInput {
+  taskId: number;
+  title: string;
+  isActive: boolean;
+}
+
+export interface DeleteTaskInput {
+  taskId: number;
+}
+
+export interface ProjectTaskManagementResponse {
+  users: import("./models").CompanyUserListItem[];
+  projects: import("./models").ProjectRecord[];
+  tasks: import("./models").TaskRecord[];
+  projectUsers: import("./models").ProjectUserAssignmentRecord[];
+  projectTasks: import("./models").ProjectTaskAssignmentRecord[];
 }
 
 export interface CreateCompanyInput {
@@ -235,6 +278,8 @@ export interface CompanySnapshot {
     tabletIdleTimeoutSeconds: number;
     autoBreakAfterMinutes: number;
     autoBreakDurationMinutes: number;
+    projectsEnabled: boolean;
+    tasksEnabled: boolean;
     customFields: CompanyCustomField[];
     overtime: CompanyOvertimeSettings;
   } | null;
@@ -245,6 +290,7 @@ export interface CompanySnapshot {
     passwordHash: string;
     role: UserRole;
     isActive: boolean;
+    deletedAt: string | null;
     pinCode: string;
     email: string | null;
     createdAt: string;
@@ -256,11 +302,13 @@ export interface CompanySnapshot {
     entryType: TimeEntryType;
     entryDate: string;
     endDate: string | null;
-    startTime: string | null;
-    endTime: string | null;
-    notes: string | null;
-    customFieldValues: Record<string, string | number | boolean>;
-    createdAt: string;
+  startTime: string | null;
+  endTime: string | null;
+  notes: string | null;
+  projectId: number | null;
+  taskId: number | null;
+  customFieldValues: Record<string, string | number | boolean>;
+  createdAt: string;
   }>;
   projects: Array<{
     id: number;
@@ -271,7 +319,6 @@ export interface CompanySnapshot {
   }>;
   tasks: Array<{
     id: number;
-    projectId: number;
     title: string;
     isActive: boolean;
     createdAt: string;
@@ -383,6 +430,8 @@ export interface UpdateSettingsInput {
   tabletIdleTimeoutSeconds: number;
   autoBreakAfterMinutes: number;
   autoBreakDurationMinutes: number;
+  projectsEnabled: boolean;
+  tasksEnabled: boolean;
   customFields: CompanyCustomField[];
   overtime: CompanyOvertimeSettings;
 }

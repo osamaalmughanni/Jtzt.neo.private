@@ -8,6 +8,7 @@ import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Stack } from "@/components/stack";
+import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -32,6 +33,8 @@ const defaultSettings: CompanySettings = {
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
+  projectsEnabled: false,
+  tasksEnabled: false,
   customFields: [],
   overtime: createDefaultOvertimeSettings(),
 };
@@ -49,10 +52,11 @@ function createField(): CompanyCustomField {
 }
 
 function createOption(): CompanyCustomFieldOption {
+  const id = crypto.randomUUID();
   return {
-    id: crypto.randomUUID(),
+    id,
     label: "",
-    value: "",
+    value: id,
   };
 }
 
@@ -61,6 +65,7 @@ export function FieldsPage() {
   const { companySession } = useAuth();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [saving, setSaving] = useState(false);
+  const [confirmDeleteFieldIndex, setConfirmDeleteFieldIndex] = useState<number | null>(null);
   const pageResource = usePageResource<CompanySettings>({
     enabled: Boolean(companySession),
     deps: [companySession?.token, t],
@@ -128,41 +133,49 @@ export function FieldsPage() {
     });
   }
 
+  function removeField(index: number) {
+    setSettings((current) => ({
+      ...current,
+      customFields: current.customFields.filter((_, fieldIndex) => fieldIndex !== index),
+    }));
+  }
+
   async function handleSave() {
     if (!companySession) return;
 
     try {
       const cleanedFields = settings.customFields.map((field) => {
-        const cleanedField = {
+        const normalizedField = {
           ...field,
           label: field.label.trim(),
           placeholder: field.placeholder?.trim() || null,
-          options: field.options.map((option) => ({
-            ...option,
-            label: option.label.trim(),
-            value: option.value.trim(),
-          })),
+          targets: Array.from(new Set(field.targets)),
+          options: field.type === "select"
+            ? field.options.map((option) => ({
+                ...option,
+                label: option.label.trim(),
+                value: option.id,
+              }))
+            : [],
         };
 
-        if (cleanedField.label.length < 2) {
+        if (normalizedField.label.length < 2) {
           throw new Error(t("fields.labelRequired"));
         }
 
-        if (cleanedField.targets.length === 0) {
-          throw new Error(t("fields.targetRequired", { label: cleanedField.label }));
+        if (normalizedField.targets.length === 0) {
+          throw new Error(t("fields.targetRequired", { label: normalizedField.label }));
         }
 
-        if (cleanedField.type === "select") {
-          const validOptions = cleanedField.options.filter((option) => option.label.length > 0 && option.value.length > 0);
+        if (normalizedField.type === "select") {
+          const validOptions = normalizedField.options.filter((option) => option.label.length > 0);
           if (validOptions.length === 0) {
-            throw new Error(t("fields.optionRequired", { label: cleanedField.label }));
+            throw new Error(t("fields.optionRequired", { label: normalizedField.label }));
           }
-          cleanedField.options = validOptions;
-        } else {
-          cleanedField.options = [];
+          normalizedField.options = validOptions.map((option) => ({ ...option, value: option.id }));
         }
 
-        return cleanedField;
+        return normalizedField;
       });
 
       setSaving(true);
@@ -219,12 +232,7 @@ export function FieldsPage() {
                 </Stack>
                 <Button
                   variant="ghost"
-                  onClick={() =>
-                    setSettings((current) => ({
-                      ...current,
-                      customFields: current.customFields.filter((_, fieldIndex) => fieldIndex !== index),
-                    }))
-                  }
+                  onClick={() => setConfirmDeleteFieldIndex(index)}
                   type="button"
                 >
                   {t("fields.removeField")}
@@ -294,9 +302,9 @@ export function FieldsPage() {
                           <Field label={t("fields.optionLabel")}>
                             <Input placeholder={t("fields.optionLabelPlaceholder")} value={option.label} onChange={(event) => setOption(index, optionIndex, { ...option, label: event.target.value })} />
                           </Field>
-                          <Field label={t("fields.storedValue")}>
-                            <Input placeholder={t("fields.storedValuePlaceholder")} value={option.value} onChange={(event) => setOption(index, optionIndex, { ...option, value: event.target.value })} />
-                          </Field>
+                          <div className="rounded-xl border border-dashed border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                            {t("fields.storedValueAuto", { value: option.id })}
+                          </div>
                         </FormFields>
                         <div className="flex justify-end">
                           <Button
@@ -329,6 +337,30 @@ export function FieldsPage() {
           </Button>
         </FormActions>
       </PageLoadBoundary>
+      <AppConfirmDialog
+        open={confirmDeleteFieldIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmDeleteFieldIndex(null);
+          }
+        }}
+        title={t("fields.removeFieldTitle")}
+        description={
+          confirmDeleteFieldIndex !== null
+            ? t("fields.removeFieldDescription", {
+                label: settings.customFields[confirmDeleteFieldIndex]?.label.trim() || t("fields.field", { index: confirmDeleteFieldIndex + 1 })
+              })
+            : undefined
+        }
+        confirmLabel={t("fields.removeFieldConfirm")}
+        cancelLabel={t("common.cancel")}
+        destructive
+        onConfirm={() => {
+          if (confirmDeleteFieldIndex === null) return;
+          removeField(confirmDeleteFieldIndex);
+          setConfirmDeleteFieldIndex(null);
+        }}
+      />
     </FormPage>
   );
 }

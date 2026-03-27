@@ -7,16 +7,18 @@ import type {
   CompanyUserDetail,
   CompanyUserListItem,
   CompanyUserProfile,
+  ProjectTaskAssignmentRecord,
+  ProjectUserAssignmentRecord,
   PublicHolidayRecord,
   ProjectRecord,
   TaskRecord,
   TimeEntryRecord,
-  TimeEntryView,
-  UserContractScheduleDay
+  TimeEntryView
 } from "../../shared/types/models";
 import { diffCalendarDays, diffMinutes } from "../../shared/utils/time";
 import { normalizeOvertimeSettings } from "../../shared/utils/overtime";
 import { buildUserContract } from "../services/user-contract-schedule";
+import { normalizeCustomFields } from "../../shared/utils/custom-fields";
 
 function normalizeEntryType(value: unknown) {
   if (value === "work" || value === "vacation" || value === "sick_leave" || value === "time_off_in_lieu") {
@@ -33,15 +35,6 @@ function parseJsonValue<T>(value: unknown, fallback: T): T {
   } catch {
     return fallback;
   }
-}
-
-function normalizeCustomFields(value: unknown): CompanyCustomField[] {
-  const parsed = parseJsonValue<CompanyCustomField[]>(value, []);
-  return parsed.map((field) => ({
-    ...field,
-    label: typeof field.label === "string" ? field.label.trim() : "",
-    options: Array.isArray(field.options) ? field.options : [],
-  }));
 }
 
 export function mapCompanyRecord(row: any): CompanyRecord {
@@ -61,6 +54,7 @@ export function mapCompanyUser(row: any): CompanyUser {
     fullName: row.full_name,
     passwordHash: row.password_hash,
     isActive: Boolean(row.is_active),
+    deletedAt: row.deleted_at ?? null,
     pinCode: row.pin_code ?? "0000",
     email: row.email ?? null,
     role: row.role,
@@ -81,21 +75,37 @@ export function mapCompanyUserListItem(row: any): CompanyUserListItem {
   return {
     id: row.id,
     fullName: row.full_name,
-    isActive: Boolean(row.is_active)
+    isActive: Boolean(row.is_active),
+    role: row.role
   };
 }
 
-export function mapUserContractScheduleDay(row: any): UserContractScheduleDay {
+export function mapUserContractScheduleBlock(row: any): {
+  weekday: number;
+  block_order: number;
+  start_time: string;
+  end_time: string;
+  minutes: number;
+} {
   return {
-    weekday: row.weekday,
-    isWorkingDay: Boolean(row.is_working_day),
-    startTime: row.start_time ?? null,
-    endTime: row.end_time ?? null,
+    weekday: Number(row.weekday),
+    block_order: Number(row.block_order ?? 1),
+    start_time: row.start_time ?? "",
+    end_time: row.end_time ?? "",
     minutes: Number(row.minutes ?? 0)
   };
 }
 
-export function mapUserContract(row: any, schedule: UserContractScheduleDay[] = []) {
+export function mapUserContract(
+  row: any,
+  schedule: Array<{
+    weekday: number;
+    block_order: number;
+    start_time: string;
+    end_time: string;
+    minutes: number;
+  }> = []
+) {
   if (schedule.length > 0) {
     return buildUserContract(row, schedule);
   }
@@ -133,6 +143,8 @@ export function mapProject(row: any): ProjectRecord {
     name: row.name,
     description: row.description,
     isActive: Boolean(row.is_active),
+    allowAllUsers: Boolean(row.allow_all_users ?? 1),
+    allowAllTasks: Boolean(row.allow_all_tasks ?? 1),
     createdAt: row.created_at
   };
 }
@@ -148,6 +160,8 @@ export function mapTimeEntry(row: any): TimeEntryRecord {
     startTime: entryType === "work" ? row.start_time : null,
     endTime: row.end_time,
     notes: row.notes,
+    projectId: row.project_id ?? null,
+    taskId: row.task_id ?? null,
     customFieldValues: parseJsonValue(row.custom_field_values_json, {}),
     createdAt: row.created_at
   };
@@ -167,6 +181,8 @@ export function mapTimeEntryView(row: any): TimeEntryView {
     startTime: entryType === "work" ? row.start_time : null,
     endTime: entryType === "work" ? row.end_time : null,
     notes: row.notes ?? "",
+    projectId: row.project_id ?? null,
+    taskId: row.task_id ?? null,
     durationMinutes: entryType === "work" ? diffMinutes(row.start_time, row.end_time) : 0,
     totalDayCount,
     effectiveDayCount: totalDayCount,
@@ -180,10 +196,25 @@ export function mapTimeEntryView(row: any): TimeEntryView {
 export function mapTask(row: any): TaskRecord {
   return {
     id: row.id,
-    projectId: row.project_id,
     title: row.title,
     isActive: Boolean(row.is_active),
     createdAt: row.created_at
+  };
+}
+
+export function mapProjectUserAssignment(row: any): ProjectUserAssignmentRecord {
+  return {
+    projectId: row.project_id,
+    userId: row.user_id,
+    createdAt: row.created_at,
+  };
+}
+
+export function mapProjectTaskAssignment(row: any): ProjectTaskAssignmentRecord {
+  return {
+    projectId: row.project_id,
+    taskId: row.task_id,
+    createdAt: row.created_at,
   };
 }
 
@@ -204,7 +235,9 @@ export function mapCompanySettings(row: any): CompanySettings {
     tabletIdleTimeoutSeconds: row.tablet_idle_timeout_seconds ?? 10,
     autoBreakAfterMinutes: row.auto_break_after_minutes ?? 300,
     autoBreakDurationMinutes: row.auto_break_duration_minutes ?? 30,
-    customFields: normalizeCustomFields(row.custom_fields_json),
+    projectsEnabled: Boolean(row.projects_enabled ?? 0),
+    tasksEnabled: Boolean(row.tasks_enabled ?? 0),
+    customFields: normalizeCustomFields(parseJsonValue<CompanyCustomField[]>(row.custom_fields_json, [])),
     overtime: normalizeOvertimeSettings(parseJsonValue<CompanyOvertimeSettings | null>(row.overtime_settings_json, null))
   };
 }

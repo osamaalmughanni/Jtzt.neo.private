@@ -144,9 +144,11 @@ export const timeService = {
           start_time,
           end_time,
           notes,
+          project_id,
+          task_id,
           custom_field_values_json,
           created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         userId,
@@ -156,6 +158,8 @@ export const timeService = {
         normalized.startTime,
         normalized.endTime,
         input.notes.trim() || null,
+        input.projectId ?? null,
+        input.taskId ?? null,
         JSON.stringify(normalized.customFieldValues),
         createdAt
       ]
@@ -282,10 +286,22 @@ export const timeService = {
           entry_date,
           start_time,
           notes,
+          project_id,
+          task_id,
           custom_field_values_json,
           created_at
-        ) VALUES (?, ?, 'work', ?, ?, ?, ?, ?)`,
-      [companyId, userId, snapshot.localDay, snapshot.instantIso, input.notes?.trim() || null, JSON.stringify(input.customFieldValues ?? {}), snapshot.instantIso]
+        ) VALUES (?, ?, 'work', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        companyId,
+        userId,
+        snapshot.localDay,
+        snapshot.instantIso,
+        input.notes?.trim() || null,
+        input.projectId ?? null,
+        input.taskId ?? null,
+        JSON.stringify(input.customFieldValues ?? {}),
+        snapshot.instantIso
+      ]
     );
 
     return this.getEntryById(db, companyId, Number(result.lastRowId));
@@ -330,12 +346,14 @@ export const timeService = {
          user_id = ?,
          entry_type = ?,
          entry_date = ?,
-         end_date = ?,
-         start_time = ?,
-         end_time = ?,
-         notes = ?,
-         custom_field_values_json = ?
-       WHERE company_id = ? AND id = ?`,
+        end_date = ?,
+        start_time = ?,
+        end_time = ?,
+        notes = ?,
+        project_id = ?,
+        task_id = ?,
+        custom_field_values_json = ?
+      WHERE company_id = ? AND id = ?`,
       [
         userId,
         normalized.entryType,
@@ -344,6 +362,8 @@ export const timeService = {
         normalized.startTime,
         normalized.endTime,
         input.notes.trim(),
+        input.projectId ?? null,
+        input.taskId ?? null,
         JSON.stringify(normalized.customFieldValues),
         companyId,
         input.entryId

@@ -2,10 +2,8 @@ import rawLogo from "@shared/img/logo.svg?raw";
 import type { ReportResponse } from "@shared/types/api";
 import { formatMinutes } from "@shared/utils/time";
 import { formatCompanyDate, formatCompanyDateTime } from "@/lib/locale-format";
-import { resolveCustomFieldLabel } from "@/lib/report-fields";
 
 type TranslateFn = (key: string) => string;
-type CustomFieldLabels = Map<string, string>;
 
 function isLocalDayValue(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -15,20 +13,6 @@ function getReportColumnLabel(column: ReportResponse["report"]["columns"][number
   const nativeKey = `reports.columns.${column.key}`;
   const translated = t(nativeKey);
   return translated === nativeKey ? column.label : translated;
-}
-
-function getResolvedReportColumnLabel(
-  column: ReportResponse["report"]["columns"][number],
-  t: TranslateFn,
-  customFieldLabels?: CustomFieldLabels,
-) {
-  const nativeLabel = getReportColumnLabel(column, t);
-  if (nativeLabel !== column.label) return nativeLabel;
-  const customLabel =
-    (customFieldLabels ? resolveCustomFieldLabel(column.key, customFieldLabels) : null) ??
-    (customFieldLabels ? resolveCustomFieldLabel(column.label, customFieldLabels) : null);
-  if (customLabel) return customLabel;
-  return column.label;
 }
 
 function translateEntryType(value: string, t: TranslateFn) {
@@ -101,15 +85,6 @@ function buildFileName(report: ReportResponse["report"], extension: string) {
   return `jtzt-report-${report.startDate}-${report.endDate}.${extension}`;
 }
 
-function toExportColumnName(
-  column: ReportResponse["report"]["columns"][number],
-  t: TranslateFn,
-  customFieldLabels?: CustomFieldLabels,
-) {
-  const customLabel = getResolvedReportColumnLabel(column, t, customFieldLabels).trim();
-  return customLabel.startsWith("custom:") ? customLabel : column.key;
-}
-
 function getRawExcelValue(
   report: ReportResponse["report"],
   row: Record<string, string | number | null>,
@@ -154,10 +129,10 @@ function buildSpreadsheetRow(cells: Array<{ type: string; value: string }>, styl
     .join("")}</Row>`;
 }
 
-function buildExcelWorkbook(report: ReportResponse["report"], t: TranslateFn, customFieldLabels?: CustomFieldLabels) {
+function buildExcelWorkbook(report: ReportResponse["report"], t: TranslateFn) {
   const dataHeader = report.columns.map((column) => ({
     type: "String",
-    value: toExportColumnName(column, t, customFieldLabels),
+    value: getReportColumnLabel(column, t),
   }));
 
   const dataRows = report.rows.map((row, rowIndex) =>
@@ -250,7 +225,7 @@ function formatPdfCellValue(
   return normalizePdfText(formatCellValue(value, columnKey, kind, locale, currency, timeZone, dateTimeFormat, t));
 }
 
-function buildPdf(report: ReportResponse["report"], t: TranslateFn, customFieldLabels?: CustomFieldLabels) {
+function buildPdf(report: ReportResponse["report"], t: TranslateFn) {
   const pageWidth = 841.89;
   const pageHeight = 595.28;
   const margin = 28;
@@ -326,7 +301,7 @@ function buildPdf(report: ReportResponse["report"], t: TranslateFn, customFieldL
         commands.push(`${x.toFixed(2)} ${margin} m ${x.toFixed(2)} ${headerY} l S`);
       }
       pushText(
-        truncatePdfText(normalizePdfText(getResolvedReportColumnLabel(report.columns[columnIndex], t, customFieldLabels)), maxCharsPerCell),
+        truncatePdfText(normalizePdfText(getReportColumnLabel(report.columns[columnIndex], t)), maxCharsPerCell),
         x + 3,
         headerY - 12,
         7.5,
@@ -379,12 +354,12 @@ function buildPdf(report: ReportResponse["report"], t: TranslateFn, customFieldL
   return pdf;
 }
 
-export function exportReportExcel(report: ReportResponse["report"], t: TranslateFn, customFieldLabels?: CustomFieldLabels) {
-  const workbook = buildExcelWorkbook(report, t, customFieldLabels);
+export function exportReportExcel(report: ReportResponse["report"], t: TranslateFn) {
+  const workbook = buildExcelWorkbook(report, t);
   createDownload(workbook, buildFileName(report, "xls"), "application/vnd.ms-excel;charset=utf-8;");
 }
 
-export function exportReportPdf(report: ReportResponse["report"], t: TranslateFn, customFieldLabels?: CustomFieldLabels) {
-  const pdf = buildPdf(report, t, customFieldLabels);
+export function exportReportPdf(report: ReportResponse["report"], t: TranslateFn) {
+  const pdf = buildPdf(report, t);
   createDownload(pdf, buildFileName(report, "pdf"), "application/pdf");
 }

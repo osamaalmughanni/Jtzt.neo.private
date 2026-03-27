@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { diffCalendarDays } from "../../../shared/utils/time";
 import { evaluateTimeEntryPolicy, getRangeEndDay } from "../../../shared/utils/time-entry-policy";
+import { normalizeCustomFieldValue } from "../../../shared/utils/custom-fields";
 import { authMiddleware, companyDbMiddleware, requireCompanyUser } from "../../auth/middleware";
 import type { CompanyTokenPayload } from "../../auth/jwt";
 import { settingsService } from "../../services/settings-service";
@@ -24,6 +25,8 @@ const customFieldValuesSchema = z.record(z.union([z.string(), z.number(), z.bool
 
 const startTimerSchema = z.object({
   notes: z.string().optional(),
+  projectId: z.number().int().positive().nullable().optional(),
+  taskId: z.number().int().positive().nullable().optional(),
   customFieldValues: customFieldValuesSchema.optional()
 });
 
@@ -41,6 +44,8 @@ const updateEntrySchema = z.object({
   startTime: z.string().nullable(),
   endTime: z.string().nullable(),
   notes: z.string(),
+  projectId: z.number().int().positive().nullable().optional(),
+  taskId: z.number().int().positive().nullable().optional(),
   customFieldValues: customFieldValuesSchema
 });
 
@@ -52,6 +57,8 @@ const createManualEntrySchema = z.object({
   startTime: z.string().nullable(),
   endTime: z.string().nullable(),
   notes: z.string(),
+  projectId: z.number().int().positive().nullable().optional(),
+  taskId: z.number().int().positive().nullable().optional(),
   customFieldValues: customFieldValuesSchema
 });
 
@@ -79,12 +86,31 @@ async function validateCustomFields(
 ) {
   const settings = await settingsService.getSettings(db, companyId);
   const applicableFields = settings.customFields.filter((field) => field.targets.includes(entryType));
+  const normalizedValues: Record<string, string | number | boolean> = {};
   for (const field of applicableFields) {
-    if (field.required && !hasCustomFieldValue(values[field.id])) {
+    const rawValue = values[field.id];
+    const normalizedValue = normalizeCustomFieldValue(field, rawValue);
+
+    if (field.type === "select" && hasCustomFieldValue(rawValue)) {
+      if (typeof rawValue !== "string") {
+        throw new Error(`${field.label} has an invalid selection`);
+      }
+
+      const optionMatches = field.options.some((option) => option.id === rawValue);
+      if (!optionMatches) {
+        throw new Error(`${field.label} has an invalid selection`);
+      }
+    }
+
+    if (field.required && !hasCustomFieldValue(normalizedValue)) {
       throw new Error(`${field.label} is required`);
     }
+
+    if (normalizedValue !== undefined) {
+      normalizedValues[field.id] = normalizedValue;
+    }
   }
-  return settings;
+  return normalizedValues;
 }
 
 function resolveTargetUserId(session: CompanyTokenPayload, requestedUserId?: number) {
@@ -105,6 +131,61 @@ function getCompanySession(session: AppVariables["session"]): CompanyTokenPayloa
     throw new Error("Company login required");
   }
   return session;
+}
+
+async function resolveProjectTaskSelection(
+  db: AppDatabase,
+  companyId: string,
+  userId: number,
+  settings: Awaited<ReturnType<typeof settingsService.getSettings>>,
+  input: { projectId?: number | null; taskId?: number | null; entryType: "work" | "vacation" | "sick_leave" | "time_off_in_lieu" }
+) {
+  if (input.entryType !== "work") {
+    return { projectId: null, taskId: null };
+  }
+
+  const projectId = settings.projectsEnabled ? input.projectId ?? null : null;
+  const taskId = settings.tasksEnabled ? input.taskId ?? null : null;
+
+  if (settings.projectsEnabled && !projectId) {
+    throw new Error("Project is required");
+  }
+  if (settings.tasksEnabled && !taskId) {
+    throw new Error("Task is required");
+  }
+  if (!projectId) {
+    return { projectId: null, taskId: null };
+  }
+
+  const project = await db.first("SELECT id, is_active FROM projects WHERE company_id = ? AND id = ?", [companyId, projectId]) as
+    | { id: number; is_active: number }
+    | undefined;
+  if (!project || !project.is_active) {
+    throw new Error("Project not found");
+  }
+
+  const projectUsers = await db.all<{ user_id: number }>("SELECT user_id FROM project_users WHERE project_id = ?", [projectId]);
+  if (projectUsers.length > 0 && !projectUsers.some((row) => row.user_id === userId)) {
+    throw new Error("Project is not assigned to this user");
+  }
+
+  if (!taskId) {
+    return { projectId, taskId: null };
+  }
+
+  const task = await db.first("SELECT id, is_active FROM tasks WHERE company_id = ? AND id = ?", [companyId, taskId]) as
+    | { id: number; is_active: number }
+    | undefined;
+  if (!task || !task.is_active) {
+    throw new Error("Task not found");
+  }
+
+  const projectTasks = await db.all<{ task_id: number }>("SELECT task_id FROM project_tasks WHERE project_id = ?", [projectId]);
+  if (projectTasks.length > 0 && !projectTasks.some((row) => row.task_id === taskId)) {
+    throw new Error("Task is not assigned to this project");
+  }
+
+  return { projectId, taskId };
 }
 
 async function enforceSingleRecordPerDay(
@@ -480,13 +561,28 @@ timeRoutes.post("/start", async (c) => {
       startTime: snapshot.instantIso,
       endTime: null
     });
-    await validateCustomFields(db, session.companyId, "work", body.customFieldValues ?? {});
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "Record rule violation" }, 400);
+  }
+
+  const customFieldValues = await validateCustomFields(db, session.companyId, "work", body.customFieldValues ?? {});
+  let projectTaskSelection: { projectId: number | null; taskId: number | null };
+  try {
+    projectTaskSelection = await resolveProjectTaskSelection(db, session.companyId, session.userId, settings, {
+      entryType: "work",
+      projectId: body.projectId,
+      taskId: body.taskId
+    });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Record rule violation" }, 400);
   }
 
   return c.json({
-    entry: await timeService.startTimer(db, session.companyId, session.userId, body, snapshot)
+    entry: await timeService.startTimer(db, session.companyId, session.userId, {
+      ...body,
+      ...projectTaskSelection,
+      customFieldValues
+    }, snapshot)
   });
 });
 
@@ -549,7 +645,14 @@ timeRoutes.post("/entry", async (c) => {
       startDate: body.startDate,
       endDate: body.endDate
     });
-    await validateCustomFields(db, session.companyId, body.entryType, body.customFieldValues);
+    body.customFieldValues = await validateCustomFields(db, session.companyId, body.entryType, body.customFieldValues);
+    const projectTaskSelection = await resolveProjectTaskSelection(db, session.companyId, targetUserId, settings, {
+      entryType: body.entryType,
+      projectId: body.projectId,
+      taskId: body.taskId
+    });
+    body.projectId = projectTaskSelection.projectId;
+    body.taskId = projectTaskSelection.taskId;
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Insert day limit reached" }, 403);
   }
@@ -728,7 +831,14 @@ timeRoutes.put("/entry", async (c) => {
       startDate: body.startDate,
       endDate: body.endDate
     }, body.entryId);
-    await validateCustomFields(db, session.companyId, body.entryType, body.customFieldValues);
+    body.customFieldValues = await validateCustomFields(db, session.companyId, body.entryType, body.customFieldValues);
+    const projectTaskSelection = await resolveProjectTaskSelection(db, session.companyId, targetUserId, settings, {
+      entryType: body.entryType,
+      projectId: body.projectId,
+      taskId: body.taskId
+    });
+    body.projectId = projectTaskSelection.projectId;
+    body.taskId = projectTaskSelection.taskId;
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Edit day limit reached" }, 403);
   }

@@ -10,10 +10,9 @@ import type {
   InvitationCodeListResponse
 } from "../../shared/types/api";
 import { destroyCompanyDatabase } from "../db/runtime-database";
-import { mapCompanySettings, mapCompanyUser, mapProject, mapTask, mapTimeEntry, mapUserContract, mapUserContractScheduleDay } from "../db/mappers";
+import { mapCompanySettings, mapCompanyUser, mapProject, mapTask, mapTimeEntry, mapUserContract, mapUserContractScheduleBlock } from "../db/mappers";
 import type { AppDatabase, RuntimeConfig } from "../runtime/types";
 import { systemService } from "./system-service";
-import { createLegacyContractSchedule } from "./user-contract-schedule";
 import { createDefaultOvertimeSettings } from "../../shared/utils/overtime";
 
 function createCompanyId() {
@@ -43,7 +42,7 @@ async function deleteCompanyData(db: AppDatabase, companyId: string) {
     { sql: "DELETE FROM tasks WHERE company_id = ?", params: [companyId] },
     { sql: "DELETE FROM projects WHERE company_id = ?", params: [companyId] },
     { sql: "DELETE FROM time_entries WHERE company_id = ?", params: [companyId] },
-    { sql: "DELETE FROM user_contract_schedule_days WHERE contract_id IN (SELECT id FROM user_contracts WHERE company_id = ?)", params: [companyId] },
+    { sql: "DELETE FROM user_contract_schedule_blocks WHERE contract_id IN (SELECT id FROM user_contracts WHERE company_id = ?)", params: [companyId] },
     { sql: "DELETE FROM user_contracts WHERE company_id = ?", params: [companyId] },
     { sql: "DELETE FROM public_holiday_cache WHERE company_id = ?", params: [companyId] },
     { sql: "DELETE FROM company_settings WHERE company_id = ?", params: [companyId] },
@@ -127,9 +126,11 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         tablet_idle_timeout_seconds,
         auto_break_after_minutes,
         auto_break_duration_minutes,
+        projects_enabled,
+        tasks_enabled,
         overtime_settings_json,
         custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         snapshot.settings.currency,
@@ -147,6 +148,8 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         snapshot.settings.tabletIdleTimeoutSeconds,
         snapshot.settings.autoBreakAfterMinutes,
         snapshot.settings.autoBreakDurationMinutes,
+        snapshot.settings.projectsEnabled ? 1 : 0,
+        snapshot.settings.tasksEnabled ? 1 : 0,
         JSON.stringify((snapshot.settings as { overtime?: unknown }).overtime ?? createDefaultOvertimeSettings()),
         JSON.stringify(snapshot.settings.customFields)
       ]
@@ -163,16 +166,27 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         password_hash,
         role,
         is_active,
+        deleted_at,
         pin_code,
         email,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [companyId, user.username, user.fullName, user.passwordHash, user.role, user.isActive ? 1 : 0, user.pinCode, user.email, user.createdAt]
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        companyId,
+        user.username,
+        user.fullName,
+        user.passwordHash,
+        user.role,
+        user.isActive ? 1 : 0,
+        user.deletedAt ?? null,
+        user.pinCode,
+        user.email,
+        user.createdAt
+      ]
     );
     userIdMap.set(user.id, Number(result.lastRowId));
   }
 
-  const projectIdMap = new Map<number, number>();
   for (const project of snapshot.projects) {
     const result = await db.run("INSERT INTO projects (company_id, name, description, is_active, created_at) VALUES (?, ?, ?, ?, ?)", [
       companyId,
@@ -181,7 +195,6 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
       project.isActive ? 1 : 0,
       project.createdAt
     ]);
-    projectIdMap.set(project.id, Number(result.lastRowId));
   }
 
   for (const contract of snapshot.userContracts) {
@@ -201,28 +214,27 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
       [companyId, userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, contract.annualVacationDays, contract.createdAt]
     );
     const contractId = Number(result.lastRowId);
-    const schedule = Array.isArray((contract as { schedule?: unknown }).schedule) ? contract.schedule : createLegacyContractSchedule(contract.hoursPerWeek);
+    const schedule = Array.isArray((contract as { schedule?: unknown }).schedule) ? contract.schedule : [];
     for (const day of schedule) {
-      await db.run(
-        `INSERT INTO user_contract_schedule_days (
-          contract_id,
-          weekday,
-          is_working_day,
-          start_time,
-          end_time,
-          minutes
-        ) VALUES (?, ?, ?, ?, ?, ?)`,
-        [contractId, day.weekday, day.isWorkingDay ? 1 : 0, day.startTime, day.endTime, day.minutes]
-      );
+      for (const [blockIndex, block] of day.blocks.entries()) {
+        await db.run(
+          `INSERT INTO user_contract_schedule_blocks (
+            contract_id,
+            weekday,
+            block_order,
+            start_time,
+            end_time,
+            minutes
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+          [contractId, day.weekday, blockIndex + 1, block.startTime, block.endTime, block.minutes]
+        );
+      }
     }
   }
 
   for (const task of snapshot.tasks) {
-    const projectId = projectIdMap.get(task.projectId);
-    if (!projectId) continue;
-    await db.run("INSERT INTO tasks (company_id, project_id, title, is_active, created_at) VALUES (?, ?, ?, ?, ?)", [
+    await db.run("INSERT INTO tasks (company_id, title, is_active, created_at) VALUES (?, ?, ?, ?)", [
       companyId,
-      projectId,
       task.title,
       task.isActive ? 1 : 0,
       task.createdAt
@@ -242,9 +254,11 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         start_time,
         end_time,
         notes,
+        project_id,
+        task_id,
         custom_field_values_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         userId,
@@ -254,6 +268,8 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         entry.startTime ?? entry.entryDate,
         entry.endTime,
         entry.notes,
+        entry.projectId ?? null,
+        entry.taskId ?? null,
         JSON.stringify(entry.customFieldValues),
         entry.createdAt
       ]
@@ -418,7 +434,7 @@ export const adminService = {
 
     for (const company of companies) {
       const companyDb = await resolveCompanyDb(company.id);
-      totalUsers += (await companyDb.first<{ count: number }>("SELECT COUNT(*) as count FROM users"))?.count ?? 0;
+      totalUsers += (await companyDb.first<{ count: number }>("SELECT COUNT(*) as count FROM users WHERE deleted_at IS NULL"))?.count ?? 0;
       activeTimers += (await companyDb.first<{ count: number }>("SELECT COUNT(*) as count FROM time_entries WHERE end_time IS NULL"))?.count ?? 0;
     }
 
@@ -552,7 +568,7 @@ export const adminService = {
 
     const settingsRow = await companyDb.first("SELECT * FROM company_settings WHERE company_id = ?", [companyId]);
     const users = (await companyDb.all(
-      "SELECT id, username, full_name, password_hash, role, is_active, pin_code, email, created_at FROM users WHERE company_id = ? ORDER BY id ASC",
+      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, email, created_at FROM users WHERE company_id = ? ORDER BY id ASC",
       [companyId]
     ))
       .map(mapCompanyUser)
@@ -563,6 +579,7 @@ export const adminService = {
         passwordHash: user.passwordHash,
         role: user.role,
         isActive: Boolean(user.isActive),
+        deletedAt: user.deletedAt ?? null,
         pinCode: user.pinCode ?? "0000",
         email: user.email ?? null,
         createdAt: user.createdAt
@@ -585,26 +602,26 @@ export const adminService = {
       `SELECT
         contract_id,
         weekday,
-        is_working_day,
+        block_order,
         start_time,
         end_time,
         minutes
-       FROM user_contract_schedule_days
+       FROM user_contract_schedule_blocks
        WHERE contract_id IN (SELECT id FROM user_contracts WHERE company_id = ?)
-       ORDER BY contract_id ASC, weekday ASC`,
+       ORDER BY contract_id ASC, weekday ASC, block_order ASC`,
       [companyId]
     ) as Array<{
       contract_id: number;
       weekday: number;
-      is_working_day: number;
-      start_time: string | null;
-      end_time: string | null;
+      block_order: number;
+      start_time: string;
+      end_time: string;
       minutes: number;
     }>;
-    const contractScheduleById = new Map<number, ReturnType<typeof mapUserContractScheduleDay>[]>();
+    const contractScheduleById = new Map<number, ReturnType<typeof mapUserContractScheduleBlock>[]>();
     for (const row of scheduleRows) {
       const next = contractScheduleById.get(row.contract_id) ?? [];
-      next.push(mapUserContractScheduleDay(row));
+      next.push(mapUserContractScheduleBlock(row));
       contractScheduleById.set(row.contract_id, next);
     }
     const userContracts = contractRows.map((contract) => mapUserContract(contract, contractScheduleById.get(contract.id) ?? []));
@@ -630,7 +647,7 @@ export const adminService = {
     const projects = (await companyDb.all("SELECT id, name, description, is_active, created_at FROM projects WHERE company_id = ? ORDER BY id ASC", [companyId])).map(
       mapProject
     );
-    const tasks = (await companyDb.all("SELECT id, project_id, title, is_active, created_at FROM tasks WHERE company_id = ? ORDER BY id ASC", [companyId])).map(mapTask);
+    const tasks = (await companyDb.all("SELECT id, title, is_active, created_at FROM tasks WHERE company_id = ? ORDER BY id ASC", [companyId])).map(mapTask);
     const publicHolidayCache = await companyDb.all<{ country_code: string; year: number; payload_json: string; fetched_at: string }>(
       "SELECT country_code, year, payload_json, fetched_at FROM public_holiday_cache WHERE company_id = ? ORDER BY year ASC, country_code ASC",
       [companyId]

@@ -17,7 +17,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { formatCompanyDate, formatCompanyDateTime } from "@/lib/locale-format";
-import { buildCustomFieldLabelLookup, normalizeReportDraftFields, resolveCustomFieldLabel } from "@/lib/report-fields";
+import { normalizeReportDraftFields } from "@/lib/report-fields";
 import { exportReportExcel, exportReportPdf } from "@/lib/report-export";
 import { loadReportDraft } from "@/lib/report-draft-storage";
 import { toast } from "@/lib/toast";
@@ -30,37 +30,6 @@ const GANTT_MAX_LANES = 3;
 
 function isLocalDayValue(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function getReportColumnLabel(
-  column: ReportResponse["report"]["columns"][number],
-  t: ReturnType<typeof useTranslation>["t"],
-) {
-  const nativeKey = `reports.columns.${column.key}`;
-  const translated = t(nativeKey);
-  return translated === nativeKey ? column.label : translated;
-}
-
-function getResolvedReportColumnLabel(
-  column: ReportResponse["report"]["columns"][number],
-  t: ReturnType<typeof useTranslation>["t"],
-  customFieldLabels: Map<string, string>,
-) {
-  const nativeLabel = getReportColumnLabel(column, t);
-  if (nativeLabel !== column.label) return nativeLabel;
-  const customLabel = resolveCustomFieldLabel(column.key, customFieldLabels) ?? resolveCustomFieldLabel(column.label, customFieldLabels);
-  if (customLabel) return customLabel;
-  return column.label;
-}
-
-function resolveReportColumnsWithSettings(
-  columns: ReportResponse["report"]["columns"],
-  customFieldLabels: Map<string, string>,
-) {
-  return columns.map((column) => ({
-    ...column,
-    label: resolveCustomFieldLabel(column.key, customFieldLabels) ?? resolveCustomFieldLabel(column.label, customFieldLabels) ?? column.label,
-  }));
 }
 
 function translateEntryType(value: string, t: ReturnType<typeof useTranslation>["t"]) {
@@ -470,13 +439,9 @@ export function ReportsPreviewPage() {
           ...normalizeReportDraftFields(draft, settingsResponse.settings),
         };
         const reportResponse = await api.previewReport(companySession.token, normalizedDraft);
-        const customFieldLabels = buildCustomFieldLabelLookup(settingsResponse.settings.customFields);
         return {
           settings: settingsResponse.settings,
-          report: {
-            ...reportResponse.report,
-            columns: resolveReportColumnsWithSettings(reportResponse.report.columns, customFieldLabels),
-          }
+          report: reportResponse.report,
         };
       } catch (error) {
         toast({
@@ -494,15 +459,7 @@ export function ReportsPreviewPage() {
   const timelineDays = useMemo(() => (report ? listDays(report.startDate, report.endDate) : []), [report]);
   const timelineMonths = useMemo(() => buildTimelineMonthSegments(timelineDays, report?.locale ?? "en-GB"), [report?.locale, timelineDays]);
   const timelineWidth = timelineDays.length * TIMELINE_DAY_WIDTH;
-  const customFieldLabels = useMemo(() => buildCustomFieldLabelLookup(settings?.customFields ?? []), [settings?.customFields]);
-  const resolvedColumns = useMemo(
-    () =>
-      report?.columns.map((column) => ({
-        ...column,
-        label: getResolvedReportColumnLabel(column, t, customFieldLabels),
-      })) ?? [],
-    [customFieldLabels, report?.columns, t],
-  );
+  const resolvedColumns = useMemo(() => report?.columns ?? [], [report?.columns]);
   const timelineUsers = useMemo(() => {
     if (!report) return [];
     const groupedByUser = new Map<
@@ -618,10 +575,10 @@ export function ReportsPreviewPage() {
                       <TabsTrigger value="vacation">{t("reports.vacationTab")}</TabsTrigger>
                     </TabsList>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button variant="outline" onClick={() => exportReportExcel({ ...report, columns: resolvedColumns }, t, customFieldLabels)} type="button">
+                      <Button variant="outline" onClick={() => exportReportExcel({ ...report, columns: resolvedColumns }, t)} type="button">
                         {t("reports.exportExcel")}
                       </Button>
-                      <Button variant="outline" onClick={() => exportReportPdf({ ...report, columns: resolvedColumns }, t, customFieldLabels)} type="button">
+                      <Button variant="outline" onClick={() => exportReportPdf({ ...report, columns: resolvedColumns }, t)} type="button">
                         {t("reports.exportPdf")}
                       </Button>
                     </div>

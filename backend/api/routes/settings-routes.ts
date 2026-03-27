@@ -23,6 +23,8 @@ const updateSettingsSchema = z.object({
   tabletIdleTimeoutSeconds: z.number().int().min(0).max(86400),
   autoBreakAfterMinutes: z.number().int().min(0).max(1440),
   autoBreakDurationMinutes: z.number().int().min(0).max(1440),
+  projectsEnabled: z.boolean(),
+  tasksEnabled: z.boolean(),
   overtime: z.object({
     version: z.literal(1),
     presetId: z.enum(["at_default", "de_default", "fr_35h", "eu_custom"]),
@@ -54,14 +56,14 @@ const updateSettingsSchema = z.object({
       id: z.string().min(1).max(100),
       label: z.string().min(1).max(100),
       type: z.enum(["text", "number", "date", "boolean", "select"]),
-      targets: z.array(z.enum(["work", "vacation", "sick_leave"])).min(1),
+      targets: z.array(z.enum(["work", "vacation", "sick_leave", "time_off_in_lieu"])).min(1),
       required: z.boolean(),
       placeholder: z.string().max(120).nullable(),
       options: z.array(
         z.object({
           id: z.string().min(1).max(100),
           label: z.string().min(1).max(100),
-          value: z.string().min(1).max(100),
+          value: z.string().max(100).optional(),
         }),
       ).max(100),
     })
@@ -101,7 +103,17 @@ settingsRoutes.put("/", requireCompanyAdmin, async (c) => {
   }
 
   const body = updateSettingsSchema.parse(await c.req.json());
-  return c.json({ settings: await settingsService.updateSettings(c.get("db"), session.companyId, body) });
+  const normalizedBody = {
+    ...body,
+    customFields: body.customFields.map((field) => ({
+      ...field,
+      options: field.options.map((option) => ({
+        ...option,
+        value: option.value?.trim() || option.id,
+      })),
+    })),
+  };
+  return c.json({ settings: await settingsService.updateSettings(c.get("db"), session.companyId, normalizedBody) });
 });
 
 settingsRoutes.get("/overtime", requireCompanyAdmin, async (c) => {

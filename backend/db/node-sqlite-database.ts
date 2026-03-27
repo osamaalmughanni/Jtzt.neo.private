@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { hardenSchemaForDatabase, type DatabaseKind } from "./app-database";
+import { runSqliteMigrations } from "./sqlite-migrations";
 import type { AppDatabase, RunResult, SqlStatement, SqlValue } from "../runtime/types";
 
 const nodeConnections = new Map<string, Database.Database>();
@@ -24,7 +25,6 @@ export function initializeSqliteConnection(databasePath: string, schema: string,
   db.pragma("temp_store = MEMORY");
   db.pragma("cache_size = -20000");
   db.exec(schema);
-  hardenSchemaForDatabase(db, kind);
   nodeConnections.set(databasePath, db);
   return db;
 }
@@ -39,19 +39,26 @@ export function closeNodeDatabaseConnection(databasePath: string) {
   connection.close();
 }
 
-export function createNodeDatabase(databasePath: string, schema: string, kind: DatabaseKind): AppDatabase {
+export async function createNodeDatabase(databasePath: string, schema: string, kind: DatabaseKind): Promise<AppDatabase> {
   const connection = initializeSqliteConnection(databasePath, schema, kind);
+  async function ensureSchemaReady() {
+    await runSqliteMigrations(connection, kind);
+    hardenSchemaForDatabase(connection, kind);
+  }
 
   return {
     async all<T>(sql: string, params?: SqlValue[]) {
+      await ensureSchemaReady();
       return connection.prepare(sql).all(...normalizeParams(params)) as T[];
     },
 
     async first<T>(sql: string, params?: SqlValue[]) {
+      await ensureSchemaReady();
       return (connection.prepare(sql).get(...normalizeParams(params)) as T | undefined) ?? null;
     },
 
     async run(sql: string, params?: SqlValue[]): Promise<RunResult> {
+      await ensureSchemaReady();
       const result = connection.prepare(sql).run(...normalizeParams(params));
       return {
         changes: result.changes,
@@ -60,6 +67,7 @@ export function createNodeDatabase(databasePath: string, schema: string, kind: D
     },
 
     async batch(statements: SqlStatement[]) {
+      await ensureSchemaReady();
       const results: RunResult[] = [];
       const transaction = connection.transaction(() => {
         for (const statement of statements) {
@@ -75,6 +83,7 @@ export function createNodeDatabase(databasePath: string, schema: string, kind: D
     },
 
     async exec(sql: string) {
+      await ensureSchemaReady();
       connection.exec(sql);
     },
   };

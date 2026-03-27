@@ -15,7 +15,11 @@ import type {
   CreateCompanyAdminInput,
   CreateInvitationCodeInput,
   CreateCompanyInput,
+  CreateProjectInput,
+  CreateTaskInput,
   DashboardResponse,
+  DeleteProjectInput,
+  DeleteTaskInput,
   DeleteInvitationCodeInput,
   DeleteCompanyInput,
   HolidayResponse,
@@ -34,6 +38,8 @@ import type {
   VacationBalanceResponse,
   UpdateSettingsInput,
   UpdateOvertimeSettingsInput,
+  UpdateProjectInput,
+  UpdateTaskInput,
   UpdateTabletCodeInput,
   UpdateTabletCodeResponse,
   UpdateUserInput,
@@ -44,7 +50,8 @@ import type {
   TabletAccessResponse,
   TabletCodeStatusResponse,
   TabletLoginInput,
-  RotateCompanyApiKeyResponse
+  RotateCompanyApiKeyResponse,
+  ProjectTaskManagementResponse
 } from "@shared/types/api";
 import type { TimeEntryView } from "@shared/types/models";
 
@@ -361,8 +368,14 @@ export const api = {
     });
   },
 
-  listUsers(token: string) {
-    return request<UserListResponse>("/api/users", {
+  listUsers(token: string, activeOnly = false) {
+    return request<UserListResponse>(`/api/users${activeOnly ? "?activeOnly=1" : ""}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  listActiveUsers(token: string) {
+    return request<UserListResponse>("/api/users?activeOnly=1", {
       headers: { Authorization: `Bearer ${token}` }
     });
   },
@@ -391,6 +404,60 @@ export const api = {
 
   deleteUser(token: string, input: DeleteUserInput) {
     return request<{ success: boolean }>("/api/users", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  listProjectData(token: string, activeOnly = false) {
+    return request<ProjectTaskManagementResponse>(`/api/projects${activeOnly ? "?activeOnly=1" : ""}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  createProject(token: string, input: CreateProjectInput) {
+    return request<{ success: boolean }>("/api/projects", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  updateProject(token: string, input: UpdateProjectInput) {
+    return request<{ success: boolean }>("/api/projects", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  deleteProject(token: string, input: DeleteProjectInput) {
+    return request<{ success: boolean }>("/api/projects", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  createTask(token: string, input: CreateTaskInput) {
+    return request<{ success: boolean }>("/api/projects/tasks", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  updateTask(token: string, input: UpdateTaskInput) {
+    return request<{ success: boolean }>("/api/projects/tasks/item", {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  deleteTask(token: string, input: DeleteTaskInput) {
+    return request<{ success: boolean }>("/api/projects/tasks/item", {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify(input)

@@ -1,4 +1,5 @@
 import type { CompanyCustomField } from "@shared/types/models";
+import { normalizeCustomFieldValue } from "@shared/utils/custom-fields";
 import { FieldCombobox } from "@/components/form-layout";
 import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
@@ -55,13 +56,14 @@ export function CustomFieldInput({ field, value, locale, onValueChange, booleanL
   }
 
   if (field.type === "select") {
+    const normalizedValue = normalizeCustomFieldValue(field, value);
     return (
       <FieldCombobox
         label={field.label}
-        value={typeof value === "string" ? value : ""}
+        value={typeof normalizedValue === "string" ? normalizedValue : ""}
         onValueChange={onValueChange}
         items={field.options.map((option) => ({
-          value: option.value,
+          value: option.id,
           label: option.label,
         }))}
         placeholder={field.placeholder ?? field.label}

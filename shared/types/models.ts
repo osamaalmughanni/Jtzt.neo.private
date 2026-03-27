@@ -51,6 +51,12 @@ export interface CompanyOvertimeSettings {
   conflictResolution: OvertimeConflictResolution;
 }
 
+export interface UserContractScheduleBlock {
+  startTime: string;
+  endTime: string;
+  minutes: number;
+}
+
 export interface CompanyRecord {
   id: string;
   name: string;
@@ -81,6 +87,7 @@ export interface CompanyUser {
   fullName: string;
   passwordHash: string;
   isActive?: boolean;
+  deletedAt?: string | null;
   pinCode?: string;
   email?: string | null;
   role: UserRole;
@@ -90,8 +97,7 @@ export interface CompanyUser {
 export interface UserContractScheduleDay {
   weekday: ContractWeekday;
   isWorkingDay: boolean;
-  startTime: string | null;
-  endTime: string | null;
+  blocks: UserContractScheduleBlock[];
   minutes: number;
 }
 
@@ -112,6 +118,8 @@ export interface ProjectRecord {
   name: string;
   description: string | null;
   isActive: boolean;
+  allowAllUsers: boolean;
+  allowAllTasks: boolean;
   createdAt: string;
 }
 
@@ -124,6 +132,8 @@ export interface TimeEntryRecord {
   startTime: string | null;
   endTime: string | null;
   notes: string | null;
+  projectId: number | null;
+  taskId: number | null;
   customFieldValues: Record<string, string | number | boolean>;
   createdAt: string;
 }
@@ -146,6 +156,7 @@ export interface CompanyUserListItem {
   id: number;
   fullName: string;
   isActive: boolean;
+  role: UserRole;
 }
 
 export interface CompanyUserDetail {
@@ -211,6 +222,8 @@ export interface TimeEntryView {
   startTime: string | null;
   endTime: string | null;
   notes: string;
+  projectId: number | null;
+  taskId: number | null;
   durationMinutes: number;
   totalDayCount: number;
   effectiveDayCount: number;
@@ -236,6 +249,8 @@ export interface CompanySettings {
   tabletIdleTimeoutSeconds: number;
   autoBreakAfterMinutes: number;
   autoBreakDurationMinutes: number;
+  projectsEnabled: boolean;
+  tasksEnabled: boolean;
   customFields: CompanyCustomField[];
   overtime: CompanyOvertimeSettings;
 }
@@ -255,9 +270,20 @@ export interface PublicHolidayRecord {
 
 export interface TaskRecord {
   id: number;
-  projectId: number;
   title: string;
   isActive: boolean;
+  createdAt: string;
+}
+
+export interface ProjectUserAssignmentRecord {
+  projectId: number;
+  userId: number;
+  createdAt: string;
+}
+
+export interface ProjectTaskAssignmentRecord {
+  projectId: number;
+  taskId: number;
   createdAt: string;
 }
 

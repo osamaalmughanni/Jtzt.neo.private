@@ -11,6 +11,7 @@ import type {
   PublicHolidayRecord,
   TimeEntryView,
 } from "@shared/types/models";
+import type { ProjectTaskManagementResponse } from "@shared/types/api";
 import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import { evaluateTimeEntryPolicy, getAllowedEntryTypesForDay, getFutureDayDistance, getPastDayDistance } from "@shared/utils/time-entry-policy";
 import {
@@ -21,6 +22,7 @@ import {
   parseLocalDay,
   toClockTimeValue,
 } from "@shared/utils/time";
+import { buildCustomFieldValueLabelLookup, resolveCustomFieldValueLabel } from "@shared/utils/custom-fields";
 import { formatMinutes } from "@shared/utils/time";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import { CustomFieldInput } from "@/components/custom-field-input";
@@ -34,8 +36,8 @@ import { PageLoadBoundary } from "@/components/page-load-state";
 import { Stack } from "@/components/stack";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -60,6 +62,8 @@ const defaultSettings: CompanySettings = {
   tabletIdleTimeoutSeconds: 10,
   autoBreakAfterMinutes: 300,
   autoBreakDurationMinutes: 30,
+  projectsEnabled: false,
+  tasksEnabled: false,
   customFields: [],
   overtime: createDefaultOvertimeSettings(),
 };
@@ -103,6 +107,16 @@ function toTimeInputValue(isoValue: string | null, timeZone?: string) {
 
 function canManageOtherUsers(role: string | undefined) {
   return role === "admin" || role === "manager";
+}
+
+function groupAssignments<T extends { projectId: number }>(rows: T[]) {
+  const grouped = new Map<number, T[]>();
+  for (const row of rows) {
+    const current = grouped.get(row.projectId) ?? [];
+    current.push(row);
+    grouped.set(row.projectId, current);
+  }
+  return grouped;
 }
 
 function isToday(date: Date, timeZone?: string) {
@@ -153,27 +167,16 @@ function getRecordEntryStatusClass(entryType: TimeEntryView["entryType"], isActi
   return "";
 }
 
-function getCustomFieldDisplayValue(field: CompanyCustomField | undefined, rawValue: string | number | boolean) {
-  if (!field) {
-    return String(rawValue);
-  }
-
-  if (field.type === "boolean" && typeof rawValue === "boolean") {
-    return rawValue ? "Yes" : "No";
-  }
-
-  if (field.type === "select" && typeof rawValue === "string") {
-    return field.options.find((option) => option.value === rawValue)?.label ?? rawValue;
-  }
-
-  return String(rawValue);
-}
-
-function getEntrySupportText(entry: TimeEntryView, fieldsById: Map<string, CompanyCustomField>) {
+function getEntrySupportText(
+  entry: TimeEntryView,
+  fieldsById: Map<string, CompanyCustomField>,
+  customFieldValueLabels: Map<string, string>,
+) {
   const customFields = Object.entries(entry.customFieldValues)
     .map(([key, value]) => {
       const field = fieldsById.get(key);
-      return `${field?.label ?? key}: ${getCustomFieldDisplayValue(field, value)}`;
+      const resolved = resolveCustomFieldValueLabel(field, value, customFieldValueLabels);
+      return `${field?.label ?? key}: ${resolved ?? String(value)}`;
     })
     .join(", ");
   return customFields;
@@ -265,11 +268,14 @@ export function DashboardPage() {
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
   const [entries, setEntries] = useState<TimeEntryView[]>([]);
   const [summary, setSummary] = useState<DashboardSummary>(defaultSummary);
+  const [projectData, setProjectData] = useState<ProjectTaskManagementResponse | null>(null);
   const [pendingDeleteEntry, setPendingDeleteEntry] =
     useState<TimeEntryView | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [tabletPunchOpen, setTabletPunchOpen] = useState(false);
   const [tabletPunchValues, setTabletPunchValues] = useState<Record<string, string | number | boolean>>({});
+  const [tabletPunchProjectId, setTabletPunchProjectId] = useState("");
+  const [tabletPunchTaskId, setTabletPunchTaskId] = useState("");
   const [tabletPunchSubmitting, setTabletPunchSubmitting] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDayParam(searchParams.get("day"))));
@@ -302,6 +308,7 @@ export function DashboardPage() {
                 id: companyIdentity.user.id,
                 fullName: companyIdentity.user.fullName,
                 isActive: true,
+                role: companyIdentity.user.role,
               },
             ]
           : [],
@@ -399,6 +406,67 @@ export function DashboardPage() {
       new Map(settings.customFields.map((field) => [field.id, field])),
     [settings.customFields],
   );
+  const customFieldValueLabels = useMemo(
+    () => buildCustomFieldValueLabelLookup(settings.customFields),
+    [settings.customFields],
+  );
+  const projectUsersByProject = useMemo(
+    () => groupAssignments(projectData?.projectUsers ?? []),
+    [projectData?.projectUsers],
+  );
+  const projectTasksByProject = useMemo(
+    () => groupAssignments(projectData?.projectTasks ?? []),
+    [projectData?.projectTasks],
+  );
+  const availableProjects = useMemo(() => {
+    const userId = companyIdentity?.user.id ?? 0;
+    return (projectData?.projects ?? []).filter((project) => {
+      if (project.allowAllUsers) {
+        return true;
+      }
+
+      const assignments = projectUsersByProject.get(project.id) ?? [];
+      return assignments.some((assignment) => assignment.userId === userId);
+    });
+  }, [companyIdentity?.user.id, projectData?.projects, projectUsersByProject]);
+  const selectedTabletProjectId = tabletPunchProjectId ? Number(tabletPunchProjectId) : null;
+  const selectedTabletProject = availableProjects.find((project) => project.id === selectedTabletProjectId) ?? null;
+  const availableTabletTasks = useMemo(() => {
+    if (!selectedTabletProject) {
+      return [];
+    }
+
+    if (selectedTabletProject.allowAllTasks) {
+      return (projectData?.tasks ?? []).filter((task) => task.isActive);
+    }
+
+    const taskAssignments = projectTasksByProject.get(selectedTabletProject.id) ?? [];
+    const allowedTaskIds = new Set(taskAssignments.map((assignment) => assignment.taskId));
+    return (projectData?.tasks ?? []).filter((task) => task.isActive && allowedTaskIds.has(task.id));
+  }, [projectData?.tasks, projectTasksByProject, selectedTabletProject]);
+  const tabletProjectOptions = useMemo(
+    () => availableProjects.map((project) => ({
+      value: String(project.id),
+      label: project.name,
+    })),
+    [availableProjects],
+  );
+  const tabletTaskOptions = useMemo(
+    () => availableTabletTasks.map((task) => ({
+      value: String(task.id),
+      label: task.title,
+    })),
+    [availableTabletTasks],
+  );
+  useEffect(() => {
+    if (tabletPunchProjectId && !availableProjects.some((project) => project.id === Number(tabletPunchProjectId))) {
+      setTabletPunchProjectId("");
+      setTabletPunchTaskId("");
+    }
+    if (tabletPunchTaskId && !availableTabletTasks.some((task) => task.id === Number(tabletPunchTaskId))) {
+      setTabletPunchTaskId("");
+    }
+  }, [availableProjects, availableTabletTasks, tabletPunchProjectId, tabletPunchTaskId]);
   const requiredTabletWorkFields = useMemo(
     () => settings.customFields.filter((field) => field.targets.includes("work") && field.required),
     [settings.customFields]
@@ -437,7 +505,7 @@ export function DashboardPage() {
       try {
         const [settingsResponse, usersResponse, entriesResponse, dashboardResponse] = await Promise.all([
           api.getSettings(companySession.token),
-          canSwitchUser ? api.listUsers(companySession.token) : Promise.resolve({ users: [] }),
+          canSwitchUser ? api.listActiveUsers(companySession.token) : Promise.resolve({ users: [] }),
           api.listTimeEntries(companySession.token, {
             from: formatLocalDay(startOfDay(selectedDate)),
             to: formatLocalDay(endOfDay(selectedDate)),
@@ -528,6 +596,17 @@ export function DashboardPage() {
   }, [dashboardResource.data]);
 
   useEffect(() => {
+    if (!companySession || (!settings.projectsEnabled && !settings.tasksEnabled)) {
+      setProjectData(null);
+      return;
+    }
+
+    void api.listProjectData(companySession.token, true)
+      .then((response) => setProjectData(response))
+      .catch(() => setProjectData(null));
+  }, [companySession, settings.projectsEnabled, settings.tasksEnabled]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
@@ -598,13 +677,23 @@ export function DashboardPage() {
     }));
   }
 
-  async function startTabletTimer(customFieldValues: Record<string, string | number | boolean>) {
+  async function startTabletTimer(input: {
+    customFieldValues: Record<string, string | number | boolean>;
+    projectId?: number | null;
+    taskId?: number | null;
+  }) {
     if (!companySession) return;
     try {
       setTabletPunchSubmitting(true);
-      await api.startTimer(companySession.token, { customFieldValues });
+      await api.startTimer(companySession.token, {
+        customFieldValues: input.customFieldValues,
+        projectId: input.projectId ?? null,
+        taskId: input.taskId ?? null,
+      });
       setTabletPunchOpen(false);
       setTabletPunchValues({});
+      setTabletPunchProjectId("");
+      setTabletPunchTaskId("");
       await refreshDashboardViews();
     } catch (error) {
       toast({
@@ -636,12 +725,12 @@ export function DashboardPage() {
       return;
     }
 
-    if (requiredTabletWorkFields.length > 0) {
+    if (requiredTabletWorkFields.length > 0 || settings.projectsEnabled || settings.tasksEnabled) {
       setTabletPunchOpen(true);
       return;
     }
 
-    void startTabletTimer({});
+    void startTabletTimer({ customFieldValues: {} });
   }
 
   const createRecordHref = buildRecordEditorHref(
@@ -757,6 +846,36 @@ export function DashboardPage() {
             <DialogDescription>{t("dashboard.requiredWorkFieldsDescription")}</DialogDescription>
           </DialogHeader>
           <Stack gap="md">
+            {settings.projectsEnabled ? (
+              <Field label={t("dashboard.project")}>
+                <Combobox
+                  value={tabletPunchProjectId}
+                  onValueChange={(value) => {
+                    setTabletPunchProjectId(value);
+                    setTabletPunchTaskId("");
+                  }}
+                  options={tabletProjectOptions}
+                  placeholder={t("dashboard.projectPlaceholder")}
+                  searchPlaceholder={t("dashboard.projectSearchPlaceholder")}
+                  emptyText={t("dashboard.noProjects")}
+                  searchable
+                />
+              </Field>
+            ) : null}
+            {settings.tasksEnabled ? (
+              <Field label={t("dashboard.task")}>
+                <Combobox
+                  value={tabletPunchTaskId}
+                  onValueChange={setTabletPunchTaskId}
+                  options={tabletTaskOptions}
+                  placeholder={tabletPunchProjectId ? t("dashboard.taskPlaceholder") : t("dashboard.selectProjectFirst")}
+                  searchPlaceholder={t("dashboard.taskSearchPlaceholder")}
+                  emptyText={tabletPunchProjectId ? t("dashboard.noTasks") : t("dashboard.selectProjectFirst")}
+                  searchable
+                  disabled={!tabletPunchProjectId}
+                />
+              </Field>
+            ) : null}
             {requiredTabletWorkFields.map((field) => (
               <Field key={field.id} label={field.label}>
                 <CustomFieldInput
@@ -772,7 +891,15 @@ export function DashboardPage() {
               <Button variant="ghost" onClick={() => setTabletPunchOpen(false)} type="button" disabled={tabletPunchSubmitting}>
                 {t("recordEditor.cancel")}
               </Button>
-              <Button onClick={() => void startTabletTimer(tabletPunchValues)} type="button" disabled={tabletPunchSubmitting}>
+              <Button
+                onClick={() => void startTabletTimer({
+                  customFieldValues: tabletPunchValues,
+                  projectId: tabletPunchProjectId ? Number(tabletPunchProjectId) : null,
+                  taskId: tabletPunchTaskId ? Number(tabletPunchTaskId) : null,
+                })}
+                type="button"
+                disabled={tabletPunchSubmitting || (settings.projectsEnabled && !tabletPunchProjectId) || (settings.tasksEnabled && !tabletPunchTaskId)}
+              >
                 {t("dashboard.startWork")}
               </Button>
             </div>
@@ -907,7 +1034,7 @@ export function DashboardPage() {
                     }).allowed;
                   const canDelete = canEdit;
                   const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
-                  const supportText = getEntrySupportText(entry, customFieldsById);
+                  const supportText = getEntrySupportText(entry, customFieldsById, customFieldValueLabels);
                   const isActiveWorkEntry =
                     entry.entryType === "work" &&
                     summary.activeEntry?.id === entry.id &&
