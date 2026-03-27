@@ -11,7 +11,7 @@
     "dev:backend:serve": "node --watch dist/backend/server.js",
     "build": "npm run build:backend && npm run build:frontend",
     "build:frontend": "vite build --config frontend/vite.config.ts",
-    "build:backend": "node -e \"const fs=require('fs');fs.rmSync('dist/backend',{recursive:true,force:true});\" && esbuild backend/server.ts backend/db/schema.ts --bundle --platform=node --format=esm --outdir=dist/backend --packages=external --sourcemap && node tools/copy-calculation-presets.mjs",
+    "build:backend": "node -e \"const fs=require('fs');const path=require('path');fs.rmSync('dist/backend',{recursive:true,force:true});\" && esbuild backend/server.ts backend/db/schema.ts --bundle --platform=node --format=esm --outdir=dist/backend --packages=external --sourcemap && node -e \"const fs=require('fs');const path=require('path');const src=path.join(process.cwd(),'backend','services','calculation-presets');const dst=path.join(process.cwd(),'dist','backend','services','calculation-presets');if(fs.existsSync(src)){fs.mkdirSync(dst,{recursive:true});for(const file of fs.readdirSync(src)){if(file.endsWith('.js')) fs.copyFileSync(path.join(src,file),path.join(dst,file));}}\"",
     "demo:seed:build": "esbuild tools/seed-demo.ts --bundle --platform=node --format=esm --outfile=dist/tools/seed-demo.js --packages=external --sourcemap",
     "demo:seed": "npm run demo:seed:build && node dist/tools/seed-demo.js",
     "typecheck": "tsc -p tsconfig.backend.json --noEmit && tsc -p frontend/tsconfig.json --noEmit",
