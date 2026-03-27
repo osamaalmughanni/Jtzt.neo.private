@@ -26,7 +26,6 @@ export function CalculationsPage() {
   const [confirmDeleteCalculation, setConfirmDeleteCalculation] = useState<CalculationRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [selectedPresetKey, setSelectedPresetKey] = useState("");
-  const [creatingPreset, setCreatingPreset] = useState(false);
 
   const resource = usePageResource<CalculationListResponse>({
     enabled: Boolean(companySession),
@@ -88,22 +87,9 @@ export function CalculationsPage() {
     }
   }, [presetOptions, selectedPresetKey]);
 
-  async function handleCreateFromPreset() {
-    if (!companySession || !selectedPresetKey) return;
-
-    try {
-      setCreatingPreset(true);
-      const response = await api.createCalculationFromPreset(companySession.token, { presetKey: selectedPresetKey });
-      toast({ title: t("calculations.saved") });
-      navigate(`/calculations/${response.calculationId}/edit`);
-    } catch (error) {
-      toast({
-        title: t("calculations.saveFailed"),
-        description: error instanceof Error ? error.message : "Request failed",
-      });
-    } finally {
-      setCreatingPreset(false);
-    }
+  function handleCreateFromPreset() {
+    if (!selectedPresetKey) return;
+    navigate(`/calculations/create?preset=${encodeURIComponent(selectedPresetKey)}`);
   }
 
   return (
@@ -146,8 +132,8 @@ export function CalculationsPage() {
                   searchable
                   className="md:flex-1"
                 />
-                <Button type="button" onClick={() => void handleCreateFromPreset()} disabled={!selectedPresetKey || creatingPreset}>
-                  {creatingPreset ? t("calculations.saving") : t("calculations.createFromPreset")}
+                <Button type="button" onClick={() => handleCreateFromPreset()} disabled={!selectedPresetKey}>
+                  {t("calculations.createFromPreset")}
                 </Button>
               </div>
               {selectedPresetKey ? (

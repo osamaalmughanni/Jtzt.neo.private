@@ -32,7 +32,13 @@ function validateSnapshot(snapshot: CompanySnapshot) {
   if (!snapshot || typeof snapshot !== "object") {
     throw new HTTPException(400, { message: "Invalid company snapshot" });
   }
-  if (!Array.isArray(snapshot.users) || !Array.isArray(snapshot.userContracts) || !Array.isArray(snapshot.timeEntries)) {
+  if (
+    !Array.isArray(snapshot.users) ||
+    !Array.isArray(snapshot.userContracts) ||
+    !Array.isArray(snapshot.timeEntries) ||
+    !Array.isArray(snapshot.projects) ||
+    !Array.isArray(snapshot.tasks)
+  ) {
     throw new HTTPException(400, { message: "Company snapshot is incomplete" });
   }
 }
@@ -82,30 +88,6 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
   validateSnapshot(snapshot);
 
   await deleteCompanyData(db, companyId);
-  await db.run(
-    `UPDATE companies
-     SET
-       encryption_enabled = ?,
-       encryption_kdf_algorithm = ?,
-       encryption_kdf_iterations = ?,
-       encryption_kdf_salt = ?,
-       encryption_key_verifier = ?,
-       tablet_code_value = ?,
-       tablet_code_hash = ?,
-       tablet_code_updated_at = ?
-     WHERE id = ?`,
-    [
-      snapshot.company.encryptionEnabled ? 1 : 0,
-      snapshot.company.encryptionKdfAlgorithm,
-      snapshot.company.encryptionKdfIterations,
-      snapshot.company.encryptionKdfSalt,
-      snapshot.company.encryptionKeyVerifier,
-      snapshot.company.tabletCodeValue,
-      snapshot.company.tabletCodeHash,
-      snapshot.company.tabletCodeUpdatedAt,
-      companyId
-    ]
-  );
 
   if (snapshot.settings) {
     await db.run(
@@ -189,15 +171,45 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
     userIdMap.set(user.id, Number(result.lastRowId));
   }
 
+  const projectIdMap = new Map<number, number>();
   for (const project of snapshot.projects) {
-    const result = await db.run("INSERT INTO projects (company_id, name, description, is_active, custom_field_values_json, created_at) VALUES (?, ?, ?, ?, ?, ?)", [
+    const result = await db.run(
+      `INSERT INTO projects (
+        company_id,
+        name,
+        description,
+        budget,
+        is_active,
+        allow_all_users,
+        allow_all_tasks,
+        custom_field_values_json,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        companyId,
+        project.name,
+        project.description,
+        project.budget ?? 0,
+        project.isActive ? 1 : 0,
+        project.allowAllUsers ? 1 : 0,
+        project.allowAllTasks ? 1 : 0,
+        JSON.stringify(project.customFieldValues ?? {}),
+        project.createdAt
+      ]
+    );
+    projectIdMap.set(project.id, Number(result.lastRowId));
+  }
+
+  const taskIdMap = new Map<number, number>();
+  for (const task of snapshot.tasks) {
+    const result = await db.run("INSERT INTO tasks (company_id, title, is_active, custom_field_values_json, created_at) VALUES (?, ?, ?, ?, ?)", [
       companyId,
-      project.name,
-      project.description,
-      project.isActive ? 1 : 0,
-      JSON.stringify(project.customFieldValues ?? {}),
-      project.createdAt
+      task.title,
+      task.isActive ? 1 : 0,
+      JSON.stringify(task.customFieldValues ?? {}),
+      task.createdAt
     ]);
+    taskIdMap.set(task.id, Number(result.lastRowId));
   }
 
   for (const contract of snapshot.userContracts) {
@@ -235,19 +247,11 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
     }
   }
 
-  for (const task of snapshot.tasks) {
-    await db.run("INSERT INTO tasks (company_id, title, is_active, custom_field_values_json, created_at) VALUES (?, ?, ?, ?, ?)", [
-      companyId,
-      task.title,
-      task.isActive ? 1 : 0,
-      JSON.stringify(task.customFieldValues ?? {}),
-      task.createdAt
-    ]);
-  }
-
   for (const entry of snapshot.timeEntries) {
     const userId = userIdMap.get(entry.userId);
     if (!userId) continue;
+    const projectId = entry.projectId != null ? projectIdMap.get(entry.projectId) ?? null : null;
+    const taskId = entry.taskId != null ? taskIdMap.get(entry.taskId) ?? null : null;
     await db.run(
       `INSERT INTO time_entries (
         company_id,
@@ -272,8 +276,8 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         entry.startTime ?? entry.entryDate,
         entry.endTime,
         entry.notes,
-        entry.projectId ?? null,
-        entry.taskId ?? null,
+        projectId,
+        taskId,
         JSON.stringify(entry.customFieldValues),
         entry.createdAt
       ]
@@ -281,13 +285,54 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
   }
 
   for (const cacheRow of snapshot.publicHolidayCache) {
-    await db.run("INSERT INTO public_holiday_cache (company_id, country_code, year, payload_json, fetched_at) VALUES (?, ?, ?, ?, ?)", [
-      companyId,
-      cacheRow.countryCode,
-      cacheRow.year,
-      cacheRow.payloadJson,
-      cacheRow.fetchedAt
-    ]);
+    await db.run(
+      `INSERT INTO public_holiday_cache (company_id, country_code, year, payload_json, fetched_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(company_id, country_code, year)
+       DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at`,
+      [
+        companyId,
+        cacheRow.countryCode,
+        cacheRow.year,
+        cacheRow.payloadJson,
+        cacheRow.fetchedAt
+      ]
+    );
+  }
+
+  for (const project of snapshot.projects) {
+    const mappedProjectId = projectIdMap.get(project.id);
+    if (!mappedProjectId) {
+      continue;
+    }
+
+    if (!project.allowAllUsers) {
+      for (const userId of Array.from(new Set(project.userIds ?? []))) {
+        const mappedUserId = userIdMap.get(userId);
+        if (!mappedUserId) {
+          continue;
+        }
+        await db.run("INSERT INTO project_users (project_id, user_id, created_at) VALUES (?, ?, ?)", [
+          mappedProjectId,
+          mappedUserId,
+          project.createdAt
+        ]);
+      }
+    }
+
+    if (!project.allowAllTasks) {
+      for (const taskId of Array.from(new Set(project.taskIds ?? []))) {
+        const mappedTaskId = taskIdMap.get(taskId);
+        if (!mappedTaskId) {
+          continue;
+        }
+        await db.run("INSERT INTO project_tasks (project_id, task_id, created_at) VALUES (?, ?, ?)", [
+          mappedProjectId,
+          mappedTaskId,
+          project.createdAt
+        ]);
+      }
+    }
   }
 }
 
@@ -649,9 +694,38 @@ export const adminService = {
       [companyId]
     )).map(mapTimeEntry);
 
-    const projects = (await companyDb.all("SELECT id, name, description, is_active, custom_field_values_json, created_at FROM projects WHERE company_id = ? ORDER BY id ASC", [companyId])).map(
-      mapProject
+    const projectRows = await companyDb.all(
+      "SELECT id, name, description, budget, is_active, allow_all_users, allow_all_tasks, custom_field_values_json, created_at FROM projects WHERE company_id = ? ORDER BY id ASC",
+      [companyId]
     );
+    const projectUserRows = await companyDb.all<{ project_id: number; user_id: number }>(
+      "SELECT project_id, user_id FROM project_users WHERE project_id IN (SELECT id FROM projects WHERE company_id = ?)",
+      [companyId]
+    );
+    const projectTaskRows = await companyDb.all<{ project_id: number; task_id: number }>(
+      "SELECT project_id, task_id FROM project_tasks WHERE project_id IN (SELECT id FROM projects WHERE company_id = ?)",
+      [companyId]
+    );
+    const projectUsersByProjectId = new Map<number, number[]>();
+    for (const row of projectUserRows) {
+      const next = projectUsersByProjectId.get(row.project_id) ?? [];
+      next.push(row.user_id);
+      projectUsersByProjectId.set(row.project_id, next);
+    }
+    const projectTasksByProjectId = new Map<number, number[]>();
+    for (const row of projectTaskRows) {
+      const next = projectTasksByProjectId.get(row.project_id) ?? [];
+      next.push(row.task_id);
+      projectTasksByProjectId.set(row.project_id, next);
+    }
+    const projects = projectRows.map((row) => {
+      const project = mapProject(row);
+      return {
+        ...project,
+        userIds: project.allowAllUsers ? [] : Array.from(new Set(projectUsersByProjectId.get(project.id) ?? [])),
+        taskIds: project.allowAllTasks ? [] : Array.from(new Set(projectTasksByProjectId.get(project.id) ?? [])),
+      };
+    });
     const tasks = (await companyDb.all("SELECT id, title, is_active, custom_field_values_json, created_at FROM tasks WHERE company_id = ? ORDER BY id ASC", [companyId])).map(mapTask);
     const publicHolidayCache = await companyDb.all<{ country_code: string; year: number; payload_json: string; fetched_at: string }>(
       "SELECT country_code, year, payload_json, fetched_at FROM public_holiday_cache WHERE company_id = ? ORDER BY year ASC, country_code ASC",

@@ -586,12 +586,15 @@ export function ReportsPreviewPage() {
                   </div>
 
                   <TabsContent value="table" className="mt-0 min-h-0 min-w-0 flex-1 overflow-hidden">
-                    <div className="h-full w-full min-w-0 overflow-auto rounded-2xl border border-border">
-                      <table className="w-max min-w-full border-collapse text-sm">
-                        <thead>
-                          <tr className="border-b border-border bg-muted/40">
+                    <div className="relative h-full w-full min-w-0 overflow-auto rounded-2xl border border-border bg-background max-h-[calc(100dvh-18rem)]">
+                      <table className="w-full min-w-full table-auto border-separate border-spacing-0 text-sm">
+                        <thead className="sticky top-0 z-30">
+                          <tr className="h-11 border-b border-border bg-muted/40 hover:bg-muted/40">
                             {resolvedColumns.map((column) => (
-                              <th key={column.key} className="whitespace-nowrap px-4 py-3 text-left font-medium text-foreground">
+                              <th
+                                key={column.key}
+                                className="min-w-[10rem] whitespace-normal break-words border-b border-border bg-muted/40 px-4 py-3 text-left font-medium leading-5 text-foreground align-middle"
+                              >
                                 {getReportColumnLabel(column, t)}
                               </th>
                             ))}
@@ -601,13 +604,13 @@ export function ReportsPreviewPage() {
                           {rowsWithMeta.map(({ row, meta }, index) => (
                             <tr key={index} className="border-b border-border/70 last:border-b-0">
                               {resolvedColumns.map((column) => (
-                                <td key={column.key} className="px-4 py-3 text-muted-foreground align-top">
+                                <td key={column.key} className="min-w-[10rem] px-4 py-3 text-muted-foreground align-middle">
                                   {column.kind === "overtime_state" && meta.overtime ? (
                                     <OvertimeStateBadge meta={meta.overtime} />
                                   ) : column.kind === "overtime_timeline" && meta.overtime ? (
                                     <OvertimeTimelineCell meta={meta.overtime} />
                                   ) : (
-                                    <span className="whitespace-nowrap">
+                                    <span className="block whitespace-normal break-words leading-5">
                                       {formatCellValue(
                                         row[column.key] ?? null,
                                         column.key,

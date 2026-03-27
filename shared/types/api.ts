@@ -365,7 +365,12 @@ export interface CompanySnapshot {
     id: number;
     name: string;
     description: string | null;
+    budget: number;
     isActive: boolean;
+    allowAllUsers: boolean;
+    allowAllTasks: boolean;
+    userIds: number[];
+    taskIds: number[];
     customFieldValues: Record<string, string | number | boolean>;
     createdAt: string;
   }>;

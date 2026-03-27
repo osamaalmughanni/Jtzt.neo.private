@@ -12,6 +12,8 @@
     "build": "npm run build:backend && npm run build:frontend",
     "build:frontend": "vite build --config frontend/vite.config.ts",
     "build:backend": "node -e \"const fs=require('fs');fs.rmSync('dist/backend',{recursive:true,force:true});\" && esbuild backend/server.ts backend/db/schema.ts --bundle --platform=node --format=esm --outdir=dist/backend --packages=external --sourcemap",
+    "demo:seed:build": "esbuild tools/seed-demo.ts --bundle --platform=node --format=esm --outfile=dist/tools/seed-demo.js --packages=external --sourcemap",
+    "demo:seed": "npm run demo:seed:build && node dist/tools/seed-demo.js",
     "typecheck": "tsc -p tsconfig.backend.json --noEmit && tsc -p frontend/tsconfig.json --noEmit",
     "deploy:doctor": "python .deploy.py doctor",
     "deploy:bootstrap": "python .deploy.py bootstrap",

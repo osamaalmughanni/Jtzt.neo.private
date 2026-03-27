@@ -17,6 +17,14 @@ const PRESET_TRANSLATION_KEYS: Record<string, { nameKey: string; descriptionKey:
     nameKey: "calculations.presets.userWorkloadLast30Days.name",
     descriptionKey: "calculations.presets.userWorkloadLast30Days.description",
   },
+  yearly_vacation_balance_by_worker: {
+    nameKey: "calculations.presets.yearlyVacationBalanceByWorker.name",
+    descriptionKey: "calculations.presets.yearlyVacationBalanceByWorker.description",
+  },
+  yearly_overtime_ledger_by_worker: {
+    nameKey: "calculations.presets.yearlyOvertimeLedgerByWorker.name",
+    descriptionKey: "calculations.presets.yearlyOvertimeLedgerByWorker.description",
+  },
 };
 
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string;

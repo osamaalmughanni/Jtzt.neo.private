@@ -40,6 +40,21 @@ function normalizeLookupValue(value: string) {
   return value.trim().toLowerCase();
 }
 
+function humanizeLabel(value: string) {
+  const normalized = value.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (!normalized) {
+    return value.trim();
+  }
+
+  return normalized
+    .split(" ")
+    .map((word) => {
+      const lower = word.toLowerCase();
+      return lower.length > 0 ? lower[0].toUpperCase() + lower.slice(1) : word;
+    })
+    .join(" ");
+}
+
 const TIME_ENTRY_TARGETS = new Set<TimeEntryType>(["work", "vacation", "sick_leave", "time_off_in_lieu"]);
 const CUSTOM_FIELD_SCOPES = new Set<CustomFieldTargetScope>(["time_entry", "user", "project", "task"]);
 
@@ -49,7 +64,11 @@ export function buildCustomFieldCanonicalKey(fieldId: string) {
 
 export function getCustomFieldLabel(field: CompanyCustomField) {
   const cleaned = field.label.trim();
-  return cleaned.length > 0 ? cleaned : field.id;
+  if (cleaned.length > 0) {
+    return cleaned.includes("_") || cleaned.includes("-") ? humanizeLabel(cleaned) : cleaned;
+  }
+
+  return humanizeLabel(field.id);
 }
 
 export function getCustomFieldAliases(field: CompanyCustomField) {

@@ -8,8 +8,10 @@ import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { CalculationPreviewTable } from "@/components/calculation-preview-table";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -60,6 +62,7 @@ export function CalculationEditorPage({ mode }: { mode: "create" | "edit" }) {
   const presetKey = searchParams.get("preset");
   const { companySession } = useAuth();
   const [form, setForm] = useState<CalculationFormState>(createEmptyForm);
+  const [selectedPresetKey, setSelectedPresetKey] = useState(presetKey ?? "");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -98,12 +101,22 @@ export function CalculationEditorPage({ mode }: { mode: "create" | "edit" }) {
   }, [calculationId, mode, resource.data?.calculations]);
 
   const selectedPreset = useMemo(() => {
-    if (!presetKey) return null;
-    return resource.data?.presets.find((preset) => preset.key === presetKey) ?? null;
-  }, [presetKey, resource.data?.presets]);
+    if (!selectedPresetKey) return null;
+    return resource.data?.presets.find((preset) => preset.key === selectedPresetKey) ?? null;
+  }, [resource.data?.presets, selectedPresetKey]);
+
+  const presetOptions = useMemo(
+    () =>
+      (resource.data?.presets ?? []).map((preset) => ({
+        value: preset.key,
+        label: getCalculationPresetLabel(preset, t),
+        keywords: [getCalculationPresetDescription(preset, t), preset.key],
+      })),
+    [resource.data?.presets, t],
+  );
 
   useEffect(() => {
-    if (!resource.data || initializationRef.current) return;
+    if (!resource.data) return;
 
     if (mode === "edit" && currentCalculation) {
       setForm({
@@ -117,12 +130,29 @@ export function CalculationEditorPage({ mode }: { mode: "create" | "edit" }) {
       return;
     }
 
-    if (mode === "create" && selectedPreset) {
-      setForm(clonePreset(selectedPreset, t));
-      initializationRef.current = true;
-      return;
+    if (mode === "create") {
+      if (selectedPreset) {
+        setForm(clonePreset(selectedPreset, t));
+        initializationRef.current = true;
+        return;
+      }
+
+      if (!initializationRef.current) {
+        setForm(createEmptyForm());
+        initializationRef.current = true;
+      }
     }
   }, [currentCalculation, mode, resource.data, selectedPreset, t]);
+
+  useEffect(() => {
+    if (mode !== "create") return;
+    const preset = selectedPresetKey ? resource.data?.presets.find((item) => item.key === selectedPresetKey) ?? null : null;
+    if (preset) {
+      setForm(clonePreset(preset, t));
+    } else if (selectedPresetKey === "") {
+      setForm(createEmptyForm());
+    }
+  }, [mode, resource.data?.presets, selectedPresetKey, t]);
 
   useEffect(() => {
     if (!companySession || form.sqlText.trim().length < 5) {
@@ -235,6 +265,22 @@ export function CalculationEditorPage({ mode }: { mode: "create" | "edit" }) {
         skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
       >
         <FormPanel>
+          {mode === "create" ? (
+            <FormSection>
+              <Field label={t("calculations.presetSelector")}>
+                <Combobox
+                  value={selectedPresetKey}
+                  onValueChange={setSelectedPresetKey}
+                  options={presetOptions}
+                  placeholder={t("calculations.presetSelectorPlaceholder")}
+                  searchPlaceholder={t("calculations.presetSelectorPlaceholder")}
+                  emptyText={t("calculations.empty")}
+                  searchable
+                />
+              </Field>
+            </FormSection>
+          ) : null}
+
           <FormSection>
             <FormFields>
               <Field label={t("calculations.name")}>
@@ -266,14 +312,7 @@ export function CalculationEditorPage({ mode }: { mode: "create" | "edit" }) {
             </Field>
           </FormSection>
 
-          <FormSection>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-medium text-foreground">{t("calculations.previewTitle")}</p>
-                <p className="text-sm text-muted-foreground">{t("calculations.previewDescription")}</p>
-              </div>
-            </div>
-
+          <FormSection className="gap-2">
             {validation.issues.length > 0 ? (
               <div className="flex flex-col gap-2 rounded-2xl border border-border bg-muted/20 p-4">
                 {validation.issues.map((issue, index) => (
@@ -284,38 +323,15 @@ export function CalculationEditorPage({ mode }: { mode: "create" | "edit" }) {
               </div>
             ) : null}
 
-            <div className="w-full min-w-0 overflow-auto rounded-2xl border border-border">
-              <table className="w-max min-w-full border-collapse text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/40">
-                    {validation.columns.map((column) => (
-                      <th key={column} className="whitespace-nowrap px-4 py-3 text-left font-medium text-foreground">
-                        {column}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {validation.rows.length === 0 ? (
-                    <tr>
-                      <td className="px-4 py-6 text-sm text-muted-foreground" colSpan={Math.max(1, validation.columns.length)}>
-                        {t("calculations.noPreviewRows")}
-                      </td>
-                    </tr>
-                  ) : (
-                    validation.rows.map((row, index) => (
-                      <tr key={index} className="border-b border-border/70 last:border-b-0">
-                        {validation.columns.map((column) => (
-                          <td key={column} className="px-4 py-3 align-top text-muted-foreground">
-                            {row[column] === null || row[column] === undefined || row[column] === "" ? "--" : String(row[column])}
-                          </td>
-                        ))}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <CalculationPreviewTable
+              title={t("calculations.previewTitle")}
+              columns={validation.columns}
+              rows={validation.rows}
+              emptyLabel={t("calculations.noPreviewRows")}
+              searchPlaceholder={t("calculations.previewSearchPlaceholder")}
+              embedded
+              fullHeight
+            />
           </FormSection>
 
           <FormActions>

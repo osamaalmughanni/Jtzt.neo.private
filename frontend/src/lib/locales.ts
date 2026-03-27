@@ -129,9 +129,10 @@ export const resources = {
         stacked: "Stacked",
         sql: "SQL",
         sqlPlaceholder: "SELECT ...",
-        sqlHint: "Need help? Ask support to review the SQL. Calculations can read from users, projects, tasks, time entries, and the custom_field_values view.",
+        sqlHint: "Need help? Ask support to review the SQL. Calculations can read from users, projects, tasks, time entries, holidays, and the custom_field_values view.",
         previewTitle: "Preview",
         previewDescription: "The query runs live and the preview updates automatically.",
+        previewSearchPlaceholder: "Search preview rows...",
         noPreviewRows: "No preview rows yet.",
         chooseChartColumns: "Choose category and value columns to render the chart.",
         noChartData: "No chart data yet.",
@@ -158,7 +159,7 @@ export const resources = {
         presets: {
           austrianMonthlyOvertimeByWorker: {
             name: "Austrian monthly overtime by worker",
-            description: "Show the current month overtime, contract hours, and payroll impact per worker using the Austrian 50% overtime surcharge rule."
+            description: "Show monthly overtime, contract hours, and payroll impact per worker using Austrian 25%, 50%, and 100% surcharge logic."
           },
           projectBudgetBurn: {
             name: "Project budget burn",
@@ -171,6 +172,14 @@ export const resources = {
           userWorkloadLast30Days: {
             name: "User workload last 30 days",
             description: "Show total worked hours per active user for the last 30 days."
+          },
+          yearlyVacationBalanceByWorker: {
+            name: "Yearly vacation balance by worker",
+            description: "Show the current year vacation entitlement, vacation taken, and remaining balance per worker in Austrian-style format."
+          },
+          yearlyOvertimeLedgerByWorker: {
+            name: "Yearly overtime ledger by worker",
+            description: "Show a full-year month-by-month overtime ledger per worker with scheduled hours, worked hours, monthly balance, and running balance."
           }
         }
       },
@@ -909,9 +918,10 @@ export const resources = {
         stacked: "Gestapelt",
         sql: "SQL",
         sqlPlaceholder: "SELECT ...",
-        sqlHint: "Benötigen Sie Hilfe? Bitten Sie den Support, SQL zu prüfen. Berechnungen können Benutzer, Projekte, Aufgaben, Zeiteinträge und die Sicht custom_field_values lesen.",
+        sqlHint: "Benötigen Sie Hilfe? Bitten Sie den Support, SQL zu prüfen. Berechnungen können Benutzer, Projekte, Aufgaben, Zeiteinträge, Feiertage und die Sicht custom_field_values lesen.",
         previewTitle: "Vorschau",
         previewDescription: "Die Abfrage läuft live und die Vorschau aktualisiert sich automatisch.",
+        previewSearchPlaceholder: "Vorschauzeilen suchen...",
         noPreviewRows: "Noch keine Vorschaudaten.",
         chooseChartColumns: "Kategorie- und Wertspalte wählen, um das Diagramm zu rendern.",
         noChartData: "Noch keine Diagrammdaten.",
@@ -938,7 +948,7 @@ export const resources = {
         presets: {
           austrianMonthlyOvertimeByWorker: {
             name: "Österreichische Monatsüberstunden je Mitarbeiter",
-            description: "Überstunden des aktuellen Monats, Vertragsstunden und Gehaltsauswirkung je Mitarbeiter auf Basis der österreichischen 50%-Überstundenzuschlagsregel anzeigen."
+            description: "Monatliche Überstunden, Vertragsstunden und Gehaltsauswirkung je Mitarbeiter auf Basis der österreichischen 25%-, 50%- und 100%-Zuschlagslogik anzeigen."
           },
           projectBudgetBurn: {
             name: "Projektbudget-Verbrauch",
@@ -951,6 +961,14 @@ export const resources = {
           userWorkloadLast30Days: {
             name: "Benutzerarbeitslast der letzten 30 Tage",
             description: "Die gesamten Arbeitsstunden je aktivem Benutzer für die letzten 30 Tage anzeigen."
+          },
+          yearlyVacationBalanceByWorker: {
+            name: "Jährliche Urlaubsbilanz je Mitarbeiter",
+            description: "Den Urlaubsanspruch, den bereits genommenen Urlaub und den Resturlaub je Mitarbeiter im aktuellen Jahr im österreichischen Format anzeigen."
+          },
+          yearlyOvertimeLedgerByWorker: {
+            name: "Jahres-Überstundenkonto je Mitarbeiter",
+            description: "Ein vollständiges Jahreskonto je Mitarbeiter mit Monatswerten für Sollstunden, Iststunden, Monatsaldo und laufendem Saldo anzeigen."
           }
         }
       },

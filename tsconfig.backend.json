@@ -9,6 +9,7 @@
   },
   "include": [
     "backend/**/*.ts",
-    "shared/**/*.ts"
+    "shared/**/*.ts",
+    "tools/**/*.ts"
   ]
 }

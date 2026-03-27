@@ -3,7 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { DownloadSimple, PencilSimple } from "phosphor-react";
 import { AppFullBleed } from "@/components/app-content-lane";
-import { FormPage, FormPanel, FormSection } from "@/components/form-layout";
+import { FormPage, FormPanel } from "@/components/form-layout";
+import { CalculationPreviewTable } from "@/components/calculation-preview-table";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
@@ -159,6 +160,7 @@ export function CalculationPreviewPage() {
     <FormPage className="h-full min-h-0">
       <PageLoadBoundary
         className="min-h-0 flex-1"
+        gap="md"
         intro={
           <PageIntro>
             <PageBackAction to="/calculations" label={t("calculations.back")} />
@@ -188,7 +190,7 @@ export function CalculationPreviewPage() {
         skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
       >
         <AppFullBleed className="flex min-h-0 flex-1 min-w-0 xl:px-12 2xl:px-16">
-          <FormPanel className="flex h-full min-h-0 min-w-0 w-full flex-col gap-5 overflow-hidden">
+          <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col gap-5 overflow-hidden">
             <div className="flex flex-wrap items-center gap-2">
               {validating ? (
                 <Badge variant="outline" className="rounded-full border-border bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
@@ -207,48 +209,15 @@ export function CalculationPreviewPage() {
               </div>
             ) : null}
 
-            <FormSection className="flex min-h-0 flex-1 flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-medium text-foreground">{t("calculations.previewTitle")}</p>
-                <p className="text-sm text-muted-foreground">{t("calculations.previewDescription")}</p>
-              </div>
-
-              <div className="min-h-0 w-full min-w-0 flex-1 overflow-auto rounded-2xl border border-border">
-                <table className="w-max min-w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/40">
-                      {validation.columns.map((column) => (
-                        <th key={column} className="whitespace-nowrap px-4 py-3 text-left font-medium text-foreground">
-                          {column}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {validation.rows.length === 0 ? (
-                      <tr>
-                        <td className="px-4 py-6 text-sm text-muted-foreground" colSpan={Math.max(1, validation.columns.length)}>
-                          {t("calculations.noPreviewRows")}
-                        </td>
-                      </tr>
-                    ) : (
-                      validation.rows.map((row, index) => (
-                        <tr key={index} className="border-b border-border/70 last:border-b-0">
-                          {validation.columns.map((column) => (
-                            <td key={column} className="px-4 py-3 align-top text-muted-foreground">
-                              <span className="whitespace-nowrap">
-                                {row[column] === null || row[column] === undefined || row[column] === "" ? "--" : String(row[column])}
-                              </span>
-                            </td>
-                          ))}
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </FormSection>
-          </FormPanel>
+            <CalculationPreviewTable
+              title={t("calculations.previewTitle")}
+              columns={validation.columns}
+              rows={validation.rows}
+              emptyLabel={t("calculations.noPreviewRows")}
+              searchPlaceholder={t("calculations.previewSearchPlaceholder")}
+              fullHeight
+            />
+          </div>
         </AppFullBleed>
       </PageLoadBoundary>
     </FormPage>
