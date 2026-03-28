@@ -105,7 +105,6 @@ export function Calendar({
   }, [displayLocale, normalizedFirstDayOfWeek, weekendDays]);
   const holidaySet = useMemo(() => new Set(holidayDates), [holidayDates]);
   const cellClassName = compact ? "h-7 text-[11px]" : "h-12 text-sm";
-  const emptyCellClassName = compact ? "h-7" : "h-12";
   const innerClassName = compact ? "h-5 w-5 text-[11px]" : "h-8 w-8";
   const wrapperClassName = compact ? "gap-2 p-2" : "gap-4 p-4";
   const weekdayClassName = compact ? "text-[10px]" : "text-xs";
@@ -166,7 +165,7 @@ export function Calendar({
 
       <div className="grid grid-cols-7 gap-1">
         {days.map((day, index) => {
-          if (!day) return <div key={`empty-${index}`} className={emptyCellClassName} />;
+          if (!day) return <div key={`empty-${index}`} className={compact ? "h-7" : "h-12"} />;
 
           const isoDate = formatLocalDay(day);
           const isHoliday = holidaySet.has(isoDate);

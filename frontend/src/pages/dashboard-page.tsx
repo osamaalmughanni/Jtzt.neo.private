@@ -222,21 +222,6 @@ function calculateLiveWorkDurationMinutes(
   return Math.max(0, rawMinutes - settings.autoBreakDurationMinutes);
 }
 
-function resolveCalendarDayState(entries: TimeEntryView[]): "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed" | null {
-  let nextState: "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed" | null = null;
-
-  for (const entry of entries) {
-    if (!nextState || nextState === entry.entryType) {
-      nextState = entry.entryType;
-      continue;
-    }
-
-    return "mixed";
-  }
-
-  return nextState;
-}
-
 function RecordStatusIcon({
   entryType,
   active,
@@ -313,8 +298,6 @@ export function DashboardPage() {
   const [now, setNow] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => parseDayParam(searchParams.get("day")));
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDayParam(searchParams.get("day"))));
-  const [calendarHolidays, setCalendarHolidays] = useState<PublicHolidayRecord[]>([]);
-  const [calendarDayStates, setCalendarDayStates] = useState<Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">>({});
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const dashboardCacheRef = useRef(new Map<string, DashboardSnapshot>());
   const dashboardRequestIdRef = useRef(0);
@@ -371,6 +354,47 @@ export function DashboardPage() {
   const selectedDayPastDistance = getPastDayDistance(selectedDayKey, todayDay);
   const selectedDayFutureDistance = getFutureDayDistance(selectedDayKey, todayDay);
   const isNowContext = isToday(selectedDate, settings.timeZone);
+  const calendarResource = usePageResource<{
+    holidays: PublicHolidayRecord[];
+    dayStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">;
+  }>({
+    enabled: Boolean(companySession) && Boolean(effectiveUserId),
+    deps: [companySession?.token, effectiveUserId, visibleMonth.getFullYear(), visibleMonth.getMonth(), t],
+    load: async () => {
+      if (!companySession || !effectiveUserId) {
+        return {
+          holidays: [],
+          dayStates: {},
+        };
+      }
+
+      const [holidayResponse, entriesResponse] = await Promise.all([
+        api.getPublicHolidays(companySession.token, settings.country, visibleMonth.getFullYear()),
+        api.listTimeEntries(companySession.token, {
+          from: formatLocalDay(startOfMonth(visibleMonth)),
+          to: formatLocalDay(endOfDay(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0))),
+          targetUserId: canSwitchUser ? effectiveUserId : undefined,
+        }),
+      ]);
+
+      const nextStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed"> = {};
+      for (const entry of entriesResponse.entries) {
+        for (const entryDay of enumerateLocalDays(entry.entryDate, entry.endDate ?? entry.entryDate)) {
+          const currentState = nextStates[entryDay];
+          nextStates[entryDay] =
+            !currentState || currentState === entry.entryType
+              ? entry.entryType
+              : "mixed";
+        }
+      }
+
+      return {
+        holidays: holidayResponse.holidays,
+        dayStates: nextStates,
+      };
+    },
+  });
+  const calendarHolidays = calendarResource.data?.holidays ?? [];
   const holidayDateSet = useMemo(() => new Set(calendarHolidays.map((holiday) => holiday.date)), [calendarHolidays]);
   const selectedDayIsWeekend = isWeekendDay(selectedDayKey, settings.weekendDays);
   const selectedHoliday = useMemo(
@@ -691,47 +715,6 @@ export function DashboardPage() {
       });
   }, [canSwitchUser, companyIdentity?.user.id, companySession, loadDashboardSnapshot, prefetchAdjacentDashboardSnapshots, selectedDate, selectedDayKey, selectedUserId, t, users]);
 
-  const calendarResource = usePageResource<{
-    holidays: PublicHolidayRecord[];
-    dayStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">;
-  }>({
-    enabled: Boolean(companySession) && Boolean(effectiveUserId),
-    deps: [companySession?.token, effectiveUserId, visibleMonth.getFullYear(), visibleMonth.getMonth(), t],
-    load: async () => {
-      if (!companySession || !effectiveUserId) {
-        return {
-          holidays: [],
-          dayStates: {},
-        };
-      }
-
-      const [holidayResponse, entriesResponse] = await Promise.all([
-        api.getPublicHolidays(companySession.token, settings.country, visibleMonth.getFullYear()),
-        api.listTimeEntries(companySession.token, {
-          from: formatLocalDay(startOfMonth(visibleMonth)),
-          to: formatLocalDay(endOfDay(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0))),
-          targetUserId: canSwitchUser ? effectiveUserId : undefined,
-        }),
-      ]);
-
-      const nextStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed"> = {};
-      for (const entry of entriesResponse.entries) {
-        for (const entryDay of enumerateLocalDays(entry.entryDate, entry.endDate ?? entry.entryDate)) {
-          const currentState = nextStates[entryDay];
-          nextStates[entryDay] =
-            !currentState || currentState === entry.entryType
-              ? entry.entryType
-              : "mixed";
-        }
-      }
-
-      return {
-        holidays: holidayResponse.holidays,
-        dayStates: nextStates,
-      };
-    },
-  });
-
   useEffect(() => {
     if (!companyIdentity?.user.id) return;
     const needsUser = !searchParams.get("user");
@@ -766,34 +749,14 @@ export function DashboardPage() {
     }
 
     previousSelectedDayKeyRef.current = selectedDayKey;
-    setVisibleMonth(startOfMonth(selectedDate));
+    const nextVisibleMonth = startOfMonth(selectedDate);
+    setVisibleMonth((current) =>
+      current.getFullYear() === nextVisibleMonth.getFullYear() &&
+      current.getMonth() === nextVisibleMonth.getMonth()
+        ? current
+        : nextVisibleMonth,
+    );
   }, [selectedDate, selectedDayKey]);
-
-  useEffect(() => {
-    if (!calendarResource.data) {
-      return;
-    }
-
-    setCalendarHolidays(calendarResource.data.holidays);
-    setCalendarDayStates(calendarResource.data.dayStates);
-  }, [calendarResource.data]);
-
-  useEffect(() => {
-    setCalendarDayStates((current) => {
-      const nextState = resolveCalendarDayState(entries);
-      if (nextState === current[selectedDayKey]) {
-        return current;
-      }
-
-      const next = { ...current };
-      if (nextState) {
-        next[selectedDayKey] = nextState;
-      } else {
-        delete next[selectedDayKey];
-      }
-      return next;
-    });
-  }, [entries, selectedDayKey]);
 
   async function refreshDashboardViews() {
     const resolvedUserId =
@@ -1083,9 +1046,9 @@ export function DashboardPage() {
       >
       <Stack gap="lg" className="min-h-full flex-1">
       <div className="rounded-2xl border border-border bg-card p-4">
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           <FormSection>
-            <div className="flex flex-col gap-2">
+            <div className="flex min-h-10 flex-col justify-center gap-2">
               {canSwitchUser ? (
                 <Combobox
                   value={effectiveUserId ? String(effectiveUserId) : ""}
@@ -1105,10 +1068,10 @@ export function DashboardPage() {
               )}
             </div>
           </FormSection>
-          <div className="flex flex-col gap-0.5 pt-1">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-3">
+          <div className="flex flex-col gap-1 pt-1">
+            <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
               <div className="flex min-w-0 flex-col justify-center gap-0.5">
-                <p className="min-w-0 truncate text-base font-semibold tracking-[-0.04em] text-foreground sm:text-lg">
+                <p className="min-w-0 truncate text-base font-semibold leading-none tracking-[-0.04em] text-foreground sm:text-lg">
                   {selectedDate.toLocaleDateString(settings.locale, {
                     weekday: "long",
                     day: "numeric",
@@ -1116,7 +1079,7 @@ export function DashboardPage() {
                     year: "numeric",
                   })}
                 </p>
-                <p className="text-[10px] font-semibold tracking-[-0.05em] text-muted-foreground">
+                <p className="text-[10px] font-semibold leading-none tracking-[-0.05em] text-muted-foreground">
                   {new Intl.DateTimeFormat(settings.locale, {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -1128,7 +1091,7 @@ export function DashboardPage() {
               <Button
                 variant={isNowContext ? "secondary" : "default"}
                 size="sm"
-                className="self-stretch min-w-[5.5rem] px-4 py-2 text-[11px] !h-auto"
+                className="self-center min-w-[5.5rem] px-4 py-2 text-[11px] !h-auto"
                 onClick={goToToday}
                 type="button"
               >
@@ -1142,12 +1105,12 @@ export function DashboardPage() {
               locale={settings.locale}
               firstDayOfWeek={settings.firstDayOfWeek}
               weekendDays={settings.weekendDays}
-              holidayDates={calendarHolidays.map((holiday) => holiday.date)}
-              dayStates={calendarDayStates}
+              holidayDates={calendarResource.data?.holidays.map((holiday) => holiday.date) ?? []}
+              dayStates={calendarResource.data?.dayStates ?? {}}
               onMonthChange={setVisibleMonth}
               compact
               selectionTone={pendingDeleteEntry ? "destructive" : "default"}
-              className="mt-2"
+              className=""
             />
           </div>
           <div className="flex flex-col gap-1">
