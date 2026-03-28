@@ -14,6 +14,7 @@ import { mapCompanySettings, mapCompanyUser, mapProject, mapTask, mapTimeEntry, 
 import type { AppDatabase, RuntimeConfig } from "../runtime/types";
 import { systemService } from "./system-service";
 import { createDefaultOvertimeSettings } from "../../shared/utils/overtime";
+import { DEFAULT_COMPANY_WEEKEND_DAYS } from "../../shared/utils/company-locale";
 
 function createCompanyId() {
   return crypto.randomUUID();
@@ -98,11 +99,13 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         time_zone,
         date_time_format,
         first_day_of_week,
+        weekend_days_json,
         edit_days_limit,
         insert_days_limit,
         allow_one_record_per_day,
         allow_intersecting_records,
         allow_records_on_holidays,
+        allow_records_on_weekends,
         allow_future_records,
         country,
         tablet_idle_timeout_seconds,
@@ -112,7 +115,7 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         tasks_enabled,
         overtime_settings_json,
         custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         snapshot.settings.currency,
@@ -120,11 +123,13 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         snapshot.settings.timeZone,
         snapshot.settings.dateTimeFormat,
         snapshot.settings.firstDayOfWeek,
+        JSON.stringify(snapshot.settings.weekendDays ?? DEFAULT_COMPANY_WEEKEND_DAYS),
         snapshot.settings.editDaysLimit,
         snapshot.settings.insertDaysLimit,
         snapshot.settings.allowOneRecordPerDay ? 1 : 0,
         snapshot.settings.allowIntersectingRecords ? 1 : 0,
         snapshot.settings.allowRecordsOnHolidays ? 1 : 0,
+        snapshot.settings.allowRecordsOnWeekends ? 1 : 0,
         snapshot.settings.allowFutureRecords ? 1 : 0,
         snapshot.settings.country,
         snapshot.settings.tabletIdleTimeoutSeconds,

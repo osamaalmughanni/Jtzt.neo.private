@@ -24,6 +24,7 @@ import {
   DEFAULT_COMPANY_DATE_TIME_FORMAT,
   DEFAULT_COMPANY_LOCALE,
   DEFAULT_COMPANY_TIME_ZONE,
+  DEFAULT_COMPANY_WEEKEND_DAYS,
 } from "@shared/utils/company-locale";
 
 const defaultSettings: CompanySettings = {
@@ -32,11 +33,13 @@ const defaultSettings: CompanySettings = {
   timeZone: DEFAULT_COMPANY_TIME_ZONE,
   dateTimeFormat: DEFAULT_COMPANY_DATE_TIME_FORMAT,
   firstDayOfWeek: 1,
+  weekendDays: [...DEFAULT_COMPANY_WEEKEND_DAYS],
   editDaysLimit: 30,
   insertDaysLimit: 30,
   allowOneRecordPerDay: false,
   allowIntersectingRecords: false,
   allowRecordsOnHolidays: true,
+  allowRecordsOnWeekends: true,
   allowFutureRecords: false,
   country: "AT",
   tabletIdleTimeoutSeconds: 10,

@@ -5,6 +5,7 @@ import { adminService } from "../backend/services/admin-service";
 import { calculationService } from "../backend/services/calculation-service";
 import { systemService } from "../backend/services/system-service";
 import { resolveRuntimeConfig } from "../backend/runtime/env";
+import { DEFAULT_COMPANY_DATE_TIME_FORMAT, DEFAULT_COMPANY_WEEKEND_DAYS } from "../shared/utils/company-locale";
 import { createDefaultOvertimeSettings } from "../shared/utils/overtime";
 import { combineLocalDayAndTimeToIsoInTimeZone, enumerateLocalDays, getIsoDayOfWeek, isWeekendDay } from "../shared/utils/time";
 import type { CompanyCustomField, TimeEntryType, UserContractScheduleDay, UserRole } from "../shared/types/models";
@@ -596,13 +597,15 @@ function buildSnapshot(
       currency: "EUR",
       locale: "de-AT",
       timeZone: TIME_ZONE,
-      dateTimeFormat: "g",
+      dateTimeFormat: DEFAULT_COMPANY_DATE_TIME_FORMAT,
       firstDayOfWeek: 1,
+      weekendDays: [...DEFAULT_COMPANY_WEEKEND_DAYS],
       editDaysLimit: 365,
       insertDaysLimit: 365,
       allowOneRecordPerDay: false,
       allowIntersectingRecords: false,
       allowRecordsOnHolidays: true,
+      allowRecordsOnWeekends: true,
       allowFutureRecords: false,
       country: COUNTRY_CODE,
       tabletIdleTimeoutSeconds: 15,

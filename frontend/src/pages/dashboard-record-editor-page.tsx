@@ -19,6 +19,7 @@ import {
   enumerateLocalDays,
   formatLocalDay,
   getLocalNowSnapshot,
+  isWeekendDay,
   toClockTimeValue,
 } from "@shared/utils/time";
 import { getCustomFieldsForTarget } from "@shared/utils/custom-fields";
@@ -42,6 +43,7 @@ import {
   DEFAULT_COMPANY_DATE_TIME_FORMAT,
   DEFAULT_COMPANY_LOCALE,
   DEFAULT_COMPANY_TIME_ZONE,
+  DEFAULT_COMPANY_WEEKEND_DAYS,
 } from "@shared/utils/company-locale";
 import { formatMinutes } from "@shared/utils/time";
 
@@ -51,11 +53,13 @@ const defaultSettings: CompanySettings = {
   timeZone: DEFAULT_COMPANY_TIME_ZONE,
   dateTimeFormat: DEFAULT_COMPANY_DATE_TIME_FORMAT,
   firstDayOfWeek: 1,
+  weekendDays: [...DEFAULT_COMPANY_WEEKEND_DAYS],
   editDaysLimit: 30,
   insertDaysLimit: 30,
   allowOneRecordPerDay: false,
   allowIntersectingRecords: false,
   allowRecordsOnHolidays: true,
+  allowRecordsOnWeekends: true,
   allowFutureRecords: false,
   country: "AT",
   tabletIdleTimeoutSeconds: 10,
@@ -334,6 +338,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const rangeEndDate = resolvedEndDate >= startDate ? resolvedEndDate : startDate;
   const todayDay = getLocalNowSnapshot(new Date(), settings.timeZone).localDay;
   const holidaySet = useMemo(() => new Set(holidays.map((holiday) => holiday.date)), [holidays]);
+  const selectedDayIsWeekend = isWeekendDay(startDate, settings.weekendDays);
   const blockedHoliday = useMemo(
     () =>
       entryType === "work" && !settings.allowRecordsOnHolidays
@@ -343,8 +348,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   );
   const holidayBlocked = blockedHoliday !== null;
   const leaveMetrics = useMemo(
-    () => countEffectiveLeaveDays(startDate, resolvedEndDate, holidaySet),
-    [holidaySet, resolvedEndDate, startDate],
+    () => countEffectiveLeaveDays(startDate, resolvedEndDate, holidaySet, settings.weekendDays),
+    [holidaySet, resolvedEndDate, settings.weekendDays, startDate],
   );
   const policy = evaluateTimeEntryPolicy({
     mode,
@@ -355,6 +360,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     endDate: resolvedEndDate,
     todayDay,
     hasHolidayInRange: holidayBlocked,
+    hasWeekendInRange: selectedDayIsWeekend || enumerateLocalDays(startDate, resolvedEndDate).some((day) => isWeekendDay(day, settings.weekendDays)),
   });
   const allowedEntryTypes = getAllowedEntryTypesForDay({
     role: companyIdentity?.user.role,
@@ -362,6 +368,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     day: startDate,
     todayDay,
     isHoliday: holidaySet.has(startDate),
+    isWeekend: selectedDayIsWeekend,
   });
   const startDatePastDistance = getPastDayDistance(startDate, todayDay);
   const futurePlanningDistance = getFutureDayDistance(rangeEndDate, todayDay);
@@ -378,6 +385,10 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
     ? t("recordEditor.holidayWorkBlocked", {
         date: blockedHoliday?.date ?? startDate,
         holiday: getHolidayDisplayName(blockedHoliday ?? undefined) ?? (blockedHoliday?.date ?? startDate),
+      })
+    : policy.reason === "weekend_work_blocked"
+    ? t("recordEditor.weekendWorkBlocked", {
+        date: startDate,
       })
     : policy.reason === "insert_limit"
       ? t("recordEditor.insertLimitDetailed", {
@@ -852,9 +863,9 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
           </FormSection>
 
           {blockingError ? (
-            <div className="rounded-2xl border border-border bg-muted/70 px-4 py-3">
-              <p className="text-sm text-foreground">{blockingError}</p>
-            </div>
+            <p className="text-sm leading-6 text-destructive" aria-live="polite">
+              {blockingError}
+            </p>
           ) : null}
 
           <FormActions>

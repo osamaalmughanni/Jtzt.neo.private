@@ -63,6 +63,7 @@ export function calculateLeaveCompensation(
   endDay: string,
   holidayDays: Set<string>,
   contracts: UserContract[],
+  weekendDays: number[] = [6, 7],
 ) {
   const days = enumerateLocalDays(startDay, endDay);
   let effectiveDayCount = 0;
@@ -85,6 +86,7 @@ export function calculateLeaveCompensation(
 
   for (const day of days) {
     const holiday = holidayDays.has(day);
+    const weekend = isWeekendDay(day, weekendDays);
     if (holiday) {
       excludedHolidayCount += 1;
       continue;
@@ -92,7 +94,7 @@ export function calculateLeaveCompensation(
 
     const contract = resolveContractForDay(contracts, day);
     if (!contract) {
-      if (isWeekendDay(day)) {
+      if (weekend) {
         excludedWeekendCount += 1;
       }
       continue;
@@ -100,7 +102,7 @@ export function calculateLeaveCompensation(
 
     const dailyMinutes = getContractDailyMinutes(contract, day);
     if (dailyMinutes <= 0) {
-      if (isWeekendDay(day)) {
+      if (weekend) {
         excludedWeekendCount += 1;
       }
       continue;

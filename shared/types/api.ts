@@ -315,11 +315,13 @@ export interface CompanySnapshot {
     timeZone: string;
     dateTimeFormat: string;
     firstDayOfWeek: number;
+    weekendDays: number[];
     editDaysLimit: number;
     insertDaysLimit: number;
     allowOneRecordPerDay: boolean;
     allowIntersectingRecords: boolean;
     allowRecordsOnHolidays: boolean;
+    allowRecordsOnWeekends: boolean;
     allowFutureRecords: boolean;
     country: string;
     tabletIdleTimeoutSeconds: number;
@@ -494,11 +496,13 @@ export interface UpdateSettingsInput {
   timeZone: string;
   dateTimeFormat: string;
   firstDayOfWeek: number;
+  weekendDays: number[];
   editDaysLimit: number;
   insertDaysLimit: number;
   allowOneRecordPerDay: boolean;
   allowIntersectingRecords: boolean;
   allowRecordsOnHolidays: boolean;
+  allowRecordsOnWeekends: boolean;
   allowFutureRecords: boolean;
   country: string;
   tabletIdleTimeoutSeconds: number;

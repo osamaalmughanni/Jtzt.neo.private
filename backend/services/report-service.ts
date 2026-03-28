@@ -357,7 +357,14 @@ export const reportService = {
         let cached = leaveMetricCache.get(row.id);
         if (!cached) {
           const clampedRange = clampDayRange(row.entry_date, row.end_date ?? row.entry_date, input.startDate, input.endDate);
-          cached = calculateLeaveCompensation(row.entry_type, clampedRange.startDay, clampedRange.endDay, holidaySet, contractsByUser.get(row.user_id) ?? []);
+          cached = calculateLeaveCompensation(
+            row.entry_type,
+            clampedRange.startDay,
+            clampedRange.endDay,
+            holidaySet,
+            contractsByUser.get(row.user_id) ?? [],
+            settings.weekendDays
+          );
           leaveMetricCache.set(row.id, cached);
         }
         return key === "duration" ? cached.durationMinutes : cached.costAmount;

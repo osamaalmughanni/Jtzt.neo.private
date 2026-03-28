@@ -6,12 +6,14 @@ export type TimeEntryPolicyReason =
   | "insert_limit"
   | "edit_limit"
   | "future_restricted"
-  | "holiday_work_blocked";
+  | "holiday_work_blocked"
+  | "weekend_work_blocked";
 
 interface TimeEntryPolicySettings {
   editDaysLimit: number;
   insertDaysLimit: number;
   allowRecordsOnHolidays: boolean;
+  allowRecordsOnWeekends: boolean;
   allowFutureRecords: boolean;
 }
 
@@ -24,6 +26,7 @@ interface EvaluateTimeEntryPolicyInput {
   endDate?: string | null;
   todayDay: string;
   hasHolidayInRange: boolean;
+  hasWeekendInRange: boolean;
 }
 
 export interface TimeEntryPolicyResult {
@@ -84,6 +87,15 @@ export function evaluateTimeEntryPolicy(input: EvaluateTimeEntryPolicyInput): Ti
     };
   }
 
+  if (input.entryType === "work" && input.hasWeekendInRange && !input.settings.allowRecordsOnWeekends) {
+    return {
+      allowed: false,
+      reason: "weekend_work_blocked",
+      daysInPast,
+      daysInFuture,
+    };
+  }
+
   return {
     allowed: true,
     reason: null,
@@ -98,6 +110,7 @@ export function getAllowedEntryTypesForDay(input: {
   day: string;
   todayDay: string;
   isHoliday: boolean;
+  isWeekend: boolean;
 }) {
   const work = evaluateTimeEntryPolicy({
     mode: "create",
@@ -108,6 +121,7 @@ export function getAllowedEntryTypesForDay(input: {
     endDate: input.day,
     todayDay: input.todayDay,
     hasHolidayInRange: input.isHoliday,
+    hasWeekendInRange: input.isWeekend,
   });
   const vacation = evaluateTimeEntryPolicy({
     mode: "create",
@@ -118,6 +132,7 @@ export function getAllowedEntryTypesForDay(input: {
     endDate: input.day,
     todayDay: input.todayDay,
     hasHolidayInRange: input.isHoliday,
+    hasWeekendInRange: input.isWeekend,
   });
   const sickLeave = evaluateTimeEntryPolicy({
     mode: "create",
@@ -128,6 +143,7 @@ export function getAllowedEntryTypesForDay(input: {
     endDate: input.day,
     todayDay: input.todayDay,
     hasHolidayInRange: input.isHoliday,
+    hasWeekendInRange: input.isWeekend,
   });
   const timeOffInLieu = evaluateTimeEntryPolicy({
     mode: "create",
@@ -138,6 +154,7 @@ export function getAllowedEntryTypesForDay(input: {
     endDate: input.day,
     todayDay: input.todayDay,
     hasHolidayInRange: input.isHoliday,
+    hasWeekendInRange: input.isWeekend,
   });
 
   return {

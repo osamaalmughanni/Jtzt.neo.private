@@ -167,6 +167,7 @@ async function getUsedVacationDaysThroughDay(
   _referenceDay: string,
   excludeEntryId?: number,
 ) {
+  const settings = await settingsService.getSettings(db, companyId);
   const entries = (await timeService.listEntries(db, companyId, userId, {}))
     .filter((entry) => entry.entryType === "vacation" && (excludeEntryId ? entry.id !== excludeEntryId : true));
 
@@ -184,7 +185,14 @@ async function getUsedVacationDaysThroughDay(
   let usedDays = 0;
   for (const entry of entries) {
     const endDay = entry.endDate ?? entry.entryDate;
-    usedDays += calculateLeaveCompensation("vacation", entry.entryDate, endDay, holidaySet, contracts).effectiveDayCount;
+    usedDays += calculateLeaveCompensation(
+      "vacation",
+      entry.entryDate,
+      endDay,
+      holidaySet,
+      contracts,
+      settings.weekendDays
+    ).effectiveDayCount;
   }
 
   return usedDays;
@@ -249,8 +257,16 @@ export const vacationBalanceService = {
   async getRequestedDays(db: AppDatabase, companyId: string, userId: number, startDate: string, endDate?: string | null) {
     const rangeEnd = endDate && endDate >= startDate ? endDate : startDate;
     const contracts = await userService.listUserContracts(db, companyId, userId);
+    const settings = await settingsService.getSettings(db, companyId);
     const holidaySet = await getHolidaySetForRange(db, companyId, startDate, rangeEnd);
-    return calculateLeaveCompensation("vacation", startDate, rangeEnd, holidaySet, contracts).effectiveDayCount;
+    return calculateLeaveCompensation(
+      "vacation",
+      startDate,
+      rangeEnd,
+      holidaySet,
+      contracts,
+      settings.weekendDays
+    ).effectiveDayCount;
   },
 
   async getReportOverview(db: AppDatabase, companyId: string, userId: number, referenceDay: string, excludeEntryId?: number) {

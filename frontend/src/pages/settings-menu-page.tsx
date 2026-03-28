@@ -10,6 +10,7 @@ import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
+import { MultiSelectCombobox } from "@/components/ui/multi-select-combobox";
 import { Switch } from "@/components/ui/switch";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
@@ -20,6 +21,7 @@ import {
   DEFAULT_COMPANY_DATE_TIME_FORMAT,
   DEFAULT_COMPANY_LOCALE,
   DEFAULT_COMPANY_TIME_ZONE,
+  DEFAULT_COMPANY_WEEKEND_DAYS,
 } from "@shared/utils/company-locale";
 import { buildCountryOptions, buildCurrencyOptions, buildLocaleOptions, buildTimeZoneOptions } from "@/lib/company-option-lists";
 
@@ -29,11 +31,13 @@ const defaultSettings: CompanySettings = {
   timeZone: DEFAULT_COMPANY_TIME_ZONE,
   dateTimeFormat: DEFAULT_COMPANY_DATE_TIME_FORMAT,
   firstDayOfWeek: 1,
+  weekendDays: [...DEFAULT_COMPANY_WEEKEND_DAYS],
   editDaysLimit: 30,
   insertDaysLimit: 30,
   allowOneRecordPerDay: false,
   allowIntersectingRecords: false,
   allowRecordsOnHolidays: true,
+  allowRecordsOnWeekends: true,
   allowFutureRecords: false,
   country: "AT",
   tabletIdleTimeoutSeconds: 10,
@@ -119,6 +123,15 @@ export function SettingsMenuPage() {
   const timeZoneOptions = useMemo(() => buildTimeZoneOptions(), []);
   const countryOptions = useMemo(() => buildCountryOptions(uiLocale), [uiLocale]);
   const currencyOptions = useMemo(() => buildCurrencyOptions(uiLocale), [uiLocale]);
+  const weekdayOptions = [
+    { value: 1, label: t("settings.monday") },
+    { value: 2, label: t("settings.tuesday") },
+    { value: 3, label: t("settings.wednesday") },
+    { value: 4, label: t("settings.thursday") },
+    { value: 5, label: t("settings.friday") },
+    { value: 6, label: t("settings.saturday") },
+    { value: 7, label: t("settings.sunday") },
+  ];
   const firstDayOptions = [
     { value: "0", label: t("settings.sunday") },
     { value: "1", label: t("settings.monday") },
@@ -273,6 +286,28 @@ export function SettingsMenuPage() {
                   items={firstDayOptions}
                 />
               </Field>
+              <Field label={t("settings.weekendDays")}>
+                <div className="flex flex-col gap-1.5">
+                  <MultiSelectCombobox
+                    value={settings.weekendDays.map(String)}
+                    onValueChange={(value) =>
+                      setSettings((current) => ({
+                        ...current,
+                        weekendDays: (() => {
+                          const next = value.map((day) => Number(day)).filter((day) => Number.isInteger(day) && day >= 1 && day <= 7);
+                          return next.length > 0 ? next : current.weekendDays;
+                        })(),
+                      }))
+                    }
+                    options={weekdayOptions.map((day) => ({ value: String(day.value), label: day.label }))}
+                    placeholder={t("settings.weekendDays")}
+                    searchPlaceholder={t("common.search", { defaultValue: "Search..." })}
+                    emptyText={t("common.noResults", { defaultValue: "No results found." })}
+                    searchable
+                  />
+                  <p className="text-xs text-muted-foreground">{t("settings.weekendDaysDescription")}</p>
+                </div>
+              </Field>
               <Field label={t("settings.dateTimeFormat")}>
                 <div className="flex flex-col gap-1.5">
                   <Input
@@ -357,6 +392,22 @@ export function SettingsMenuPage() {
                       setSettings((current) => ({
                         ...current,
                         allowRecordsOnHolidays: checked,
+                      }))
+                    }
+                  />
+                </div>
+              </Field>
+              <Field label={t("settings.allowRecordsOnWeekends")}>
+                <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                  <span className="text-sm text-foreground">
+                    {settings.allowRecordsOnWeekends ? t("settings.enabled") : t("settings.disabled")}
+                  </span>
+                  <Switch
+                    checked={settings.allowRecordsOnWeekends}
+                    onCheckedChange={(checked) =>
+                      setSettings((current) => ({
+                        ...current,
+                        allowRecordsOnWeekends: checked,
                       }))
                     }
                   />

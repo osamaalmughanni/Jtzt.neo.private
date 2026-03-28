@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { diffCalendarDays, enumerateLocalDays } from "../../../shared/utils/time";
+import { diffCalendarDays, enumerateLocalDays, isWeekendDay } from "../../../shared/utils/time";
 import { evaluateTimeEntryPolicy, getRangeEndDay } from "../../../shared/utils/time-entry-policy";
 import { validateCustomFieldValuesForTarget } from "../../../shared/utils/custom-fields";
 import { authMiddleware, companyDbMiddleware, hasCompanyAccess, requireCompanyUser } from "../../auth/middleware";
@@ -266,6 +266,30 @@ async function enforceHolidayRecordRule(
   }
 }
 
+async function enforceWeekendRecordRule(
+  settings: Awaited<ReturnType<typeof settingsService.getSettings>>,
+  candidate: {
+    entryType: "work" | "vacation" | "sick_leave" | "time_off_in_lieu";
+    startDate: string;
+    endDate?: string | null;
+  }
+) {
+  if (settings.allowRecordsOnWeekends || candidate.entryType !== "work") {
+    return;
+  }
+
+  const normalizedEndDate = getRangeEndDay(candidate.startDate, candidate.endDate);
+  const hasWeekendDay = enumerateLocalDays(candidate.startDate, normalizedEndDate).some((day) => isWeekendDay(day, settings.weekendDays));
+  if (hasWeekendDay) {
+    throw new Error("Records on weekends are disabled");
+  }
+}
+
+function hasWeekendInRange(startDate: string, endDate: string | null | undefined, weekendDays: number[]) {
+  const normalizedEndDate = getRangeEndDay(startDate, endDate);
+  return enumerateLocalDays(startDate, normalizedEndDate).some((day) => isWeekendDay(day, weekendDays));
+}
+
 async function enforceEntryTypeSeparation(
   db: AppDatabase,
   companyId: string,
@@ -343,6 +367,9 @@ function getPolicyErrorMessage(reason: ReturnType<typeof evaluateTimeEntryPolicy
   }
   if (reason === "holiday_work_blocked") {
     return "Work records on public holidays are disabled";
+  }
+  if (reason === "weekend_work_blocked") {
+    return "Work records on weekends are disabled";
   }
   return "Record rule violation";
 }
@@ -432,7 +459,7 @@ async function enrichEntryWithDayMetrics(
   const holidaySet = new Set(holidays.flatMap((response) => response.holidays).map((holiday) => holiday.date));
   return {
     ...entry,
-    ...calculateLeaveCompensation(entry.entryType, startDay, endDay, holidaySet, resolvedContracts)
+    ...calculateLeaveCompensation(entry.entryType, startDay, endDay, holidaySet, resolvedContracts, settings.weekendDays)
   };
 }
 
@@ -541,6 +568,11 @@ timeRoutes.post("/start", async (c) => {
       startDate: snapshot.localDay,
       endDate: null
     });
+    await enforceWeekendRecordRule(settings, {
+      entryType: "work",
+      startDate: snapshot.localDay,
+      endDate: null
+    });
     await enforceEntryTypeSeparation(db, session.companyId, session.userId, {
       entryType: "work",
       startDate: snapshot.localDay,
@@ -597,6 +629,9 @@ timeRoutes.post("/entry", async (c) => {
     const holidayInRange = body.entryType === "work"
       ? Boolean(await enforceHolidayProbe(db, session.companyId, settings, body.startDate, body.endDate))
       : false;
+    const weekendInRange = body.entryType === "work"
+      ? hasWeekendInRange(body.startDate, body.endDate, settings.weekendDays)
+      : false;
     const policy = evaluateTimeEntryPolicy({
       mode: "create",
       role: session.role,
@@ -606,11 +641,17 @@ timeRoutes.post("/entry", async (c) => {
       endDate: body.endDate,
       todayDay,
       hasHolidayInRange: holidayInRange,
+      hasWeekendInRange: weekendInRange,
     });
     if (!policy.allowed) {
       throw new Error(getPolicyErrorMessage(policy.reason));
     }
     await enforceHolidayRecordRule(db, session.companyId, settings, {
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate
+    });
+    await enforceWeekendRecordRule(settings, {
       entryType: body.entryType,
       startDate: body.startDate,
       endDate: body.endDate
@@ -810,6 +851,9 @@ timeRoutes.put("/entry", async (c) => {
     const holidayInRange = body.entryType === "work"
       ? Boolean(await enforceHolidayProbe(db, session.companyId, settings, body.startDate, body.endDate))
       : false;
+    const weekendInRange = body.entryType === "work"
+      ? hasWeekendInRange(body.startDate, body.endDate, settings.weekendDays)
+      : false;
     const policy = evaluateTimeEntryPolicy({
       mode: "edit",
       role: session.role,
@@ -819,11 +863,17 @@ timeRoutes.put("/entry", async (c) => {
       endDate: body.endDate,
       todayDay,
       hasHolidayInRange: holidayInRange,
+      hasWeekendInRange: weekendInRange,
     });
     if (!policy.allowed) {
       throw new Error(getPolicyErrorMessage(policy.reason));
     }
     await enforceHolidayRecordRule(db, session.companyId, settings, {
+      entryType: body.entryType,
+      startDate: body.startDate,
+      endDate: body.endDate
+    });
+    await enforceWeekendRecordRule(settings, {
       entryType: body.entryType,
       startDate: body.startDate,
       endDate: body.endDate

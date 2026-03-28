@@ -19,6 +19,7 @@ import {
   diffMinutes,
   formatLocalDay,
   getLocalNowSnapshot,
+  isWeekendDay,
   parseLocalDay,
   toClockTimeValue,
 } from "@shared/utils/time";
@@ -33,11 +34,11 @@ import {
 } from "@/components/form-layout";
 import { PageDock } from "@/components/page-dock";
 import { PageLoadBoundary } from "@/components/page-load-state";
+import { PageLabel } from "@/components/page-label";
 import { Stack } from "@/components/stack";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Combobox } from "@/components/ui/combobox";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -49,6 +50,7 @@ import {
   DEFAULT_COMPANY_DATE_TIME_FORMAT,
   DEFAULT_COMPANY_LOCALE,
   DEFAULT_COMPANY_TIME_ZONE,
+  DEFAULT_COMPANY_WEEKEND_DAYS,
 } from "@shared/utils/company-locale";
 
 const defaultSettings: CompanySettings = {
@@ -57,11 +59,13 @@ const defaultSettings: CompanySettings = {
   timeZone: DEFAULT_COMPANY_TIME_ZONE,
   dateTimeFormat: DEFAULT_COMPANY_DATE_TIME_FORMAT,
   firstDayOfWeek: 1,
+  weekendDays: [...DEFAULT_COMPANY_WEEKEND_DAYS],
   editDaysLimit: 30,
   insertDaysLimit: 30,
   allowOneRecordPerDay: false,
   allowIntersectingRecords: false,
   allowRecordsOnHolidays: true,
+  allowRecordsOnWeekends: true,
   allowFutureRecords: false,
   country: "AT",
   tabletIdleTimeoutSeconds: 10,
@@ -277,7 +281,7 @@ export function DashboardPage() {
   const [pendingDeleteEntry, setPendingDeleteEntry] =
     useState<TimeEntryView | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
-  const [tabletPunchOpen, setTabletPunchOpen] = useState(false);
+  const [tabletPunchSetupOpen, setTabletPunchSetupOpen] = useState(false);
   const [tabletPunchValues, setTabletPunchValues] = useState<Record<string, string | number | boolean>>({});
   const [tabletPunchProjectId, setTabletPunchProjectId] = useState("");
   const [tabletPunchTaskId, setTabletPunchTaskId] = useState("");
@@ -337,6 +341,7 @@ export function DashboardPage() {
   const selectedDayFutureDistance = getFutureDayDistance(selectedDayKey, todayDay);
   const isNowContext = isToday(selectedDate, settings.timeZone);
   const holidayDateSet = useMemo(() => new Set(calendarHolidays.map((holiday) => holiday.date)), [calendarHolidays]);
+  const selectedDayIsWeekend = isWeekendDay(selectedDayKey, settings.weekendDays);
   const selectedHoliday = useMemo(
     () => calendarHolidays.find((holiday) => holiday.date === selectedDayKey),
     [calendarHolidays, selectedDayKey]
@@ -348,6 +353,7 @@ export function DashboardPage() {
     day: selectedDayKey,
     todayDay,
     isHoliday: selectedDayIsHoliday,
+    isWeekend: selectedDayIsWeekend,
   });
   const selectedDayWorkPolicy = evaluateTimeEntryPolicy({
     mode: "create",
@@ -358,6 +364,7 @@ export function DashboardPage() {
     endDate: selectedDayKey,
     todayDay,
     hasHolidayInRange: selectedDayIsHoliday,
+    hasWeekendInRange: selectedDayIsWeekend,
   });
   const selectedDayPolicy = evaluateTimeEntryPolicy({
     mode: "create",
@@ -368,6 +375,7 @@ export function DashboardPage() {
     endDate: selectedDayKey,
     todayDay,
     hasHolidayInRange: selectedDayIsHoliday,
+    hasWeekendInRange: selectedDayIsWeekend,
   });
   const selectedDayWorkBlockedByHoliday = !allowedEntryTypes.work.allowed && selectedDayIsHoliday;
   const futureRecordSelected = selectedDayFutureDistance > 0;
@@ -401,6 +409,10 @@ export function DashboardPage() {
       ? t("dashboard.holidayWorkBlocked", {
           date: formatCompanyDate(selectedDayKey, settings.locale),
           holiday: getHolidayDisplayName(selectedHoliday) ?? formatCompanyDate(selectedDayKey, settings.locale),
+        })
+      : selectedDayWorkPolicy.reason === "weekend_work_blocked"
+      ? t("dashboard.weekendWorkBlocked", {
+          date: formatCompanyDate(selectedDayKey, settings.locale),
         })
       : selectedDayHasWorkEntry
       ? t("dashboard.workDayAlreadyBooked")
@@ -701,7 +713,7 @@ export function DashboardPage() {
         projectId: input.projectId ?? null,
         taskId: input.taskId ?? null,
       });
-      setTabletPunchOpen(false);
+      setTabletPunchSetupOpen(false);
       setTabletPunchValues({});
       setTabletPunchProjectId("");
       setTabletPunchTaskId("");
@@ -737,7 +749,7 @@ export function DashboardPage() {
     }
 
     if (requiredTabletWorkFields.length > 0 || settings.projectsEnabled || settings.tasksEnabled) {
-      setTabletPunchOpen(true);
+      setTabletPunchSetupOpen(true);
       return;
     }
 
@@ -752,111 +764,21 @@ export function DashboardPage() {
   const dockShowsPlay = isNowContext && workEntryAllowed && !summary.activeEntry;
   const dockShowsStop = Boolean(summary.activeEntry);
   const dockUsesPlus = !dockShowsStop && !dockShowsPlay;
+  const dockButtonMode = summary.activeEntry ? "stop" : "play";
   const userOptions = availableUsers.map((user) => ({
     value: String(user.id),
     label: user.fullName,
   }));
-  return (
-    <FormPage className="min-h-0 flex-none">
-      <PageDock>
-        <div className="flex min-h-[5rem] flex-col items-center justify-center gap-2">
-          {dashboardResource.isLoading ? null : isTabletMode ? (
-            <>
-              {dockShowsStop || dockShowsPlay ? (
-                <Button
-                  className={
-                    summary.activeEntry
-                      ? "h-16 w-16 animate-[pulse_1.4s_ease-in-out_infinite] rounded-[999px] bg-destructive text-destructive-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                      : "h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                  }
-                  size="icon"
-                  type="button"
-                  disabled={!canUseTabletPunch}
-                  onClick={handleTabletPunch}
-                  aria-label={summary.activeEntry ? t("dashboard.stopWork") : t("dashboard.startWork")}
-                >
-                  {summary.activeEntry ? <Stop size={30} weight="fill" /> : <Play size={30} weight="fill" />}
-                </Button>
-              ) : canAddRecordButton ? (
-                <Button
-                  asChild
-                  className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                  size="icon"
-                  type="button"
-                  onPointerDown={triggerHapticFeedback}
-                >
-                  <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
-                    <Plus size={30} weight="bold" />
-                  </Link>
-                </Button>
-              ) : (
-                <Button
-                  disabled
-                  className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out"
-                  size="icon"
-                  type="button"
-                  aria-label={t("dashboard.addRecordUnavailable")}
-                >
-                  <Plus size={30} weight="bold" />
-                </Button>
-              )}
-              {dockShowsPlay && canAddRecordButton ? (
-                <Button
-                  asChild
-                  variant="ghost"
-                  className="h-9 px-4 text-xs font-medium"
-                  onPointerDown={triggerHapticFeedback}
-                >
-                  <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
-                </Button>
-              ) : null}
-            </>
-          ) : canAddRecordButton ? (
-            <Button
-              asChild
-              className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-              size="icon"
-              type="button"
-              onPointerDown={triggerHapticFeedback}
-            >
-              <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
-                <Plus size={30} weight="bold" />
-              </Link>
-            </Button>
-          ) : (
-            <Button
-              disabled
-              className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground shadow-lg transition-transform duration-150 ease-out"
-              size="icon"
-              type="button"
-              aria-label={t("dashboard.addRecordUnavailable")}
-            >
-              <Plus size={30} weight="bold" />
-            </Button>
-          )}
-          {!dashboardResource.isLoading && createRecordMessage ? (
-            <div className="flex w-full flex-col items-center gap-2 text-center">
-              <p className="text-center text-xs leading-5 text-muted-foreground">
-                {createRecordMessage}
-              </p>
-            </div>
-          ) : null}
-        </div>
-      </PageDock>
-      <Dialog
-        open={tabletPunchOpen}
-        onOpenChange={(open) => {
-          if (tabletPunchSubmitting) return;
-          setTabletPunchOpen(open);
-          if (!open) setTabletPunchValues({});
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("dashboard.requiredWorkFieldsTitle")}</DialogTitle>
-            <DialogDescription>{t("dashboard.requiredWorkFieldsDescription")}</DialogDescription>
-          </DialogHeader>
-          <Stack gap="md">
+
+  if (isTabletMode && tabletPunchSetupOpen) {
+    return (
+      <FormPage className="min-h-0 flex-none">
+        <div className="flex flex-1 flex-col gap-5">
+          <PageLabel
+            title={t("dashboard.requiredWorkFieldsTitle")}
+            description={t("dashboard.requiredWorkFieldsDescription")}
+          />
+          <div className="flex flex-col gap-4">
             {settings.projectsEnabled ? (
               <Field label={t("dashboard.project")}>
                 <Combobox
@@ -898,25 +820,142 @@ export function DashboardPage() {
                 />
               </Field>
             ))}
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setTabletPunchOpen(false)} type="button" disabled={tabletPunchSubmitting}>
-                {t("recordEditor.cancel")}
-              </Button>
-              <Button
-                onClick={() => void startTabletTimer({
-                  customFieldValues: tabletPunchValues,
-                  projectId: tabletPunchProjectId ? Number(tabletPunchProjectId) : null,
-                  taskId: tabletPunchTaskId ? Number(tabletPunchTaskId) : null,
-                })}
-                type="button"
-                disabled={tabletPunchSubmitting || (settings.projectsEnabled && !tabletPunchProjectId) || (settings.tasksEnabled && !tabletPunchTaskId)}
-              >
-                {t("dashboard.startWork")}
-              </Button>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setTabletPunchSetupOpen(false);
+                setTabletPunchValues({});
+                setTabletPunchProjectId("");
+                setTabletPunchTaskId("");
+              }}
+              type="button"
+              disabled={tabletPunchSubmitting}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              onClick={() => void startTabletTimer({
+                customFieldValues: tabletPunchValues,
+                projectId: tabletPunchProjectId ? Number(tabletPunchProjectId) : null,
+                taskId: tabletPunchTaskId ? Number(tabletPunchTaskId) : null,
+              })}
+              type="button"
+              disabled={tabletPunchSubmitting || (settings.projectsEnabled && !tabletPunchProjectId) || (settings.tasksEnabled && !tabletPunchTaskId)}
+            >
+              {tabletPunchSubmitting ? t("common.loading") : t("dashboard.startWork")}
+            </Button>
+          </div>
+        </div>
+      </FormPage>
+    );
+  }
+
+  return (
+    <FormPage className="min-h-0 flex-none">
+      <PageDock>
+        <div className="flex min-h-[5rem] flex-col items-center justify-center gap-2">
+          {dashboardResource.isLoading ? null : isTabletMode ? (
+            <>
+              {dockShowsStop || dockShowsPlay ? (
+                <Button
+                  className={
+                    summary.activeEntry
+                      ? "h-16 w-16 rounded-[999px] bg-destructive text-destructive-foreground transition-[background-color,color,transform,opacity] duration-200 ease-out hover:opacity-95 active:scale-95"
+                      : "h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-[background-color,color,transform,opacity] duration-200 ease-out hover:opacity-95 active:scale-95"
+                  }
+                  size="icon"
+                  type="button"
+                  disabled={!canUseTabletPunch}
+                  onClick={handleTabletPunch}
+                  aria-label={summary.activeEntry ? t("dashboard.stopWork") : t("dashboard.startWork")}
+                >
+                  <span className="relative block h-8 w-8">
+                    <Play
+                      size={30}
+                      weight="fill"
+                      className={cn(
+                        "absolute inset-0 m-auto transition-opacity duration-300 ease-out",
+                        dockButtonMode === "play" ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    <Stop
+                      size={30}
+                      weight="fill"
+                      className={cn(
+                        "absolute inset-0 m-auto transition-opacity duration-300 ease-out",
+                        dockButtonMode === "stop" ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                  </span>
+                </Button>
+              ) : canAddRecordButton ? (
+                <Button
+                  asChild
+                  className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                  size="icon"
+                  type="button"
+                  onPointerDown={triggerHapticFeedback}
+                >
+                  <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
+                    <Plus size={30} weight="bold" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  disabled
+                  className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out"
+                  size="icon"
+                  type="button"
+                  aria-label={t("dashboard.addRecordUnavailable")}
+                >
+                  <Plus size={30} weight="bold" />
+                </Button>
+              )}
+              {dockShowsPlay && canAddRecordButton ? (
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="h-9 px-4 text-xs font-medium"
+                  onPointerDown={triggerHapticFeedback}
+                >
+                  <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
+                </Button>
+              ) : null}
+            </>
+          ) : canAddRecordButton ? (
+            <Button
+              asChild
+              className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+              size="icon"
+              type="button"
+              onPointerDown={triggerHapticFeedback}
+            >
+              <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
+                <Plus size={30} weight="bold" />
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              disabled
+              className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out"
+              size="icon"
+              type="button"
+              aria-label={t("dashboard.addRecordUnavailable")}
+            >
+              <Plus size={30} weight="bold" />
+            </Button>
+          )}
+          {!dashboardResource.isLoading && createRecordMessage ? (
+            <div className="flex w-full flex-col items-center gap-2 text-center">
+              <p className="text-center text-xs leading-5 text-muted-foreground">
+                {createRecordMessage}
+              </p>
             </div>
-          </Stack>
-        </DialogContent>
-      </Dialog>
+          ) : null}
+        </div>
+      </PageDock>
       <AppConfirmDialog
         open={pendingDeleteEntry !== null}
         onOpenChange={(open) =>
@@ -1042,6 +1081,7 @@ export function DashboardPage() {
                       endDate: entry.endDate,
                       todayDay,
                       hasHolidayInRange: false,
+                      hasWeekendInRange: entry.entryType === "work" && enumerateLocalDays(entry.entryDate, entry.endDate ?? entry.entryDate).some((day) => isWeekendDay(day, settings.weekendDays)),
                     }).allowed;
                   const canDelete = canEdit;
                   const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;

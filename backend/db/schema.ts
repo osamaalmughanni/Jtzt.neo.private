@@ -63,11 +63,13 @@ CREATE TABLE IF NOT EXISTS company_settings (
   time_zone TEXT NOT NULL DEFAULT 'Europe/Vienna',
   date_time_format TEXT NOT NULL DEFAULT 'dd.MM.yyyy HH:mm',
   first_day_of_week INTEGER NOT NULL DEFAULT 1,
+  weekend_days_json TEXT NOT NULL DEFAULT '[6,7]',
   edit_days_limit INTEGER NOT NULL DEFAULT 30,
   insert_days_limit INTEGER NOT NULL DEFAULT 30,
   allow_one_record_per_day INTEGER NOT NULL DEFAULT 0,
   allow_intersecting_records INTEGER NOT NULL DEFAULT 0,
   allow_records_on_holidays INTEGER NOT NULL DEFAULT 1,
+  allow_records_on_weekends INTEGER NOT NULL DEFAULT 1,
   allow_future_records INTEGER NOT NULL DEFAULT 0,
   country TEXT NOT NULL DEFAULT 'AT',
   tablet_idle_timeout_seconds INTEGER NOT NULL DEFAULT 10,
@@ -332,6 +334,7 @@ CREATE TABLE IF NOT EXISTS calculations (
   chart_config_json TEXT NOT NULL DEFAULT '{}',
   chart_stacked INTEGER NOT NULL DEFAULT 0,
   is_builtin INTEGER NOT NULL DEFAULT 0,
+  builtin_key TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

@@ -157,6 +157,7 @@ export interface CalculationRecord {
   outputMode: CalculationOutputMode;
   chartConfig: CalculationChartConfig;
   isBuiltin: boolean;
+  builtinKey: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -287,11 +288,13 @@ export interface CompanySettings {
   timeZone: string;
   dateTimeFormat: string;
   firstDayOfWeek: number;
+  weekendDays: number[];
   editDaysLimit: number;
   insertDaysLimit: number;
   allowOneRecordPerDay: boolean;
   allowIntersectingRecords: boolean;
   allowRecordsOnHolidays: boolean;
+  allowRecordsOnWeekends: boolean;
   allowFutureRecords: boolean;
   country: string;
   tabletIdleTimeoutSeconds: number;

@@ -4,8 +4,10 @@ import {
   DEFAULT_COMPANY_DATE_TIME_FORMAT,
   DEFAULT_COMPANY_LOCALE,
   DEFAULT_COMPANY_TIME_ZONE,
+  DEFAULT_COMPANY_WEEKEND_DAYS,
   normalizeCompanyDateTimeFormat,
   normalizeCompanyLocale,
+  normalizeWeekendDays,
 } from "../../shared/utils/company-locale";
 import { getLocalNowSnapshot, normalizeTimeZone } from "../../shared/utils/time";
 import { createDefaultOvertimeSettings, normalizeOvertimeSettings } from "../../shared/utils/overtime";
@@ -25,11 +27,13 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
         time_zone,
         date_time_format,
         first_day_of_week,
+        weekend_days_json,
         edit_days_limit,
         insert_days_limit,
         allow_one_record_per_day,
         allow_intersecting_records,
         allow_records_on_holidays,
+        allow_records_on_weekends,
         allow_future_records,
         country,
         tablet_idle_timeout_seconds,
@@ -39,7 +43,7 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
         tasks_enabled,
         overtime_settings_json,
         custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(company_id) DO NOTHING`,
     [
       companyId,
@@ -48,10 +52,12 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
       DEFAULT_COMPANY_TIME_ZONE,
       DEFAULT_COMPANY_DATE_TIME_FORMAT,
       1,
+      JSON.stringify(DEFAULT_COMPANY_WEEKEND_DAYS),
       30,
       30,
       0,
       0,
+      1,
       1,
       0,
       "AT",
@@ -114,6 +120,7 @@ export const settingsService = {
     const nextLocale = normalizeCompanyLocale(input.locale);
     const nextDateTimeFormat = normalizeCompanyDateTimeFormat(input.dateTimeFormat);
     const nextTimeZone = normalizeSettingsTimeZone(input.timeZone);
+    const nextWeekendDays = normalizeWeekendDays(input.weekendDays);
     const nextOvertimeJson = JSON.stringify(normalizeOvertimeSettings(input.overtime));
     const nextProjectsEnabled = Boolean(input.projectsEnabled);
     const nextTasksEnabled = Boolean(input.tasksEnabled);
@@ -131,11 +138,13 @@ export const settingsService = {
                time_zone = ?,
              date_time_format = ?,
              first_day_of_week = ?,
+             weekend_days_json = ?,
              edit_days_limit = ?,
              insert_days_limit = ?,
              allow_one_record_per_day = ?,
              allow_intersecting_records = ?,
              allow_records_on_holidays = ?,
+             allow_records_on_weekends = ?,
              allow_future_records = ?,
              country = ?,
              tablet_idle_timeout_seconds = ?,
@@ -152,11 +161,13 @@ export const settingsService = {
           nextTimeZone,
           nextDateTimeFormat,
           input.firstDayOfWeek,
+          JSON.stringify(nextWeekendDays),
           input.editDaysLimit,
           input.insertDaysLimit,
           input.allowOneRecordPerDay ? 1 : 0,
           input.allowIntersectingRecords ? 1 : 0,
           input.allowRecordsOnHolidays ? 1 : 0,
+          input.allowRecordsOnWeekends ? 1 : 0,
           input.allowFutureRecords ? 1 : 0,
           input.country,
           input.tabletIdleTimeoutSeconds,

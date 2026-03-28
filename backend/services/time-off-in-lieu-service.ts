@@ -65,7 +65,14 @@ async function getBookedMinutes(
 
   return rows.reduce((sum, row) => {
     const rowEnd = row.end_date ?? row.entry_date;
-    return sum + calculateLeaveCompensation("time_off_in_lieu", row.entry_date, rowEnd, holidaySet, contracts).durationMinutes;
+    return sum + calculateLeaveCompensation(
+      "time_off_in_lieu",
+      row.entry_date,
+      rowEnd,
+      holidaySet,
+      contracts,
+      settings.weekendDays
+    ).durationMinutes;
   }, 0);
 }
 
@@ -125,6 +132,13 @@ export const timeOffInLieuService = {
     const contracts = await userService.listUserContracts(db, companyId, userId);
     const resolvedEndDate = endDate && endDate >= startDate ? endDate : startDate;
     const holidaySet = await getHolidaySetForRange(db, companyId, settings.country, startDate, resolvedEndDate);
-    return calculateLeaveCompensation("time_off_in_lieu", startDate, resolvedEndDate, holidaySet, contracts).durationMinutes;
+    return calculateLeaveCompensation(
+      "time_off_in_lieu",
+      startDate,
+      resolvedEndDate,
+      holidaySet,
+      contracts,
+      settings.weekendDays
+    ).durationMinutes;
   },
 };

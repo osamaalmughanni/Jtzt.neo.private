@@ -22,6 +22,7 @@ import {
   DEFAULT_COMPANY_TIME_ZONE,
   normalizeCompanyDateTimeFormat,
   normalizeCompanyLocale,
+  normalizeWeekendDays,
 } from "../../shared/utils/company-locale";
 import { diffCalendarDays, diffMinutes } from "../../shared/utils/time";
 import { normalizeOvertimeSettings } from "../../shared/utils/overtime";
@@ -179,6 +180,7 @@ export function mapCalculation(row: any): CalculationRecord {
       stacked: Boolean(row.chart_stacked ?? 0)
     }),
     isBuiltin: Boolean(row.is_builtin ?? 0),
+    builtinKey: row.builtin_key ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -261,11 +263,13 @@ export function mapCompanySettings(row: any): CompanySettings {
     timeZone: row.time_zone ?? DEFAULT_COMPANY_TIME_ZONE,
     dateTimeFormat: normalizeCompanyDateTimeFormat(row.date_time_format ?? DEFAULT_COMPANY_DATE_TIME_FORMAT),
     firstDayOfWeek: row.first_day_of_week,
+    weekendDays: normalizeWeekendDays(parseJsonValue<number[]>(row.weekend_days_json, [6, 7])),
     editDaysLimit: row.edit_days_limit,
     insertDaysLimit: row.insert_days_limit,
     allowOneRecordPerDay: Boolean(row.allow_one_record_per_day ?? 0),
     allowIntersectingRecords: Boolean(row.allow_intersecting_records ?? 0),
     allowRecordsOnHolidays: Boolean(row.allow_records_on_holidays ?? 1),
+    allowRecordsOnWeekends: Boolean(row.allow_records_on_weekends ?? 1),
     allowFutureRecords: Boolean(row.allow_future_records ?? 0),
     country: row.country ?? row.holiday_country,
     tabletIdleTimeoutSeconds: row.tablet_idle_timeout_seconds ?? 10,

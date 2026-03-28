@@ -285,6 +285,17 @@
     }
   }
 
+  @keyframes timer-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+
+    50% {
+      transform: scale(1.045);
+    }
+  }
+
   .animate-in {
     animation: enter 200ms cubic-bezier(0.16, 1, 0.3, 1);
   }

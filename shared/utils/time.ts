@@ -221,10 +221,10 @@ export function enumerateLocalDays(startDay: string, endDay: string): string[] {
   return days;
 }
 
-export function isWeekendDay(day: string): boolean {
+export function isWeekendDay(day: string, weekendDays: number[] = [6, 7]): boolean {
   const parsed = parsePlainDate(day);
   if (!parsed) return false;
-  return parsed.dayOfWeek === 6 || parsed.dayOfWeek === 7;
+  return weekendDays.includes(parsed.dayOfWeek);
 }
 
 export function getIsoDayOfWeek(day: string): number | null {
@@ -232,7 +232,7 @@ export function getIsoDayOfWeek(day: string): number | null {
   return parsed ? parsed.dayOfWeek : null;
 }
 
-export function countEffectiveLeaveDays(startDay: string, endDay: string, holidayDays: Set<string>): {
+export function countEffectiveLeaveDays(startDay: string, endDay: string, holidayDays: Set<string>, weekendDays: number[] = [6, 7]): {
   totalDayCount: number;
   effectiveDayCount: number;
   excludedHolidayCount: number;
@@ -244,7 +244,7 @@ export function countEffectiveLeaveDays(startDay: string, endDay: string, holida
   let excludedWeekendCount = 0;
 
   for (const day of days) {
-    const weekend = isWeekendDay(day);
+    const weekend = isWeekendDay(day, weekendDays);
     const holiday = holidayDays.has(day);
 
     if (holiday) {

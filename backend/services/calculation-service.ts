@@ -15,6 +15,7 @@ import type {
 import { mapCalculation } from "../db/mappers";
 import type { AppDatabase } from "../runtime/types";
 import { loadBuiltinCalculationPresets } from "./calculation-preset-loader";
+import { settingsService } from "./settings-service";
 
 type PreviewRow = Record<string, string | number | null>;
 
@@ -78,13 +79,36 @@ function normalizeCalculationRow(row: any): CalculationRecord {
   return mapCalculation(row);
 }
 
+function hydrateBuiltinCalculation(calculation: CalculationRecord, presetsByKey: Map<string, CalculationPresetRecord>) {
+  if (!calculation.isBuiltin || !calculation.builtinKey) {
+    return calculation;
+  }
+
+  const preset = presetsByKey.get(calculation.builtinKey);
+  if (!preset) {
+    return calculation;
+  }
+
+  return {
+    ...calculation,
+    sqlText: preset.sqlText,
+    name: preset.name,
+    description: preset.description,
+    outputMode: preset.outputMode,
+    chartConfig: preset.chartConfig,
+  };
+}
+
 export const calculationService = {
-  async listPresets(): Promise<CalculationPresetRecord[]> {
-    return await loadBuiltinCalculationPresets();
+  async listPresets(db: AppDatabase, companyId: string): Promise<CalculationPresetRecord[]> {
+    const settings = await settingsService.getSettings(db, companyId);
+    return await loadBuiltinCalculationPresets(settings);
   },
 
   async listCalculations(db: AppDatabase, companyId: string) {
-    const presets = await loadBuiltinCalculationPresets();
+    const settings = await settingsService.getSettings(db, companyId);
+    const presets = await loadBuiltinCalculationPresets(settings);
+    const presetsByKey = new Map(presets.map((preset) => [preset.key, preset]));
     const calculations = (await db.all(
       `SELECT
          id,
@@ -100,13 +124,14 @@ export const calculationService = {
          chart_config_json,
          chart_stacked,
          is_builtin,
+         builtin_key,
          created_at,
          updated_at
        FROM calculations
        WHERE company_id = ?
        ORDER BY is_builtin DESC, name COLLATE NOCASE ASC, created_at DESC`,
       [companyId]
-    )).map(normalizeCalculationRow);
+    )).map(normalizeCalculationRow).map((calculation) => hydrateBuiltinCalculation(calculation, presetsByKey));
 
     return {
       calculations,
@@ -130,6 +155,7 @@ export const calculationService = {
          chart_config_json,
          chart_stacked,
          is_builtin,
+         builtin_key,
          created_at,
          updated_at
        FROM calculations
@@ -141,7 +167,10 @@ export const calculationService = {
       throw new HTTPException(404, { message: "Calculation not found" });
     }
 
-    return normalizeCalculationRow(calculation);
+    const settings = await settingsService.getSettings(db, companyId);
+    const presets = await loadBuiltinCalculationPresets(settings);
+    const presetsByKey = new Map(presets.map((preset) => [preset.key, preset]));
+    return hydrateBuiltinCalculation(normalizeCalculationRow(calculation), presetsByKey);
   },
 
   async validateSql(db: AppDatabase, sqlText: string, chartConfig: CalculationChartConfig) {
@@ -356,7 +385,8 @@ export const calculationService = {
   },
 
   async createFromPreset(db: AppDatabase, companyId: string, input: CreateCalculationFromPresetInput) {
-    const preset = (await loadBuiltinCalculationPresets()).find((item) => item.key === input.presetKey) ?? null;
+    const settings = await settingsService.getSettings(db, companyId);
+    const preset = (await loadBuiltinCalculationPresets(settings)).find((item) => item.key === input.presetKey) ?? null;
     if (!preset) {
       throw new HTTPException(404, { message: "Preset not found" });
     }
