@@ -1,3 +1,1 @@
-export function CalendarPage() {
-  return null;
-}
+export { DashboardDayPickerPage as CalendarPage } from "./dashboard-day-picker-page";

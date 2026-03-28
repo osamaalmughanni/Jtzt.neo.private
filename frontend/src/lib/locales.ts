@@ -454,7 +454,8 @@ export const resources = {
         selectDate: "Select date",
         selectDateHint: "Choose a day from the calendar",
         noDateSelected: "No date selected",
-        openDatePicker: "Open date picker"
+        openDatePicker: "Open date picker",
+        applyDate: "Use date"
       },
       dayPicker: {
         backToOverview: "Back to overview",
@@ -1347,7 +1348,8 @@ export const resources = {
         selectDate: "Datum auswählen",
         selectDateHint: "Wählen Sie einen Tag im Kalender aus",
         noDateSelected: "Kein Datum gewählt",
-        openDatePicker: "Datumsauswahl öffnen"
+        openDatePicker: "Datumsauswahl öffnen",
+        applyDate: "Datum übernehmen"
       },
       dayPicker: {
         backToOverview: "Zurück zur Übersicht",

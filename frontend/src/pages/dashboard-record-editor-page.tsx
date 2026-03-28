@@ -33,6 +33,7 @@ import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { DateInput } from "@/components/ui/date-input";
+import { HintStack } from "@/components/ui/hint-stack";
 import { TimeInput } from "@/components/ui/time-input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
@@ -440,7 +441,10 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       : entryType === "work" && rangeEntryConflict.hasLeave
         ? t("recordEditor.leaveDayAlreadyBooked")
       : null;
-  const blockingError = dayLimitError ?? workDayConflictError ?? vacationError ?? timeOffInLieuError;
+  const blockingMessages = [dayLimitError, workDayConflictError, vacationError, timeOffInLieuError].filter(
+    (value): value is string => Boolean(value),
+  );
+  const blockingError = blockingMessages[0] ?? null;
   useEffect(() => {
     if (companySettings) {
       setSettings(companySettings);
@@ -841,10 +845,8 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
             </FormFields>
           </FormSection>
 
-          {blockingError ? (
-            <p className="text-sm leading-6 text-destructive" aria-live="polite">
-              {blockingError}
-            </p>
+          {blockingMessages.length > 0 ? (
+            <HintStack messages={blockingMessages} className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2" />
           ) : null}
 
           <FormActions>

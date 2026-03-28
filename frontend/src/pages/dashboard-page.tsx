@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Briefcase, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, Prohibit, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
+import { Briefcase, CalendarBlank, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, Prohibit, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
+import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import type {
   CompanyCustomField,
@@ -34,6 +35,7 @@ import {
   FormSection,
 } from "@/components/form-layout";
 import { PageDock } from "@/components/page-dock";
+import { PageBackAction } from "@/components/page-back-action";
 import { PageLoadBoundary } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Stack } from "@/components/stack";
@@ -41,6 +43,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Combobox } from "@/components/ui/combobox";
+import { HintStack } from "@/components/ui/hint-stack";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -60,6 +63,11 @@ import {
 type DashboardSnapshot = {
   entries: TimeEntryView[];
   summary: DashboardSummary;
+};
+
+type CalendarSnapshot = {
+  holidays: PublicHolidayRecord[];
+  dayStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">;
 };
 
 const defaultSettings: CompanySettings = {
@@ -109,6 +117,20 @@ function startOfDay(date: Date) {
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, offset: number) {
+  return new Date(date.getFullYear(), date.getMonth() + offset, 1);
+}
+
+function getCalendarMonthKey(date: Date, country: string, userId: number | null, token?: string) {
+  return [
+    token ?? "none",
+    userId ?? "none",
+    country,
+    date.getFullYear(),
+    date.getMonth(),
+  ].join("|");
 }
 
 function endOfDay(date: Date) {
@@ -295,6 +317,8 @@ export function DashboardPage() {
   const [tabletPunchProjectId, setTabletPunchProjectId] = useState("");
   const [tabletPunchTaskId, setTabletPunchTaskId] = useState("");
   const [tabletPunchSubmitting, setTabletPunchSubmitting] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [draftDate, setDraftDate] = useState(() => parseDayParam(searchParams.get("day")));
   const [now, setNow] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => parseDayParam(searchParams.get("day")));
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDayParam(searchParams.get("day"))));
@@ -302,6 +326,9 @@ export function DashboardPage() {
   const dashboardCacheRef = useRef(new Map<string, DashboardSnapshot>());
   const dashboardRequestIdRef = useRef(0);
   const dashboardHasLoadedRef = useRef(false);
+  const calendarMonthCacheRef = useRef(new Map<string, CalendarSnapshot>());
+  const calendarMonthRequestRef = useRef(new Map<string, Promise<CalendarSnapshot>>());
+  const calendarMonthGenerationRef = useRef(0);
 
   const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
   const isWorkspaceMode = companySession?.actorType === "workspace";
@@ -354,30 +381,38 @@ export function DashboardPage() {
   const selectedDayPastDistance = getPastDayDistance(selectedDayKey, todayDay);
   const selectedDayFutureDistance = getFutureDayDistance(selectedDayKey, todayDay);
   const isNowContext = isToday(selectedDate, settings.timeZone);
-  const calendarResource = usePageResource<{
-    holidays: PublicHolidayRecord[];
-    dayStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">;
-  }>({
-    enabled: Boolean(companySession) && Boolean(effectiveUserId),
-    deps: [companySession?.token, effectiveUserId, visibleMonth.getFullYear(), visibleMonth.getMonth(), t],
-    load: async () => {
-      if (!companySession || !effectiveUserId) {
-        return {
-          holidays: [],
-          dayStates: {},
-        };
-      }
+  const loadCalendarMonthSnapshot = useCallback(async (targetMonth: Date) => {
+    if (!companySession || !effectiveUserId) {
+      return {
+        holidays: [],
+        dayStates: {},
+      } satisfies CalendarSnapshot;
+    }
 
+    const normalizedMonth = startOfMonth(targetMonth);
+    const cacheKey = getCalendarMonthKey(normalizedMonth, settings.country, effectiveUserId, companySession.token);
+    const generation = calendarMonthGenerationRef.current;
+    const cached = calendarMonthCacheRef.current.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const inFlight = calendarMonthRequestRef.current.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const request = (async () => {
       const [holidayResponse, entriesResponse] = await Promise.all([
-        api.getPublicHolidays(companySession.token, settings.country, visibleMonth.getFullYear()),
+        api.getPublicHolidays(companySession.token, settings.country, normalizedMonth.getFullYear()),
         api.listTimeEntries(companySession.token, {
-          from: formatLocalDay(startOfMonth(visibleMonth)),
-          to: formatLocalDay(endOfDay(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0))),
+          from: formatLocalDay(startOfMonth(normalizedMonth)),
+          to: formatLocalDay(endOfDay(new Date(normalizedMonth.getFullYear(), normalizedMonth.getMonth() + 1, 0))),
           targetUserId: canSwitchUser ? effectiveUserId : undefined,
         }),
       ]);
 
-      const nextStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed"> = {};
+      const nextStates: CalendarSnapshot["dayStates"] = {};
       for (const entry of entriesResponse.entries) {
         for (const entryDay of enumerateLocalDays(entry.entryDate, entry.endDate ?? entry.entryDate)) {
           const currentState = nextStates[entryDay];
@@ -388,12 +423,42 @@ export function DashboardPage() {
         }
       }
 
-      return {
+      const snapshot: CalendarSnapshot = {
         holidays: holidayResponse.holidays,
         dayStates: nextStates,
       };
-    },
+
+      if (calendarMonthGenerationRef.current === generation) {
+        calendarMonthCacheRef.current.set(cacheKey, snapshot);
+      }
+      calendarMonthRequestRef.current.delete(cacheKey);
+      return snapshot;
+    })().catch((error) => {
+      calendarMonthRequestRef.current.delete(cacheKey);
+      throw error;
+    });
+
+    calendarMonthRequestRef.current.set(cacheKey, request);
+    return request;
+  }, [canSwitchUser, companySession, effectiveUserId, settings.country]);
+
+  const calendarResource = usePageResource<CalendarSnapshot>({
+    enabled: Boolean(companySession) && Boolean(effectiveUserId),
+    deps: [companySession?.token, effectiveUserId, visibleMonth.getFullYear(), visibleMonth.getMonth(), t],
+    load: () => loadCalendarMonthSnapshot(visibleMonth),
+    minPendingMs: 0,
   });
+  useEffect(() => {
+    if (!companySession || !effectiveUserId) {
+      return;
+    }
+
+    const currentMonth = startOfMonth(visibleMonth);
+    void loadCalendarMonthSnapshot(currentMonth);
+    void loadCalendarMonthSnapshot(addMonths(currentMonth, -1));
+    void loadCalendarMonthSnapshot(addMonths(currentMonth, 1));
+  }, [companySession, effectiveUserId, loadCalendarMonthSnapshot, visibleMonth]);
+
   const calendarHolidays = calendarResource.data?.holidays ?? [];
   const holidayDateSet = useMemo(() => new Set(calendarHolidays.map((holiday) => holiday.date)), [calendarHolidays]);
   const selectedDayIsWeekend = isWeekendDay(selectedDayKey, settings.weekendDays);
@@ -402,6 +467,14 @@ export function DashboardPage() {
     [calendarHolidays, selectedDayKey]
   );
   const selectedDayIsHoliday = holidayDateSet.has(selectedDayKey);
+  const calendarHolidayDates = useMemo(
+    () => calendarResource.data?.holidays.map((holiday) => holiday.date) ?? [],
+    [calendarResource.data?.holidays],
+  );
+  const calendarDayStates = useMemo(
+    () => calendarResource.data?.dayStates ?? {},
+    [calendarResource.data?.dayStates],
+  );
   const allowedEntryTypes = getAllowedEntryTypesForDay({
     role: companyIdentity?.user.role,
     settings,
@@ -474,6 +547,10 @@ export function DashboardPage() {
       : selectedDayHasLeaveEntry
       ? t("recordEditor.leaveTypeAlreadyBooked")
       : null;
+  const recordDockMessages = useMemo(
+    () => [singleRecordMessage, createRecordMessage].filter((value): value is string => Boolean(value)),
+    [createRecordMessage, singleRecordMessage],
+  );
   const customFieldsById = useMemo(
     () =>
       new Map(settings.customFields.map((field) => [field.id, field])),
@@ -562,6 +639,11 @@ export function DashboardPage() {
     selectedDateRef.current = selectedDate;
   }, [selectedDate]);
   useEffect(() => {
+    if (!datePickerOpen) {
+      setDraftDate(selectedDate);
+    }
+  }, [datePickerOpen, selectedDate]);
+  useEffect(() => {
     const nextSelectedDate = parseDayParam(searchParams.get("day"));
     if (formatLocalDay(nextSelectedDate) !== formatLocalDay(selectedDate)) {
       setSelectedDate(nextSelectedDate);
@@ -582,6 +664,16 @@ export function DashboardPage() {
     params.set("day", formatLocalDay(day));
     setSearchParams(params, { replace: true });
   }, [setSearchParams]);
+  const openDatePicker = useCallback((day?: Date) => {
+    const nextDate = day ?? selectedDateRef.current;
+    setDraftDate(nextDate);
+    setVisibleMonth(startOfMonth(nextDate));
+    setDatePickerOpen(true);
+  }, [setVisibleMonth]);
+  const closeDatePicker = useCallback(() => {
+    setDatePickerOpen(false);
+    setDraftDate(selectedDateRef.current);
+  }, []);
   const goToToday = useCallback(() => {
     const todayDate = parseLocalDay(getLocalNowSnapshot(new Date(), settings.timeZone).localDay) ?? new Date();
     updateContext({ day: todayDate });
@@ -771,6 +863,9 @@ export function DashboardPage() {
     dashboardHasLoadedRef.current = true;
     setDashboardLoading(false);
     prefetchAdjacentDashboardSnapshots(selectedDate, resolvedUserId);
+    calendarMonthGenerationRef.current += 1;
+    calendarMonthCacheRef.current.clear();
+    calendarMonthRequestRef.current.clear();
     await calendarResource.reload();
   }
 
@@ -894,32 +989,66 @@ export function DashboardPage() {
     canStartTabletPunch ? "1" : "0",
     JSON.stringify(tabletPunchValues),
   ].join("|");
-  const dashboardDockKey = [
-    "dashboard-dock",
-    dashboardLoading ? "1" : "0",
-    isTabletMode ? "1" : "0",
-    summary.activeEntry?.id ?? "none",
-    dockShowsStop ? "1" : "0",
-    dockShowsPlay ? "1" : "0",
-    canAddRecordButton ? "1" : "0",
-    canUseTabletPunch ? "1" : "0",
-    createRecordHref,
-    createRecordMessage ?? "",
-    singleRecordMessage ?? "",
-  ].join("|");
+  const dashboardDockKey = useMemo(
+    () =>
+      [
+        "dashboard-dock",
+        dashboardLoading ? "1" : "0",
+        isTabletMode ? "1" : "0",
+        summary.activeEntry?.id ?? "none",
+        dockShowsStop ? "1" : "0",
+        dockShowsPlay ? "1" : "0",
+        canAddRecordButton ? "1" : "0",
+        canUseTabletPunch ? "1" : "0",
+        createRecordHref,
+        createRecordMessage ?? "",
+        singleRecordMessage ?? "",
+      ].join("|"),
+    [
+      canAddRecordButton,
+      canUseTabletPunch,
+      createRecordHref,
+      createRecordMessage,
+      dashboardLoading,
+      dockShowsPlay,
+      dockShowsStop,
+      isTabletMode,
+      singleRecordMessage,
+      summary.activeEntry?.id,
+    ],
+  );
 
   useEffect(() => {
+    if (datePickerOpen) {
+      setHomeAction({
+        key: "dashboard-home-calendar-close",
+        label: t("common.close"),
+        onClick: closeDatePicker,
+      });
+      return () => setHomeAction(null);
+    }
+
+    if (tabletPunchSetupOpen) {
+      setHomeAction({
+        key: "dashboard-home-tablet-close",
+        label: t("common.close"),
+        onClick: () => setTabletPunchSetupOpen(false),
+      });
+      return () => setHomeAction(null);
+    }
+
     setHomeAction({
       key: "dashboard-home-today",
       label: "Today",
       onClick: goToToday,
     });
     return () => setHomeAction(null);
-  }, [goToToday, setHomeAction]);
+  }, [closeDatePicker, datePickerOpen, goToToday, setHomeAction, tabletPunchSetupOpen, t]);
 
   if (isTabletMode && tabletPunchSetupOpen) {
     return (
       <FormPage className="min-h-0 flex-none">
+        <PageBackAction onClick={() => setTabletPunchSetupOpen(false)} label={t("common.close")} />
         <FormSection>
           <PageLabel
             title={t("dashboard.startWork")}
@@ -1011,6 +1140,56 @@ export function DashboardPage() {
     );
   }
 
+  if (datePickerOpen) {
+    return (
+      <motion.div
+        key="calendar-picker"
+        className="min-h-0 flex-none"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
+        style={{ willChange: "opacity" }}
+      >
+        <FormPage className="min-h-0 flex-none">
+          <PageBackAction onClick={closeDatePicker} label={t("common.close")} />
+          <FormSection>
+            <PageLabel
+              title={t("calendar.selectDate")}
+              description={t("calendar.selectDateHint")}
+            />
+            <Calendar
+              selected={draftDate}
+              month={visibleMonth}
+              onSelect={(date) => {
+                setDraftDate(date);
+                setVisibleMonth(startOfMonth(date));
+                updateContext({ day: date });
+                setDatePickerOpen(false);
+              }}
+              locale={settings.locale}
+              firstDayOfWeek={settings.firstDayOfWeek}
+              weekendDays={settings.weekendDays}
+              holidayDates={calendarHolidayDates}
+              dayStates={calendarDayStates}
+              onMonthChange={setVisibleMonth}
+              compact
+            />
+          </FormSection>
+          <PageDock cacheKey={`calendar-picker|${formatLocalDay(draftDate)}|${visibleMonth.getFullYear()}|${visibleMonth.getMonth()}`}>
+            <DockActionStack
+              message={(
+                <p className="text-center text-xs leading-5 text-muted-foreground">
+                  {formatCompanyDate(formatLocalDay(draftDate), settings.locale)}
+                </p>
+              )}
+            />
+          </PageDock>
+        </FormPage>
+      </motion.div>
+    );
+  }
+
   return (
     <FormPage className="min-h-0 flex-none">
       <AppConfirmDialog
@@ -1045,33 +1224,36 @@ export function DashboardPage() {
         skeleton={null}
       >
       <Stack gap="lg" className="min-h-full flex-1">
-      <div className="rounded-2xl border border-border bg-card p-4">
-        <div className="flex flex-col gap-4">
-          <FormSection>
-            <div className="flex min-h-10 flex-col justify-center gap-2">
-              {canSwitchUser ? (
-                <Combobox
-                  value={effectiveUserId ? String(effectiveUserId) : ""}
-                  onValueChange={(value) =>
-                    updateContext({ userId: Number(value) })
-                  }
-                  options={userOptions}
-                  placeholder={t("dashboard.workingAs")}
-                  searchPlaceholder={t("reports.search")}
-                  emptyText="No users found."
-                  searchable
-                />
-              ) : (
-                <div className="flex h-10 items-center rounded-md border border-input bg-transparent px-3 text-sm text-foreground">
-                  {selectedUserName}
-                </div>
-              )}
-            </div>
-          </FormSection>
-          <div className="flex flex-col gap-1 pt-1">
-            <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-              <div className="flex min-w-0 flex-col justify-center gap-0.5">
-                <p className="min-w-0 truncate text-base font-semibold leading-none tracking-[-0.04em] text-foreground sm:text-lg">
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="flex flex-col gap-4">
+            <FormSection>
+              <div className="flex min-h-10 flex-col justify-center gap-2">
+                {canSwitchUser ? (
+                  <Combobox
+                    value={effectiveUserId ? String(effectiveUserId) : ""}
+                    onValueChange={(value) => updateContext({ userId: Number(value) })}
+                    options={userOptions}
+                    placeholder={t("dashboard.workingAs")}
+                    searchPlaceholder={t("reports.search")}
+                    emptyText="No users found."
+                    searchable
+                  />
+                ) : (
+                  <div className="flex h-10 items-center rounded-md border border-input bg-transparent px-3 text-sm text-foreground">
+                    {selectedUserName}
+                  </div>
+                )}
+              </div>
+            </FormSection>
+
+            <div className="flex flex-col gap-1 pt-1">
+              <button
+                type="button"
+                className="text-left"
+                onClick={() => openDatePicker()}
+                aria-label={t("calendar.openDatePicker")}
+              >
+                <p className="min-w-0 text-3xl font-semibold leading-none tracking-[-0.05em] text-foreground sm:text-4xl">
                   {selectedDate.toLocaleDateString(settings.locale, {
                     weekday: "long",
                     day: "numeric",
@@ -1079,126 +1261,131 @@ export function DashboardPage() {
                     year: "numeric",
                   })}
                 </p>
-                <p className="text-[10px] font-semibold leading-none tracking-[-0.05em] text-muted-foreground">
-                  {new Intl.DateTimeFormat(settings.locale, {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                    timeZone: settings.timeZone,
-                  }).format(now)}
-                </p>
-              </div>
-              <Button
-                variant={isNowContext ? "secondary" : "default"}
-                size="sm"
-                className="self-center min-w-[5.5rem] px-4 py-2 text-[11px] !h-auto"
-                onClick={goToToday}
-                type="button"
-              >
-                {t("dashboard.today")}
-              </Button>
+              </button>
             </div>
-            <Calendar
-              selected={selectedDate}
-              month={visibleMonth}
-              onSelect={(date) => updateContext({ day: date })}
-              locale={settings.locale}
-              firstDayOfWeek={settings.firstDayOfWeek}
-              weekendDays={settings.weekendDays}
-              holidayDates={calendarResource.data?.holidays.map((holiday) => holiday.date) ?? []}
-              dayStates={calendarResource.data?.dayStates ?? {}}
-              onMonthChange={setVisibleMonth}
-              compact
-              selectionTone={pendingDeleteEntry ? "destructive" : "default"}
-              className=""
-            />
+            <div className="flex items-end justify-start gap-2">
+              <div className="flex items-end justify-start">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  type="button"
+                  className="h-9 w-9 shrink-0 rounded-full"
+                  onClick={() => openDatePicker()}
+                  aria-label={t("calendar.openDatePicker")}
+                >
+                  <CalendarBlank size={16} weight="bold" />
+                </Button>
+              </div>
+              <div className="flex items-end justify-end">
+                <Button
+                  variant={isNowContext ? "secondary" : "default"}
+                  size="icon"
+                  className="h-9 w-9 rounded-full"
+                  onClick={goToToday}
+                  type="button"
+                  aria-label={t("dashboard.today")}
+                >
+                  <ClockCounterClockwise size={16} weight="bold" />
+                </Button>
+              </div>
+            </div>
           </div>
-          <div className="flex flex-col gap-1">
+        </div>
+
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="flex flex-col gap-3">
             <p className="text-sm font-medium text-foreground">{t("dashboard.records")}</p>
             <div className="divide-y divide-border/60">
-                {entries.map((entry) => {
-                  const canEdit =
-                    evaluateTimeEntryPolicy({
-                      mode: "edit",
-                      role: companyIdentity?.user.role,
-                      settings,
-                      entryType: entry.entryType,
-                      startDate: entry.entryDate,
-                      endDate: entry.endDate,
-                      todayDay,
-                      hasHolidayInRange: false,
-                      hasWeekendInRange: entry.entryType === "work" && enumerateLocalDays(entry.entryDate, entry.endDate ?? entry.entryDate).some((day) => isWeekendDay(day, settings.weekendDays)),
-                    }).allowed;
-                  const canDelete = canEdit;
-                  const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
-                  const supportText = getEntrySupportText(entry, customFieldsById, customFieldValueLabels);
-                  const isActiveWorkEntry =
+              {entries.map((entry) => {
+                const canEdit = evaluateTimeEntryPolicy({
+                  mode: "edit",
+                  role: companyIdentity?.user.role,
+                  settings,
+                  entryType: entry.entryType,
+                  startDate: entry.entryDate,
+                  endDate: entry.endDate,
+                  todayDay,
+                  hasHolidayInRange: false,
+                  hasWeekendInRange:
                     entry.entryType === "work" &&
-                    summary.activeEntry?.id === entry.id &&
-                    !entry.endTime;
-                  const entryHeadline = getEntryHeadline(entry, getEntryLabel);
-                  const entryMeta =
-                    entry.entryType === "work"
-                      ? formatMinutes(
-                          isActiveWorkEntry
-                            ? calculateLiveWorkDurationMinutes(entry.startTime, null, settings)
-                            : calculateLiveWorkDurationMinutes(entry.startTime, entry.endTime, settings),
-                        )
-                      : formatDayCount(entry.effectiveDayCount);
+                    enumerateLocalDays(entry.entryDate, entry.endDate ?? entry.entryDate).some((day) =>
+                      isWeekendDay(day, settings.weekendDays),
+                    ),
+                }).allowed;
+                const canDelete = canEdit;
+                const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
+                const supportText = getEntrySupportText(entry, customFieldsById, customFieldValueLabels);
+                const isActiveWorkEntry =
+                  entry.entryType === "work" &&
+                  summary.activeEntry?.id === entry.id &&
+                  !entry.endTime;
+                const entryHeadline = getEntryHeadline(entry, getEntryLabel);
+                const entryMeta =
+                  entry.entryType === "work"
+                    ? formatMinutes(
+                        isActiveWorkEntry
+                          ? calculateLiveWorkDurationMinutes(entry.startTime, null, settings)
+                          : calculateLiveWorkDurationMinutes(entry.startTime, entry.endTime, settings),
+                      )
+                    : formatDayCount(entry.effectiveDayCount);
 
-                  return (
-                    <div
-                      key={entry.id}
-                      className="grid min-h-12 grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 px-0 py-2"
-                    >
-                      <div>
-                        <RecordStatusIcon entryType={entry.entryType} active={isActiveWorkEntry} className={entryStateUi[entry.entryType].recordStatusClassName} />
-                      </div>
-                      <div className="min-w-0 flex flex-col gap-1 overflow-hidden">
-                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                          <p className="min-w-0 whitespace-normal break-words text-sm font-medium leading-4 text-foreground">
-                            {entryHeadline}
-                          </p>
-                          <Badge
-                            variant={isActiveWorkEntry ? "destructive" : "secondary"}
-                            className="shrink-0 rounded-full px-2 py-0 text-[11px] leading-5"
-                          >
-                            {entryMeta}
-                          </Badge>
-                        </div>
-                        {supportText ? (
-                          <p className="whitespace-normal break-words text-xs leading-4 text-muted-foreground">
-                            {supportText}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="relative z-10 flex shrink-0 items-center justify-end gap-0.5 self-center">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 p-0 text-muted-foreground/80"
-                          disabled={!canDelete}
-                          onPointerDown={triggerHapticFeedback}
-                          onClick={() => canDelete && setPendingDeleteEntry(entry)}
-                          aria-label={canDelete ? t("dashboard.deleteRecord") : t("dashboard.recordLocked")}
-                        >
-                          <Trash size={16} weight="bold" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 p-0 text-muted-foreground/80"
-                          disabled={!canEdit}
-                          onPointerDown={triggerHapticFeedback}
-                          onClick={() => canEdit && navigate(editHref)}
-                          aria-label={canEdit ? t("dashboard.editRecord") : t("dashboard.recordLocked")}
-                        >
-                          <PencilSimple size={16} weight="bold" />
-                        </Button>
-                      </div>
+                return (
+                  <div
+                    key={entry.id}
+                    className="grid min-h-12 grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 px-0 py-2"
+                  >
+                    <div>
+                      <RecordStatusIcon
+                        entryType={entry.entryType}
+                        active={isActiveWorkEntry}
+                        className={entryStateUi[entry.entryType].recordStatusClassName}
+                      />
                     </div>
-                  );
-                })}
+                    <div className="min-w-0 flex flex-col gap-1 overflow-hidden">
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        <p className="min-w-0 whitespace-normal break-words text-sm font-medium leading-4 text-foreground">
+                          {entryHeadline}
+                        </p>
+                        <Badge
+                          variant={isActiveWorkEntry ? "destructive" : "secondary"}
+                          className="shrink-0 rounded-full px-2 py-0 text-[11px] leading-5"
+                        >
+                          {entryMeta}
+                        </Badge>
+                      </div>
+                      {supportText ? (
+                        <p className="whitespace-normal break-words text-xs leading-4 text-muted-foreground">
+                          {supportText}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="relative z-10 flex shrink-0 items-center justify-end gap-0.5 self-center">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 p-0 text-muted-foreground/80"
+                        disabled={!canDelete}
+                        onPointerDown={triggerHapticFeedback}
+                        onClick={() => canDelete && setPendingDeleteEntry(entry)}
+                        aria-label={canDelete ? t("dashboard.deleteRecord") : t("dashboard.recordLocked")}
+                      >
+                        <Trash size={16} weight="bold" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 p-0 text-muted-foreground/80"
+                        disabled={!canEdit}
+                        onPointerDown={triggerHapticFeedback}
+                        onClick={() => canEdit && navigate(editHref)}
+                        aria-label={canEdit ? t("dashboard.editRecord") : t("dashboard.recordLocked")}
+                      >
+                        <PencilSimple size={16} weight="bold" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
 
               {entries.length === 0 ? (
                 <div className="grid min-h-12 grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 px-0 py-2 text-muted-foreground transition-colors">
@@ -1214,8 +1401,6 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
-      </div>
-
       </Stack>
       </PageLoadBoundary>
       <PageDock cacheKey={dashboardDockKey}>
@@ -1306,10 +1491,8 @@ export function DashboardPage() {
               <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
             </DockActionButton>
           ) : null}
-          message={!dashboardLoading && createRecordMessage ? (
-            <p className="text-center text-xs leading-5 text-muted-foreground">
-              {createRecordMessage}
-            </p>
+          message={!dashboardLoading && recordDockMessages.length > 0 ? (
+            <HintStack messages={recordDockMessages} className="text-center" />
           ) : null}
         />
       </PageDock>

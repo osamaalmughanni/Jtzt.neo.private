@@ -14,6 +14,7 @@ import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useCompanySettings } from "@/lib/company-settings";
+import { useAppHeaderState } from "@/components/app-header-state";
 import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { formatCompanyDate } from "@/lib/locale-format";
 
@@ -39,6 +40,7 @@ export function DashboardDayPickerPage() {
   const { t } = useTranslation();
   const { companyIdentity, companySession } = useAuth();
   const { settings: companySettings } = useCompanySettings();
+  const { setHomeAction } = useAppHeaderState();
   const [searchParams] = useSearchParams();
   const [settingsLocale, setSettingsLocale] = useState("en-GB");
   const [settingsCountry, setSettingsCountry] = useState("AT");
@@ -142,6 +144,15 @@ export function DashboardDayPickerPage() {
       setVisibleMonth(startOfMonth(selectedDate));
     }
   }, [selectedDate, selectedDayKey]);
+
+  useEffect(() => {
+    setHomeAction({
+      key: "calendar-home-back",
+      label: t("dayPicker.backToOverview"),
+      onClick: () => navigate(backTo),
+    });
+    return () => setHomeAction(null);
+  }, [backTo, navigate, setHomeAction, t]);
 
   return (
     <FormPage>
