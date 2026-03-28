@@ -8,6 +8,7 @@ import { AppHeaderLoadingBar } from "@/components/app-header-loading-bar";
 import { AppHeaderStateProvider, useAppHeaderState } from "@/components/app-header-state";
 import { AppFrame } from "@/components/app-frame";
 import { AppRouteLoadingState } from "@/components/page-load-state";
+import { RouteReveal } from "@/components/route-reveal";
 import { useFullscreenFooterActions } from "@/hooks/use-fullscreen-footer-actions";
 import { useCompanySettings } from "@/lib/company-settings";
 import { useAuth } from "@/lib/auth";
@@ -20,6 +21,7 @@ interface AppShellProps {
 export function AppShell({ mode }: AppShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const locationKey = location.pathname;
   const { companyIdentity, companySession, lockTablet, logoutAdmin } = useAuth();
   const { settings, loading: settingsLoading } = useCompanySettings();
   const shouldBlockCompanyShell = mode === "company" && companySession && (!settings || settingsLoading);
@@ -134,11 +136,11 @@ export function AppShell({ mode }: AppShellProps) {
     <AppFrame appShell>
       <AppHeaderStateProvider>
         <ShellContent
-          key={location.pathname}
+          key={locationKey}
           headerActions={headerActions}
           footerActions={footerActions}
           firstRouteRef={firstRouteRef}
-          locationKey={location.pathname}
+          locationKey={locationKey}
           menuTo={menuTo}
           scope={scope}
         />
@@ -303,9 +305,11 @@ function ShellContent({
           ref={scrollAreaRef}
           className="app-scroll-area flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-auto overscroll-contain"
         >
-          <AppContentLane ref={scrollContentRef} className="flex flex-col pt-4 pb-4">
-            <Outlet />
-          </AppContentLane>
+          <RouteReveal routeKey={locationKey} className="flex flex-col">
+            <AppContentLane ref={scrollContentRef} className="flex flex-col pt-4 pb-4">
+              <Outlet />
+            </AppContentLane>
+          </RouteReveal>
         </div>
         <div
           aria-hidden="true"

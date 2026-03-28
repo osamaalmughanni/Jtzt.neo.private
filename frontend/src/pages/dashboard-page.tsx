@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Briefcase, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
 import { useTranslation } from "react-i18next";
@@ -47,7 +46,7 @@ import { useAuth } from "@/lib/auth";
 import { useCompanySettings } from "@/lib/company-settings";
 import { useAppHeaderState } from "@/components/app-header-state";
 import { getEntryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
-import { formatCompanyDate, formatCompanyDateRange } from "@/lib/locale-format";
+import { formatCompanyDate } from "@/lib/locale-format";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import {
@@ -56,6 +55,11 @@ import {
   DEFAULT_COMPANY_TIME_ZONE,
   DEFAULT_COMPANY_WEEKEND_DAYS,
 } from "@shared/utils/company-locale";
+
+type DashboardSnapshot = {
+  entries: TimeEntryView[];
+  summary: DashboardSummary;
+};
 
 const defaultSettings: CompanySettings = {
   currency: "EUR",
@@ -292,16 +296,18 @@ export function DashboardPage() {
   const [tabletPunchTaskId, setTabletPunchTaskId] = useState("");
   const [tabletPunchSubmitting, setTabletPunchSubmitting] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState(() => parseDayParam(searchParams.get("day")));
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDayParam(searchParams.get("day"))));
   const [calendarHolidays, setCalendarHolidays] = useState<PublicHolidayRecord[]>([]);
   const [calendarDayStates, setCalendarDayStates] = useState<Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">>({});
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const dashboardCacheRef = useRef(new Map<string, DashboardSnapshot>());
+  const dashboardRequestIdRef = useRef(0);
+  const dashboardHasLoadedRef = useRef(false);
 
   const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
   const isWorkspaceMode = companySession?.actorType === "workspace";
-  const selectedDate = useMemo(
-    () => parseDayParam(searchParams.get("day")),
-    [searchParams],
-  );
+  const selectedDayKey = formatLocalDay(selectedDate);
   const selectedUserId = useMemo(() => {
     if (isTabletMode) {
       return companyIdentity?.user.id ?? null;
@@ -345,7 +351,6 @@ export function DashboardPage() {
   );
   const selectedUserName =
     selectedUser?.fullName ?? companyIdentity?.user.fullName ?? "User";
-  const selectedDayKey = formatLocalDay(selectedDate);
   const previousSelectedDayKeyRef = useRef(selectedDayKey);
   const todayDay = getLocalNowSnapshot(new Date(), settings.timeZone).localDay;
   const selectedDayPastDistance = getPastDayDistance(selectedDayKey, todayDay);
@@ -517,10 +522,21 @@ export function DashboardPage() {
   useEffect(() => {
     selectedDateRef.current = selectedDate;
   }, [selectedDate]);
+  useEffect(() => {
+    const nextSelectedDate = parseDayParam(searchParams.get("day"));
+    if (formatLocalDay(nextSelectedDate) !== formatLocalDay(selectedDate)) {
+      setSelectedDate(nextSelectedDate);
+    }
+  }, [searchParams, selectedDate]);
   const updateContext = useCallback((next: { userId?: number | null; day?: Date }) => {
     const params = new URLSearchParams(searchParamsRef.current);
     const userId = next.userId ?? effectiveUserIdRef.current;
     const day = next.day ?? selectedDateRef.current;
+
+    if (next.day) {
+      setSelectedDate(day);
+      setVisibleMonth(startOfMonth(day));
+    }
 
     if (userId) params.set("user", String(userId));
     else params.delete("user");
@@ -530,59 +546,136 @@ export function DashboardPage() {
   }, [setSearchParams]);
   const goToToday = useCallback(() => {
     const todayDate = parseLocalDay(getLocalNowSnapshot(new Date(), settings.timeZone).localDay) ?? new Date();
-    setVisibleMonth(startOfMonth(todayDate));
     updateContext({ day: todayDate });
   }, [settings.timeZone, updateContext]);
+  useEffect(() => {
+    if (!companySession || !canSwitchUser) {
+      setUsers([]);
+      return;
+    }
 
-  const dashboardResource = usePageResource<{
-    settings: CompanySettings;
-    users: CompanyUserListItem[];
-    entries: TimeEntryView[];
-    summary: DashboardSummary;
-  }>({
-    enabled: Boolean(companySession),
-    deps: [canSwitchUser, companySession?.token, selectedUserId, selectedDayKey, t],
-    load: async () => {
-      if (!companySession) {
-        return {
-          settings: defaultSettings,
-          users: [],
-          entries: [],
-          summary: defaultSummary,
-        };
+    let cancelled = false;
+    void api.listActiveUsers(companySession.token)
+      .then((response) => {
+        if (!cancelled) {
+          setUsers(response.users);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUsers([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canSwitchUser, companySession]);
+
+  const loadDashboardSnapshot = useCallback(async (targetDay: Date, targetUserId: number | null) => {
+    if (!companySession) {
+      return {
+        entries: [],
+        summary: defaultSummary,
+      } satisfies DashboardSnapshot;
+    }
+
+    const [entriesResponse, dashboardResponse] = await Promise.all([
+      api.listTimeEntries(companySession.token, {
+        from: formatLocalDay(startOfDay(targetDay)),
+        to: formatLocalDay(endOfDay(targetDay)),
+        targetUserId: targetUserId ?? undefined,
+      }),
+      api.getDashboard(companySession.token, targetUserId ?? undefined, formatLocalDay(targetDay)),
+    ]);
+
+    return {
+      entries: entriesResponse.entries,
+      summary: dashboardResponse.summary,
+    };
+  }, [companySession]);
+
+  const prefetchAdjacentDashboardSnapshots = useCallback((targetDay: Date, targetUserId: number | null) => {
+    if (!companySession) {
+      return;
+    }
+
+    const adjacentDays = [
+      new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate() - 1),
+      new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate() + 1),
+    ];
+
+    for (const day of adjacentDays) {
+      const cacheKey = `${targetUserId ?? "none"}|${formatLocalDay(day)}`;
+      if (dashboardCacheRef.current.has(cacheKey)) {
+        continue;
       }
 
-      try {
-        const usersResponse = canSwitchUser ? await api.listActiveUsers(companySession.token) : { users: [] };
-        const resolvedUserId =
-          canSwitchUser
-            ? selectedUserId ?? usersResponse.users[0]?.id ?? null
-            : companyIdentity?.user.id ?? null;
+      void loadDashboardSnapshot(day, targetUserId)
+        .then((snapshot) => {
+          dashboardCacheRef.current.set(cacheKey, snapshot);
+        })
+        .catch(() => {
+          // Ignore prefetch failures; the active path will report real errors.
+        });
+    }
+  }, [companySession, loadDashboardSnapshot]);
 
-        const [entriesResponse, dashboardResponse] = await Promise.all([
-          api.listTimeEntries(companySession.token, {
-            from: formatLocalDay(startOfDay(selectedDate)),
-            to: formatLocalDay(endOfDay(selectedDate)),
-            targetUserId: resolvedUserId ?? undefined,
-          }),
-          api.getDashboard(companySession.token, resolvedUserId ?? undefined, selectedDayKey),
-        ]);
+  useEffect(() => {
+    if (!companySession) {
+      setEntries([]);
+      setSummary(defaultSummary);
+      setDashboardLoading(false);
+      dashboardHasLoadedRef.current = false;
+      return;
+    }
 
-        return {
-          settings: companySettings ?? defaultSettings,
-          users: usersResponse.users,
-          entries: entriesResponse.entries,
-          summary: dashboardResponse.summary,
-        };
-      } catch (error) {
+    const requestId = dashboardRequestIdRef.current + 1;
+    dashboardRequestIdRef.current = requestId;
+    const resolvedUserId =
+      canSwitchUser
+        ? selectedUserId ?? users[0]?.id ?? null
+        : companyIdentity?.user.id ?? null;
+    const cacheKey = `${resolvedUserId ?? "none"}|${selectedDayKey}`;
+    const cached = dashboardCacheRef.current.get(cacheKey);
+
+    if (cached) {
+      setEntries(cached.entries);
+      setSummary(cached.summary);
+      setDashboardLoading(false);
+      dashboardHasLoadedRef.current = true;
+    } else if (!dashboardHasLoadedRef.current) {
+      setDashboardLoading(true);
+    } else {
+      setDashboardLoading(false);
+    }
+
+    void loadDashboardSnapshot(selectedDate, resolvedUserId)
+      .then((snapshot) => {
+        if (dashboardRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        dashboardCacheRef.current.set(cacheKey, snapshot);
+        setEntries(snapshot.entries);
+        setSummary(snapshot.summary);
+        dashboardHasLoadedRef.current = true;
+        setDashboardLoading(false);
+        prefetchAdjacentDashboardSnapshots(selectedDate, resolvedUserId);
+      })
+      .catch((error) => {
+        if (dashboardRequestIdRef.current !== requestId) {
+          return;
+        }
+
         toast({
           title: t("dashboard.couldNotLoadRecords"),
           description: error instanceof Error ? error.message : "Request failed",
         });
-        throw error;
-      }
-    }
-  });
+        dashboardHasLoadedRef.current = true;
+        setDashboardLoading(false);
+      });
+  }, [canSwitchUser, companyIdentity?.user.id, companySession, loadDashboardSnapshot, prefetchAdjacentDashboardSnapshots, selectedDate, selectedDayKey, selectedUserId, t, users]);
 
   const calendarResource = usePageResource<{
     holidays: PublicHolidayRecord[];
@@ -638,16 +731,6 @@ export function DashboardPage() {
   }, [companyIdentity?.user.id, searchParams, setSearchParams, settings.timeZone]);
 
   useEffect(() => {
-    if (!dashboardResource.data) {
-      return;
-    }
-
-    setUsers(dashboardResource.data.users);
-    setEntries(dashboardResource.data.entries);
-    setSummary(dashboardResource.data.summary);
-  }, [dashboardResource.data]);
-
-  useEffect(() => {
     if (!companySession || (!settings.projectsEnabled && !settings.tasksEnabled)) {
       setProjectData(null);
       return;
@@ -697,7 +780,19 @@ export function DashboardPage() {
   }, [entries, selectedDayKey]);
 
   async function refreshDashboardViews() {
-    await Promise.all([dashboardResource.reload(), calendarResource.reload()]);
+    const resolvedUserId =
+      canSwitchUser
+        ? selectedUserId ?? users[0]?.id ?? null
+        : companyIdentity?.user.id ?? null;
+    const cacheKey = `${resolvedUserId ?? "none"}|${selectedDayKey}`;
+    const snapshot = await loadDashboardSnapshot(selectedDate, resolvedUserId);
+    dashboardCacheRef.current.set(cacheKey, snapshot);
+    setEntries(snapshot.entries);
+    setSummary(snapshot.summary);
+    dashboardHasLoadedRef.current = true;
+    setDashboardLoading(false);
+    prefetchAdjacentDashboardSnapshots(selectedDate, resolvedUserId);
+    await calendarResource.reload();
   }
 
   async function deleteEntry(entryId: number) {
@@ -822,7 +917,7 @@ export function DashboardPage() {
   ].join("|");
   const dashboardDockKey = [
     "dashboard-dock",
-    dashboardResource.isLoading ? "1" : "0",
+    dashboardLoading ? "1" : "0",
     isTabletMode ? "1" : "0",
     summary.activeEntry?.id ?? "none",
     dockShowsStop ? "1" : "0",
@@ -941,7 +1036,7 @@ export function DashboardPage() {
     <FormPage className="min-h-0 flex-none">
       <PageDock cacheKey={dashboardDockKey}>
         <DockActionStack
-          primary={dashboardResource.isLoading ? null : isTabletMode ? (
+          primary={dashboardLoading ? null : isTabletMode ? (
             <>
               {dockShowsStop || dockShowsPlay ? (
                 <Button
@@ -1022,12 +1117,12 @@ export function DashboardPage() {
               <Plus size={30} weight="bold" />
             </Button>
           )}
-          secondary={!dashboardResource.isLoading && isTabletMode && dockShowsPlay && canAddRecordButton ? (
+          secondary={!dashboardLoading && isTabletMode && dockShowsPlay && canAddRecordButton ? (
             <DockActionButton asChild onPointerDown={triggerHapticFeedback}>
               <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
             </DockActionButton>
           ) : null}
-          message={!dashboardResource.isLoading && createRecordMessage ? (
+          message={!dashboardLoading && createRecordMessage ? (
             <p className="text-center text-xs leading-5 text-muted-foreground">
               {createRecordMessage}
             </p>
@@ -1061,8 +1156,8 @@ export function DashboardPage() {
       />
       <PageLoadBoundary
         className="min-h-0 flex-none"
-        loading={dashboardResource.isLoading}
-        refreshing={dashboardResource.isRefreshing}
+        loading={dashboardLoading}
+        refreshing={false}
         skeleton={null}
       >
       <Stack gap="lg" className="min-h-full flex-1">

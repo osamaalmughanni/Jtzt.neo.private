@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect } from "react";
+import { motion } from "framer-motion";
 import { useAppHeaderState } from "@/components/app-header-state";
 import { Logo } from "@/components/logo";
 import { Stack } from "@/components/stack";
@@ -78,9 +79,17 @@ export function PageLoadBoundary({
   }
 
   return (
-    <Stack gap={gap} className={cn("min-h-full flex-1", className)}>
-      {intro}
-      {children}
-    </Stack>
+    <motion.div
+      className={cn("min-h-full flex-1", className)}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+      style={{ willChange: "opacity" }}
+    >
+      <Stack gap={gap} className="min-h-full flex-1">
+        {intro}
+        {children}
+      </Stack>
+    </motion.div>
   );
 }

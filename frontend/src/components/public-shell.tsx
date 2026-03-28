@@ -8,6 +8,7 @@ import { AppHeaderStateProvider } from "@/components/app-header-state";
 import { AppContentLane } from "@/components/app-content-lane";
 import { AppFooter } from "@/components/app-footer";
 import { AppFrame } from "@/components/app-frame";
+import { RouteReveal } from "@/components/route-reveal";
 import { useFullscreenFooterActions } from "@/hooks/use-fullscreen-footer-actions";
 
 export function PublicShell({
@@ -84,7 +85,7 @@ function PublicShellContent({
     scrollAreaRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" });
     setShowTopFade(false);
     setShowBottomFade(true);
-  }, [location.pathname, location.search, location.hash]);
+  }, [location.pathname]);
 
   useLayoutEffect(() => {
     const viewport = scrollAreaRef.current;
@@ -153,9 +154,11 @@ function PublicShellContent({
           ref={scrollAreaRef}
           className="app-scroll-area flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-auto overscroll-contain"
         >
-          <AppContentLane ref={scrollContentRef} className="flex flex-col pt-4 pb-4">
-            {children}
-          </AppContentLane>
+          <RouteReveal routeKey={location.pathname} className="flex flex-col">
+            <AppContentLane ref={scrollContentRef} className="flex flex-col pt-4 pb-4">
+              {children}
+            </AppContentLane>
+          </RouteReveal>
         </div>
         <div
           aria-hidden="true"
