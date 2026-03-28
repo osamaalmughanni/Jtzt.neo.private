@@ -27,13 +27,17 @@ public class LauncherActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (isKioskExitRequest() || (isHomeLaunch() && SessionStore.hasKioskStarted(this))) {
+        if (isKioskExitRequest()) {
             startActivity(new Intent(this, KioskControllerActivity.class));
             finish();
             return;
         }
 
-        startActivity(new Intent(this, KioskWebViewActivity.class));
+        Intent launchIntent = new Intent(this, KioskWebViewActivity.class);
+        if (isHomeLaunch() && SessionStore.hasKioskStarted(this)) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        }
+        startActivity(launchIntent);
         finish();
     }
 }
