@@ -21,7 +21,7 @@ export function TabletPinKey({ children, muted = false, onClick, className }: Ta
       <button
         type="button"
         onPointerDown={() => {
-          if (navigator.vibrate) {
+          if (navigator.vibrate && window.isSecureContext && navigator.userActivation?.isActive) {
             navigator.vibrate(10);
           }
         }}
