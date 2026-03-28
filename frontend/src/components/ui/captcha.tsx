@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react";
-import * as React from "react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -51,26 +51,33 @@ export function Captcha({
         </Button>
       </div>
 
-      <div className="relative mt-4 rounded-xl border border-border bg-background px-4 py-6">
+      <div className="relative mt-4 overflow-hidden rounded-xl border border-border bg-background px-3 py-5 sm:px-4 sm:py-6">
         <div className="absolute inset-0 opacity-70">
           <span className="absolute left-[8%] top-[24%] h-16 w-16 rounded-full bg-foreground/5 blur-2xl" />
           <span className="absolute right-[14%] top-[10%] h-14 w-14 rounded-full bg-foreground/5 blur-2xl" />
           <span className="absolute bottom-[8%] left-[28%] h-12 w-12 rounded-full bg-foreground/5 blur-2xl" />
+          <span className="absolute inset-x-0 top-1/2 h-px bg-foreground/5" />
         </div>
-        <div className="relative flex flex-wrap items-center justify-center gap-2 px-2 select-none">
+        <div className="relative flex min-w-0 flex-nowrap items-center justify-center gap-[clamp(0.1rem,0.6vw,0.3rem)] overflow-hidden px-1 select-none whitespace-nowrap">
           {challenge.split("").map((char, index) => (
-            <span
+            <motion.span
               key={`${char}-${index}`}
               className={cn(
-                "inline-flex min-h-11 min-w-9 items-center justify-center rounded-lg border border-border/70 bg-card px-2 py-1 font-mono text-lg font-semibold text-foreground shadow-sm",
-                index % 2 === 0 ? "translate-y-[-1px]" : "translate-y-[1px]"
+                "inline-flex shrink-0 items-center justify-center rounded-lg border border-border/70 bg-card px-[clamp(0.3rem,0.9vw,0.5rem)] py-[clamp(0.25rem,0.6vw,0.38rem)] font-mono font-semibold text-foreground",
+                "text-[clamp(0.84rem,2vw,1.12rem)] shadow-sm",
               )}
-              style={{
-                transform: `rotate(${accentSeeds[index % accentSeeds.length]}deg)`,
+              initial={false}
+              animate={{
+                y: index % 2 === 0 ? -1 : 1,
+                rotate: accentSeeds[index % accentSeeds.length],
+              }}
+              transition={{
+                y: { duration: 0.2, ease: "easeOut" },
+                rotate: { duration: 0.25, ease: "easeOut" },
               }}
             >
               {char}
-            </span>
+            </motion.span>
           ))}
         </div>
       </div>

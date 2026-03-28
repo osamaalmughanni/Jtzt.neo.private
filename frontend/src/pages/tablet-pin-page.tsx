@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Backspace, X } from "phosphor-react";
 import { useTranslation } from "react-i18next";
+import { motion } from "framer-motion";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -190,44 +191,40 @@ export function TabletPinPage() {
 
             <div className="flex flex-col items-center gap-3">
               <div className={cn("mx-auto flex items-center justify-center gap-3", errorState && "animate-[shake_0.28s_ease-in-out_1]")}>
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <span
-                    key={index}
-                    className="flex h-11 w-10 items-center justify-center rounded-xl border text-base font-semibold transition-[border-color,background-color,color,box-shadow,opacity] duration-200 ease-out sm:h-12 sm:w-11"
-                    style={{
-                      borderColor: errorState
-                        ? "hsl(var(--destructive) / 0.9)"
-                        : index < pinCode.length
-                          ? "hsl(var(--foreground) / 0.18)"
-                          : "hsl(var(--border))",
-                      backgroundColor: errorState
-                        ? "hsl(var(--destructive) / 0.16)"
-                        : index < pinCode.length
-                          ? "hsl(var(--foreground))"
-                          : "hsl(var(--muted) / 0.26)",
-                      color: errorState
-                        ? "hsl(var(--destructive))"
-                        : index < pinCode.length
-                          ? "hsl(var(--background))"
-                          : "hsl(var(--muted-foreground))",
-                      boxShadow: errorState
-                        ? "0 10px 24px hsl(var(--destructive) / 0.12)"
-                        : index < pinCode.length
-                          ? "inset 0 1px 0 hsl(var(--background) / 0.18), 0 8px 18px hsl(var(--foreground) / 0.10)"
-                          : "inset 0 1px 0 hsl(var(--background) / 0.28)",
-                    }}
-                  >
-                    <span
-                      className={cn(
-                        "leading-none transition-opacity duration-150 ease-out",
-                        index < pinCode.length ? "opacity-100" : "opacity-0",
-                      )}
-                      aria-hidden="true"
-                    >
-                      •
+                {Array.from({ length: 4 }).map((_, index) => {
+                  const filled = index < pinCode.length;
+                  const boxClassName = cn(
+                    "relative grid h-11 w-11 place-items-center overflow-hidden rounded-xl border border-border bg-transparent transition-[background-color,border-color,color,opacity,transform] duration-200 ease-out sm:h-12 sm:w-12",
+                    errorState
+                      ? "border-destructive/70 text-destructive"
+                      : filled
+                        ? "text-foreground"
+                        : "text-muted-foreground",
+                  );
+
+                  return (
+                    <span key={index} className={boxClassName}>
+                      <motion.span
+                        aria-hidden="true"
+                        className="h-6 w-6 rounded-full sm:h-7 sm:w-7"
+                        style={{
+                          backgroundColor: errorState ? "hsl(var(--destructive))" : "hsl(var(--foreground))",
+                        }}
+                        initial={false}
+                        animate={{
+                          scale: filled || errorState ? 1 : 0,
+                          opacity: filled || errorState ? 1 : 0,
+                        }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 520,
+                          damping: 36,
+                          mass: 0.35,
+                        }}
+                      />
                     </span>
-                  </span>
-                ))}
+                  );
+                })}
               </div>
               <p className={cn("min-h-[1.25rem] text-sm", errorState ? "text-destructive" : "text-muted-foreground")}>
                 {errorState ? errorMessage : submitting ? t("tabletPin.unlocking") : t("tabletPin.digitsHint")}

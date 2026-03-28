@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useSpring } from "framer-motion";
 import { useAppHeaderState } from "@/components/app-header-state";
 
-const COMPLETE_HIDE_DELAY_MS = 140;
+const COMPLETE_HIDE_DELAY_MS = 260;
 
 export function AppHeaderLoadingBar() {
   const { loadingCount } = useAppHeaderState();
@@ -12,9 +12,9 @@ export function AppHeaderLoadingBar() {
   const wasActiveRef = useRef(active);
   const fillTarget = useMotionValue(active ? 1 : 0);
   const fillSpring = useSpring(fillTarget, {
-    stiffness: 240,
-    damping: 32,
-    mass: 0.65,
+    stiffness: 180,
+    damping: 28,
+    mass: 0.72,
     restDelta: 0.0001,
     restSpeed: 0.0001,
   });
@@ -73,22 +73,23 @@ export function AppHeaderLoadingBar() {
               boxShadow: "0 0 12px hsl(var(--primary) / 0.22)",
               willChange: "transform, opacity",
             }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.16, ease: [0.22, 1, 0.36, 1] } }}
+            initial={{ opacity: 0, scaleY: 0.9 }}
+            animate={{ opacity: 1, scaleY: 1 }}
+            exit={{ opacity: 0, scaleY: 0.96, transition: { duration: 0.48, ease: [0.16, 1, 0.3, 1] } }}
             transition={{
-              opacity: { duration: 0.12, ease: [0.22, 1, 0.36, 1] },
+              opacity: { duration: 0.32, ease: [0.16, 1, 0.3, 1] },
+              scaleY: { duration: 0.28, ease: [0.16, 1, 0.3, 1] },
             }}
           >
             <motion.div
               aria-hidden="true"
               className="absolute inset-y-0 left-0 w-[35%] bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.42),transparent)]"
-              style={{ opacity: active ? 0.34 : 0 }}
-              animate={active ? { x: ["-45%", "145%"] } : { x: "-45%" }}
+              style={{ opacity: active ? 0.28 : 0 }}
+              animate={active ? { x: ["-45%", "145%"], opacity: [0.12, 0.28, 0.12] } : { x: "-45%", opacity: 0 }}
               transition={
                 active
-                  ? { duration: 0.85, ease: "linear", repeat: Infinity }
-                  : { duration: 0.2, ease: "easeOut" }
+                  ? { duration: 1.05, ease: "linear", repeat: Infinity, repeatDelay: 0.15 }
+                  : { duration: 0.28, ease: [0.16, 1, 0.3, 1] }
               }
             />
           </motion.div>
