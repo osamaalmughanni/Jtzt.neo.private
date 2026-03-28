@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Captcha } from "@/components/ui/captcha";
 import { TabletPinKey } from "@/components/ui/tablet-pin-key";
-import { api } from "@/lib/api";
+import { ApiRequestError, api, describeApiErrorSummary } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -32,10 +32,26 @@ function createCaptchaChallenge(length = 6) {
 }
 
 function getErrorMessage(error: unknown, t: (key: string) => string) {
+  if (error instanceof ApiRequestError) {
+    const serverMessage = describeApiErrorSummary(error, "");
+
+    if (error.status === 401) {
+      if (serverMessage === "Invalid PIN code" || error.responseText.includes("Invalid PIN code")) {
+        return t("tabletPin.invalidPin");
+      }
+      if (serverMessage === "User is inactive" || error.responseText.includes("User is inactive")) {
+        return t("tabletPin.inactivePin");
+      }
+      return t("tabletPin.accessFailed");
+    }
+
+    return t("tabletPin.accessFailed");
+  }
+
   if (!(error instanceof Error)) return t("tabletPin.accessFailed");
   if (error.message === "Invalid PIN code") return t("tabletPin.invalidPin");
   if (error.message === "User is inactive") return t("tabletPin.inactivePin");
-  return error.message;
+  return t("tabletPin.accessFailed");
 }
 
 export function TabletPinPage() {

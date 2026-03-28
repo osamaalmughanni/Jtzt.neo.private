@@ -415,6 +415,23 @@ def print_size_report(env: dict[str, str], release: str | None = None, *, remote
     print("")
 
 
+def print_cleanup_report(env: dict[str, str], release: str | None = None, *, remote_text: str | None = None) -> None:
+    print("")
+    print(green(bold("JTZT CLEANUP REPORT")))
+    print(cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+    if release:
+        print(f"{bold('Release')}      {release}")
+    print(f"{bold('Keep')}         3")
+    print(f"{bold('Releases')}     {env['DEPLOY_BASE_DIR']}/releases")
+    print(f"{bold('Backups')}      {env['DEPLOY_BACKUP_DIR']}")
+    print("")
+    if remote_text:
+        print(remote_text.rstrip())
+        print("")
+    print(cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+    print("")
+
+
 def summarize_remote_firewall(env: dict[str, str]) -> None:
     remote_run(
         env,
@@ -935,33 +952,101 @@ def prune_releases(env: dict[str, str], keep: int = 3) -> None:
     if keep < 1:
         fail("keep must be at least 1")
 
-    remote_run(
+    result = remote_run(
         env,
         f"""
 set -euo pipefail
 releases_dir={env['DEPLOY_BASE_DIR']}/releases
-if [ ! -d "$releases_dir" ]; then
-  exit 0
-fi
-mapfile -t releases < <(find "$releases_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
-count=${{#releases[@]}}
-if [ "$count" -le {keep} ]; then
-  exit 0
-fi
-delete_count=$((count - {keep}))
-for ((i=0; i<delete_count; i++)); do
-  release="${{releases[$i]}}"
-  target="$releases_dir/$release"
-  current_target="$(readlink -f {env['DEPLOY_BASE_DIR']}/current 2>/dev/null || true)"
-  previous_target="$(readlink -f {env['DEPLOY_BASE_DIR']}/previous 2>/dev/null || true)"
-  target_real="$(readlink -f "$target" 2>/dev/null || true)"
-  if [ "$target_real" = "$current_target" ] || [ "$target_real" = "$previous_target" ]; then
-    continue
+backups_dir={env['DEPLOY_BACKUP_DIR']}
+current_target="$(readlink -f {env['DEPLOY_BASE_DIR']}/current 2>/dev/null || true)"
+previous_target="$(readlink -f {env['DEPLOY_BASE_DIR']}/previous 2>/dev/null || true)"
+
+echo "== release cleanup =="
+if [ -d "$releases_dir" ]; then
+  mapfile -t releases < <(find "$releases_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+  echo "before: ${{#releases[@]}}"
+  kept_releases=()
+  removed_releases=()
+  if [ "${{#releases[@]}}" -gt {keep} ]; then
+    delete_count=$(( ${{#releases[@]}} - {keep} ))
+    for ((i=0; i<delete_count; i++)); do
+      release="${{releases[$i]}}"
+      target="$releases_dir/$release"
+      target_real="$(readlink -f "$target" 2>/dev/null || true)"
+      if [ "$target_real" = "$current_target" ] || [ "$target_real" = "$previous_target" ]; then
+        kept_releases+=("$release")
+        continue
+      fi
+      rm -rf "$target"
+      removed_releases+=("$release")
+    done
   fi
-  rm -rf "$target"
-done
+  mapfile -t releases_after < <(find "$releases_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+  echo "after: ${{#releases_after[@]}}"
+  echo "kept:"
+  for release in "${{releases_after[@]}}"; do
+    echo "  - $release"
+  done
+  echo "removed:"
+  if [ "${{#removed_releases[@]}}" -eq 0 ]; then
+    echo "  - (none)"
+  else
+    for release in "${{removed_releases[@]}}"; do
+      echo "  - $release"
+    done
+  fi
+else
+  echo "before: 0"
+  echo "after: 0"
+  echo "kept:"
+  echo "  - (none)"
+  echo "removed:"
+  echo "  - (none)"
+fi
+
+echo ""
+echo "== backup cleanup =="
+if [ -d "$backups_dir" ]; then
+  mapfile -t backups < <(find "$backups_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+  echo "before: ${{#backups[@]}}"
+  removed_backups=()
+  if [ "${{#backups[@]}}" -gt {keep} ]; then
+    delete_count=$(( ${{#backups[@]}} - {keep} ))
+    for ((i=0; i<delete_count; i++)); do
+      backup="${{backups[$i]}}"
+      rm -rf "$backups_dir/$backup"
+      removed_backups+=("$backup")
+    done
+  fi
+  mapfile -t backups_after < <(find "$backups_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+  echo "after: ${{#backups_after[@]}}"
+  echo "kept:"
+  for backup in "${{backups_after[@]}}"; do
+    echo "  - $backup"
+  done
+  echo "removed:"
+  if [ "${{#removed_backups[@]}}" -eq 0 ]; then
+    echo "  - (none)"
+  else
+    for backup in "${{removed_backups[@]}}"; do
+      echo "  - $backup"
+    done
+  fi
+else
+  echo "before: 0"
+  echo "after: 0"
+  echo "kept:"
+  echo "  - (none)"
+  echo "removed:"
+  echo "  - (none)"
+fi
 """.strip(),
+        capture_output=True,
     )
+    if result.stdout:
+        print_cleanup_report(env, remote_text=result.stdout)
+    if result.stderr:
+        print(result.stderr, file=sys.stderr)
 
 
 def diagnose(env: dict[str, str]) -> None:

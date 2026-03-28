@@ -241,6 +241,18 @@ export function describeApiError(error: unknown, fallback = "Request failed") {
   return fallback;
 }
 
+export function describeApiErrorSummary(error: unknown, fallback = "Request failed") {
+  if (error instanceof ApiRequestError) {
+    return error.payload?.error?.trim() || error.payload?.debugMessage?.trim() || fallback;
+  }
+
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
+
+  return fallback;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = getRequestMethod(init);
   const authorization = getHeaderValue(init?.headers, "Authorization");
