@@ -260,7 +260,7 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         task_id,
         custom_field_values_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         entry.entryType,

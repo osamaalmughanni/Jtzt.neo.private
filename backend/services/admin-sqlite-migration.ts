@@ -104,6 +104,39 @@ function quoteIdentifier(value: string) {
   return `"${value.replace(/"/g, "\"\"")}"`;
 }
 
+const COLUMN_CONSTRAINT_KEYWORDS = new Set([
+  "CONSTRAINT",
+  "PRIMARY",
+  "NOT",
+  "NULL",
+  "UNIQUE",
+  "CHECK",
+  "DEFAULT",
+  "COLLATE",
+  "REFERENCES",
+  "GENERATED",
+  "AS",
+  "AUTOINCREMENT",
+  "ON",
+  "UPDATE",
+  "DELETE",
+]);
+
+function extractColumnType(rest: string) {
+  const tokens = rest.trim().match(/[^\s]+/g) ?? [];
+  const typeTokens: string[] = [];
+
+  for (const token of tokens) {
+    const normalized = token.toUpperCase();
+    if (typeTokens.length > 0 && COLUMN_CONSTRAINT_KEYWORDS.has(normalized)) {
+      break;
+    }
+    typeTokens.push(token);
+  }
+
+  return typeTokens.join(" ").trim() || "TEXT";
+}
+
 function getPackageColumns(table: MigrationTable) {
   return table.columns;
 }
@@ -226,11 +259,10 @@ function parseColumnsFromCreateTableSql(createTableSql: string) {
     }
 
     const rest = match.groups.rest.trim();
-    const typeMatch = rest.match(/^(?<type>[A-Za-z0-9_()]+(?:\s+[A-Za-z0-9_()]+)?)/);
     const normalizedRest = rest.toUpperCase();
     columns.push({
       name: match.groups.name,
-      type: typeMatch?.groups?.type?.trim() || "TEXT",
+      type: extractColumnType(rest),
       nullable: !normalizedRest.includes("NOT NULL"),
       primaryKey: normalizedRest.includes("PRIMARY KEY"),
     });
@@ -446,29 +478,6 @@ function buildOrderByClause(table: MigrationTable) {
   return preferredColumns.length > 0 ? ` ORDER BY ${preferredColumns.map((column) => quoteIdentifier(column)).join(", ")}` : "";
 }
 
-function rowMatchesParentSelection(
-  table: MigrationTable,
-  row: Record<string, unknown>,
-  selectedParentKeys: Map<string, Set<string>>,
-) {
-  const relevantForeignKeys = table.foreignKeys.filter((foreignKey) => selectedParentKeys.has(foreignKey.referencedTable));
-  if (relevantForeignKeys.length === 0) {
-    return true;
-  }
-
-  return relevantForeignKeys.every((foreignKey) => {
-    const selectedKeys = selectedParentKeys.get(foreignKey.referencedTable);
-    if (!selectedKeys) {
-      return true;
-    }
-    return selectedKeys.has(String(row[foreignKey.column] ?? ""));
-  });
-}
-
-function toKey(value: unknown) {
-  return value === null || value === undefined ? "" : String(value);
-}
-
 async function openSqlitePackageDatabase(filePath: string): Promise<BetterSqliteDatabase> {
   const { default: Database } = await import("better-sqlite3");
   const db = new Database(filePath, { readonly: true, fileMustExist: true });
@@ -476,13 +485,13 @@ async function openSqlitePackageDatabase(filePath: string): Promise<BetterSqlite
   return db as unknown as BetterSqliteDatabase;
 }
 
-async function createInMemoryPackageDatabase(): Promise<BetterSqliteDatabase> {
+async function createInMemoryPackageDatabase(tables: MigrationTable[]): Promise<BetterSqliteDatabase> {
   const { default: Database } = await import("better-sqlite3");
   const db = new Database(":memory:");
   db.pragma("foreign_keys = ON");
   db.pragma("journal_mode = MEMORY");
   db.pragma("synchronous = OFF");
-  db.exec(companySchema);
+  db.exec(buildPackageSchemaSql(tables));
   db.exec(buildPackageMetadataTableSql());
   return db as unknown as BetterSqliteDatabase;
 }
@@ -519,24 +528,15 @@ async function readUploadedPackage(file: File) {
   }
 }
 
-function loadMigrationTables() {
-  return buildIncludedTableOrder(parseTablesFromSchemaSql(companySchema));
+async function loadMigrationTables(db: AppDatabase) {
+  return buildIncludedTableOrder(await readTablesFromDatabase(db));
 }
 
-async function exportTableRows(db: AppDatabase, table: MigrationTable, selectedParentKeys: Map<string, Set<string>>) {
+async function exportTableRows(db: AppDatabase, table: MigrationTable) {
   const columnNames = getPackageColumns(table).map((column) => column.name);
   const sql = `SELECT ${columnNames.map(quoteIdentifier).join(", ")} FROM ${quoteIdentifier(table.name)}${buildOrderByClause(table)}`;
   const rows = await db.all<Record<string, unknown>>(sql, []);
-  const filteredRows = rows.filter((row) => rowMatchesParentSelection(table, row, selectedParentKeys));
-
-  if (table.primaryKeyColumns.length === 1) {
-    selectedParentKeys.set(
-      table.name,
-      new Set(filteredRows.map((row) => toKey(row[table.primaryKeyColumns[0]]))),
-    );
-  }
-
-  return filteredRows;
+  return rows;
 }
 
 async function clearImportedTables(db: AppDatabase, orderedTables: MigrationTable[]) {
@@ -1078,7 +1078,7 @@ async function buildImportReport(
 
   let validationDb: BetterSqliteDatabase;
   try {
-    validationDb = await createInMemoryPackageDatabase();
+    validationDb = await createInMemoryPackageDatabase(orderedTables);
   } catch (error) {
     report.errors.push(createImportProblem({
       severity: "error",
@@ -1187,11 +1187,11 @@ export const adminSqliteMigrationService = {
       throw new HTTPException(404, { message: "Company not found" });
     }
 
-    const orderedTables = loadMigrationTables();
+    const orderedTables = await loadMigrationTables(companyDb);
     const schemaDocument = buildPackageSchemaDocument(orderedTables);
     const schemaJson = JSON.stringify(schemaDocument);
     const sourceSchemaHash = buildSchemaHash(schemaDocument);
-    const packageDb = await createInMemoryPackageDatabase();
+    const packageDb = await createInMemoryPackageDatabase(orderedTables);
 
     packageDb.prepare(
       `INSERT INTO ${quoteIdentifier(MIGRATION_METADATA_TABLE)} (
@@ -1225,9 +1225,8 @@ export const adminSqliteMigrationService = {
       company.created_at,
     );
 
-    const selectedParentKeys = new Map<string, Set<string>>();
     for (const table of orderedTables) {
-      const rows = await exportTableRows(companyDb, table, selectedParentKeys);
+      const rows = await exportTableRows(companyDb, table);
       if (rows.length === 0) {
         continue;
       }
@@ -1262,7 +1261,7 @@ export const adminSqliteMigrationService = {
     input: { file: File; name?: string },
     companyId = crypto.randomUUID(),
   ) {
-    const orderedTables = loadMigrationTables();
+    const orderedTables = await loadMigrationTables(companyDb);
     const schemaDocument = buildPackageSchemaDocument(orderedTables);
     const expectedHash = buildSchemaHash(schemaDocument);
     const companyName = input.name?.trim() || null;
@@ -1335,7 +1334,7 @@ export const adminSqliteMigrationService = {
 
       try {
         await runInTransaction(companyDb, async () => {
-          const liveOrderedTables = loadMigrationTables();
+          const liveOrderedTables = await loadMigrationTables(companyDb);
           await clearImportedTables(companyDb, liveOrderedTables);
           await validatePackageDatabaseSchema(packageDb, liveOrderedTables);
           await importTableData(companyDb, liveOrderedTables, packageDb);
@@ -1396,7 +1395,7 @@ export const adminSqliteMigrationService = {
       throw new HTTPException(404, { message: "Company not found" });
     }
 
-    const orderedTables = loadMigrationTables();
+    const orderedTables = await loadMigrationTables(companyDb);
     const schemaDocument = buildPackageSchemaDocument(orderedTables);
     const expectedHash = buildSchemaHash(schemaDocument);
     const reportBase = buildEmptyImportReport(expectedHash, input.companyName?.trim() || company.name);
@@ -1440,7 +1439,7 @@ export const adminSqliteMigrationService = {
       }
 
       await runInTransaction(companyDb, async () => {
-        const liveOrderedTables = loadMigrationTables();
+        const liveOrderedTables = await loadMigrationTables(companyDb);
         await clearImportedTables(companyDb, liveOrderedTables);
         await validatePackageDatabaseSchema(packageDb, liveOrderedTables);
         await importTableData(companyDb, liveOrderedTables, packageDb);
