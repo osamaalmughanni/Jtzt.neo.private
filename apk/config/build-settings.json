@@ -1,0 +1,21 @@
+{
+  "applicationId": "com.jtzt.app",
+  "androidSdkRoot": "C:\\Users\\osama\\AppData\\Local\\Android\\Sdk",
+  "buildToolsVersion": "35.0.1",
+  "keyPassword": "changeit123",
+  "keystoreAlias": "android",
+  "keystorePassword": "changeit123",
+  "javaHome": "C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.18.8-hotspot",
+  "manifestUrl": "https://app.jtzt.com/manifest.webmanifest",
+  "fallbackType": "webview",
+  "kioskShortcutIcon": "ic_notification_icon",
+  "kioskShortcutPath": "/native/exit",
+  "kioskShortcutShortName": "Exit",
+  "kioskShortcutTitle": "Exit kiosk",
+  "packageName": "com.jtzt.app",
+  "projectName": "Jtzt",
+  "releaseFileName": "Jtzt.apk",
+  "releaseOutputDir": "release",
+  "siteUrl": "https://app.jtzt.com/",
+  "twaProjectDir": "twa"
+}

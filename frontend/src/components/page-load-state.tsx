@@ -2,15 +2,12 @@ import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { useAppHeaderState } from "@/components/app-header-state";
 import { Stack } from "@/components/stack";
-import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 export function AppRouteLoadingState() {
   return (
-    <div className="flex min-h-dvh w-full bg-background">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 px-5 py-6 sm:px-8">
-        <PageLoadingState className="flex-1" />
-      </div>
+    <div className="flex min-h-dvh w-full items-center justify-center bg-black">
+      <PageLoadingState className="flex-1 bg-black" />
     </div>
   );
 }
@@ -25,8 +22,15 @@ export function PageLoadingState({
   minHeightClassName?: string;
 }) {
   return (
-    <div className={cn("flex w-full flex-1 items-center justify-center", minHeightClassName, className)}>
-      <Spinner className="size-7" />
+    <div className={cn("flex w-full flex-1 flex-col items-center justify-center gap-5 bg-black", minHeightClassName, className)}>
+      <img
+        alt="Jtzt"
+        aria-hidden="true"
+        className="h-auto w-32 select-none opacity-100"
+        draggable={false}
+        src="/logo.svg"
+      />
+      {label ? <p className="text-sm tracking-wide text-white/70">{label}</p> : null}
     </div>
   );
 }

@@ -1,0 +1,39 @@
+package com.jtzt.app;
+
+import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+
+public class LauncherActivity extends Activity {
+    private static final String KIOSK_EXIT_HOST = "app.jtzt.com";
+    private static final String KIOSK_EXIT_PATH = "/native/exit";
+
+    private boolean isKioskExitRequest() {
+        Uri data = getIntent() == null ? null : getIntent().getData();
+        return data != null
+                && "https".equals(data.getScheme())
+                && KIOSK_EXIT_HOST.equals(data.getHost())
+                && KIOSK_EXIT_PATH.equals(data.getPath());
+    }
+
+    private boolean isHomeLaunch() {
+        Intent intent = getIntent();
+        return intent != null
+                && Intent.ACTION_MAIN.equals(intent.getAction())
+                && intent.hasCategory(Intent.CATEGORY_HOME);
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        if (isKioskExitRequest() || (isHomeLaunch() && SessionStore.hasKioskStarted(this))) {
+            startActivity(new Intent(this, KioskControllerActivity.class));
+            finish();
+            return;
+        }
+
+        startActivity(new Intent(this, KioskWebViewActivity.class));
+        finish();
+    }
+}

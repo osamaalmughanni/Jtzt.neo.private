@@ -6,8 +6,8 @@ import type { CompanyCustomField, CompanySettings, CompanyCustomFieldTarget, Tim
 import type { UserContractInput } from "@shared/types/api";
 import type { ContractWeekday, UserContractScheduleBlock, UserContractScheduleDay, UserRole } from "@shared/types/models";
 import { PencilSimple, Plus, Trash } from "phosphor-react";
+import { CustomFieldField } from "@/components/custom-field-field";
 import { FormActions, FormFields, FormPage, FormPanel, FormSection, Field, FieldCombobox } from "@/components/form-layout";
-import { CustomFieldInput } from "@/components/custom-field-input";
 import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageBackAction } from "@/components/page-back-action";
@@ -1108,15 +1108,14 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
                 </div>
                 <FormFields className="flex flex-col gap-4">
                   {userCustomFields.map((field) => (
-                    <Field key={field.id} label={field.label}>
-                      <CustomFieldInput
-                        field={field}
-                        value={form.customFieldValues[field.id]}
-                        locale={settingsLocale}
-                        onValueChange={(value) => setCustomFieldValue(field.id, value)}
-                        booleanLabels={{ yes: t("recordEditor.yes"), no: t("recordEditor.no") }}
-                      />
-                    </Field>
+                    <CustomFieldField
+                      key={field.id}
+                      field={field}
+                      value={form.customFieldValues[field.id]}
+                      locale={settingsLocale}
+                      onValueChange={(value) => setCustomFieldValue(field.id, value)}
+                      booleanLabels={{ yes: t("recordEditor.yes"), no: t("recordEditor.no") }}
+                    />
                   ))}
                 </FormFields>
               </FormSection>

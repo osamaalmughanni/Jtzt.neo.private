@@ -7,10 +7,11 @@ import { PageLabel } from "@/components/page-label";
 import { PublicShell } from "@/components/public-shell";
 import { Stack } from "@/components/stack";
 import { Button } from "@/components/ui/button";
-import { learnPage } from "@/lib/learn-page";
+import { getLearnPage } from "@/lib/learn-page";
 
 export function LearnPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const learnPage = getLearnPage(i18n.language);
   const companyFacts = [t("learn.fact1"), t("learn.fact2"), t("learn.fact3")];
 
   return (

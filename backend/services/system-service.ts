@@ -6,7 +6,7 @@ import type { DeveloperAccessTokenRecord } from "../../shared/types/models";
 import { signWorkspaceKeyToken, verifyWorkspaceKeyToken } from "../auth/jwt";
 
 function normalizeTabletCode(code: string) {
-  return code.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  return code.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
 }
 
 function hashTabletCode(code: string) {
@@ -14,15 +14,13 @@ function hashTabletCode(code: string) {
 }
 
 function formatTabletCode(code: string) {
-  const normalized = normalizeTabletCode(code);
-  const chunks = normalized.match(/.{1,4}/g) ?? [normalized];
-  return chunks.join("-");
+  return normalizeTabletCode(code);
 }
 
 function generateTabletCodeValue() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
   let value = "";
-  for (let index = 0; index < 12; index += 1) {
+  for (let index = 0; index < 8; index += 1) {
     value += alphabet[crypto.randomInt(0, alphabet.length)];
   }
   return formatTabletCode(value);
@@ -106,7 +104,7 @@ export const systemService = {
 
     return {
       configured: Boolean(row.tablet_code_hash),
-      code: row.tablet_code_value ?? null,
+      code: row.tablet_code_value ? normalizeTabletCode(row.tablet_code_value) : null,
       updatedAt: row.tablet_code_updated_at ?? null
     };
   },

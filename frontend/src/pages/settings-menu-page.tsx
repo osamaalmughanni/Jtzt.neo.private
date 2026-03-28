@@ -538,7 +538,7 @@ export function SettingsMenuPage() {
                 <Input
                   disabled
                   value={tabletCodeStatus.code ?? "-"}
-                  className="h-9 min-w-0 flex-1 font-mono tracking-[0.2em]"
+                  className="h-9 min-w-0 flex-1 font-mono lowercase tracking-[0.08em]"
                 />
                 <Button
                   type="button"

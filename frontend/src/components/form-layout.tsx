@@ -24,10 +24,27 @@ export function FieldLabel({ children }: { children: ReactNode }) {
   return <span className="text-sm font-medium text-foreground">{children}</span>;
 }
 
-export function Field({ label, children, className }: { label: ReactNode; children: ReactNode; className?: string }) {
+export function FieldDescription({ children, className }: { children: ReactNode; className?: string }) {
+  return <p className={cn("text-xs leading-5 text-muted-foreground", className)}>{children}</p>;
+}
+
+export function Field({
+  label,
+  description,
+  children,
+  className,
+}: {
+  label: ReactNode;
+  description?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <label className={cn("flex flex-col gap-2", className)}>
-      <FieldLabel>{label}</FieldLabel>
+      <div className="flex flex-col gap-0.5">
+        <FieldLabel>{label}</FieldLabel>
+        {description ? <FieldDescription>{description}</FieldDescription> : null}
+      </div>
       {children}
     </label>
   );

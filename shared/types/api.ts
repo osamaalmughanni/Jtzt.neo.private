@@ -137,6 +137,12 @@ export interface DashboardResponse {
   summary: DashboardSummary;
 }
 
+export interface AppHealthResponse {
+  ok: boolean;
+  env: string;
+  version: string;
+}
+
 export interface UserListResponse {
   users: CompanyUserListItem[];
 }

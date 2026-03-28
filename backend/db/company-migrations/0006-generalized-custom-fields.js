@@ -71,6 +71,7 @@ function normalizeCustomFields(customFields) {
   return customFields.map((field) => {
     const id = typeof field?.id === "string" && field.id.trim().length > 0 ? field.id.trim() : crypto.randomUUID();
     const label = typeof field?.label === "string" ? field.label.trim() : "";
+    const description = typeof field?.description === "string" ? field.description.trim() || null : null;
     const type = field?.type === "number" || field?.type === "date" || field?.type === "boolean" || field?.type === "select" ? field.type : "text";
     const required = Boolean(field?.required);
     const placeholder = typeof field?.placeholder === "string" ? field.placeholder.trim() || null : null;
@@ -85,6 +86,7 @@ function normalizeCustomFields(customFields) {
     return {
       id,
       label,
+      description,
       type,
       targets: normalizeTargets(field?.targets),
       required,

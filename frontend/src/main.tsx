@@ -9,6 +9,7 @@ import { CompanySettingsProvider } from "./lib/company-settings";
 import "./lib/i18n";
 import { ThemeProvider } from "./lib/theme";
 import { Toaster } from "./components/ui/sonner";
+import { AppVersionSync } from "./components/app-version-sync";
 import "./styles/index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -18,6 +19,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <AuthProvider>
           <CompanySettingsProvider>
             <SeoManager />
+            <AppVersionSync />
             <GlobalFormBehavior />
             <App />
             <Toaster />

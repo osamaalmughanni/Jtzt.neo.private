@@ -26,9 +26,11 @@ import {
 import { buildCustomFieldValueLabelLookup, getCustomFieldsForTarget, resolveCustomFieldValueLabel } from "@shared/utils/custom-fields";
 import { formatMinutes } from "@shared/utils/time";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
-import { CustomFieldInput } from "@/components/custom-field-input";
+import { CustomFieldField } from "@/components/custom-field-field";
+import { DockActionButton, DockActionStack } from "@/components/dock-action-stack";
 import {
   Field,
+  FormFields,
   FormPage,
   FormSection,
 } from "@/components/form-layout";
@@ -458,8 +460,12 @@ export function DashboardPage() {
   const selectedTabletProjectId = tabletPunchProjectId ? Number(tabletPunchProjectId) : null;
   const selectedTabletProject = availableProjects.find((project) => project.id === selectedTabletProjectId) ?? null;
   const availableTabletTasks = useMemo(() => {
-    if (!selectedTabletProject) {
+    if (!settings.tasksEnabled) {
       return [];
+    }
+
+    if (!selectedTabletProject) {
+      return (projectData?.tasks ?? []).filter((task) => task.isActive);
     }
 
     if (selectedTabletProject.allowAllTasks) {
@@ -469,7 +475,7 @@ export function DashboardPage() {
     const taskAssignments = projectTasksByProject.get(selectedTabletProject.id) ?? [];
     const allowedTaskIds = new Set(taskAssignments.map((assignment) => assignment.taskId));
     return (projectData?.tasks ?? []).filter((task) => task.isActive && allowedTaskIds.has(task.id));
-  }, [projectData?.tasks, projectTasksByProject, selectedTabletProject]);
+  }, [projectData?.tasks, projectTasksByProject, selectedTabletProject, settings.tasksEnabled]);
   const tabletProjectOptions = useMemo(
     () => availableProjects.map((project) => ({
       value: String(project.id),
@@ -774,18 +780,31 @@ export function DashboardPage() {
     value: String(user.id),
     label: user.fullName,
   }));
+  const tabletPunchProjectReady = !settings.projectsEnabled || tabletPunchProjectId.trim().length > 0;
+  const tabletPunchTaskReady = !settings.tasksEnabled || tabletPunchTaskId.trim().length > 0;
+  const tabletPunchCustomFieldsReady = requiredTabletWorkFields.every((field) => {
+    const currentValue = tabletPunchValues[field.id];
+    if (field.type === "boolean") {
+      return typeof currentValue === "boolean";
+    }
+
+    return typeof currentValue === "string"
+      ? currentValue.trim().length > 0
+      : typeof currentValue === "number";
+  });
+  const canStartTabletPunch = canUseTabletPunch && tabletPunchProjectReady && tabletPunchTaskReady && tabletPunchCustomFieldsReady;
 
   if (isTabletMode && tabletPunchSetupOpen) {
     return (
       <FormPage className="min-h-0 flex-none">
-        <div className="flex flex-1 flex-col gap-5">
+        <FormSection>
           <PageLabel
-            title={t("dashboard.requiredWorkFieldsTitle")}
-            description={t("dashboard.requiredWorkFieldsDescription")}
+            title={t("dashboard.startWork")}
+            description={t("dashboard.startWorkDescription", { defaultValue: "Fill the required fields to start a timer." })}
           />
-          <div className="flex flex-col gap-4">
+          <FormFields>
             {settings.projectsEnabled ? (
-              <Field label={t("dashboard.project")}>
+              <Field label={t("recordEditor.project", { defaultValue: "Project" })}>
                 <Combobox
                   value={tabletPunchProjectId}
                   onValueChange={(value) => {
@@ -793,66 +812,78 @@ export function DashboardPage() {
                     setTabletPunchTaskId("");
                   }}
                   options={tabletProjectOptions}
-                  placeholder={t("dashboard.projectPlaceholder")}
-                  searchPlaceholder={t("dashboard.projectSearchPlaceholder")}
-                  emptyText={t("dashboard.noProjects")}
+                  placeholder={t("dashboard.selectProject", { defaultValue: "Select project" })}
+                  searchPlaceholder={t("dashboard.searchProject", { defaultValue: "Search project" })}
+                  emptyText={t("dashboard.noProjects", { defaultValue: "No projects found" })}
                   searchable
                 />
               </Field>
             ) : null}
             {settings.tasksEnabled ? (
-              <Field label={t("dashboard.task")}>
+              <Field label={t("recordEditor.task", { defaultValue: "Task" })}>
                 <Combobox
                   value={tabletPunchTaskId}
                   onValueChange={setTabletPunchTaskId}
                   options={tabletTaskOptions}
-                  placeholder={tabletPunchProjectId ? t("dashboard.taskPlaceholder") : t("dashboard.selectProjectFirst")}
-                  searchPlaceholder={t("dashboard.taskSearchPlaceholder")}
-                  emptyText={tabletPunchProjectId ? t("dashboard.noTasks") : t("dashboard.selectProjectFirst")}
+                  placeholder={t("recordEditor.taskPlaceholder", { defaultValue: "Select task" })}
+                  searchPlaceholder={t("recordEditor.taskSearchPlaceholder", { defaultValue: "Search task" })}
+                  emptyText={t("recordEditor.noTasks", { defaultValue: "No tasks found" })}
                   searchable
-                  disabled={!tabletPunchProjectId}
                 />
               </Field>
             ) : null}
             {requiredTabletWorkFields.map((field) => (
-              <Field key={field.id} label={field.label}>
-                <CustomFieldInput
-                  field={field}
-                  value={tabletPunchValues[field.id]}
-                  locale={settings.locale}
-                  onValueChange={(value) => setTabletPunchFieldValue(field, value)}
-                  booleanLabels={{ yes: t("recordEditor.yes"), no: t("recordEditor.no") }}
-                />
-              </Field>
+              <CustomFieldField
+                key={field.id}
+                field={field}
+                value={tabletPunchValues[field.id]}
+                locale={settings.locale}
+                onValueChange={(value) => setTabletPunchFieldValue(field, value)}
+                booleanLabels={{ yes: t("settings.enabled"), no: t("settings.disabled") }}
+              />
             ))}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setTabletPunchSetupOpen(false);
-                setTabletPunchValues({});
-                setTabletPunchProjectId("");
-                setTabletPunchTaskId("");
-              }}
-              type="button"
-              disabled={tabletPunchSubmitting}
-            >
-              {t("common.cancel")}
-            </Button>
-            <Button
-              onClick={() => void startTabletTimer({
-                customFieldValues: tabletPunchValues,
-                projectId: tabletPunchProjectId ? Number(tabletPunchProjectId) : null,
-                taskId: tabletPunchTaskId ? Number(tabletPunchTaskId) : null,
-              })}
-              type="button"
-              disabled={tabletPunchSubmitting || (settings.projectsEnabled && !tabletPunchProjectId) || (settings.tasksEnabled && !tabletPunchTaskId)}
-            >
-              {tabletPunchSubmitting ? t("common.loading") : t("dashboard.startWork")}
-            </Button>
-          </div>
-        </div>
+          </FormFields>
+        </FormSection>
+        <PageDock>
+          <DockActionStack
+            primary={(
+              <Button
+                className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-[background-color,color,transform,opacity] duration-200 ease-out hover:opacity-95 active:scale-95"
+                size="icon"
+                type="button"
+                disabled={!canStartTabletPunch || tabletPunchSubmitting}
+                onClick={() => void startTabletTimer({
+                  customFieldValues: tabletPunchValues,
+                  projectId: tabletPunchProjectId ? Number(tabletPunchProjectId) : null,
+                  taskId: tabletPunchTaskId ? Number(tabletPunchTaskId) : null,
+                })}
+                aria-label={t("dashboard.startWork")}
+              >
+                <span className="relative block h-8 w-8">
+                  <Play
+                    size={30}
+                    weight="fill"
+                    className="absolute inset-0 m-auto opacity-100 transition-opacity duration-300 ease-out"
+                  />
+                </span>
+              </Button>
+            )}
+            secondary={
+              <DockActionButton
+                onClick={() => {
+                  setTabletPunchSetupOpen(false);
+                  setTabletPunchValues({});
+                  setTabletPunchProjectId("");
+                  setTabletPunchTaskId("");
+                }}
+                type="button"
+                disabled={tabletPunchSubmitting}
+              >
+                {t("common.cancel")}
+              </DockActionButton>
+            }
+          />
+        </PageDock>
       </FormPage>
     );
   }
@@ -860,8 +891,8 @@ export function DashboardPage() {
   return (
     <FormPage className="min-h-0 flex-none">
       <PageDock>
-        <div className="flex min-h-[5rem] flex-col items-center justify-center gap-2">
-          {dashboardResource.isLoading ? null : isTabletMode ? (
+        <DockActionStack
+          primary={dashboardResource.isLoading ? null : isTabletMode ? (
             <>
               {dockShowsStop || dockShowsPlay ? (
                 <Button
@@ -918,16 +949,6 @@ export function DashboardPage() {
                   <Plus size={30} weight="bold" />
                 </Button>
               )}
-              {dockShowsPlay && canAddRecordButton ? (
-                <Button
-                  asChild
-                  variant="ghost"
-                  className="h-9 px-4 text-xs font-medium"
-                  onPointerDown={triggerHapticFeedback}
-                >
-                  <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
-                </Button>
-              ) : null}
             </>
           ) : canAddRecordButton ? (
             <Button
@@ -952,14 +973,17 @@ export function DashboardPage() {
               <Plus size={30} weight="bold" />
             </Button>
           )}
-          {!dashboardResource.isLoading && createRecordMessage ? (
-            <div className="flex w-full flex-col items-center gap-2 text-center">
-              <p className="text-center text-xs leading-5 text-muted-foreground">
-                {createRecordMessage}
-              </p>
-            </div>
+          secondary={!dashboardResource.isLoading && isTabletMode && dockShowsPlay && canAddRecordButton ? (
+            <DockActionButton asChild onPointerDown={triggerHapticFeedback}>
+              <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
+            </DockActionButton>
           ) : null}
-        </div>
+          message={!dashboardResource.isLoading && createRecordMessage ? (
+            <p className="text-center text-xs leading-5 text-muted-foreground">
+              {createRecordMessage}
+            </p>
+          ) : null}
+        />
       </PageDock>
       <AppConfirmDialog
         open={pendingDeleteEntry !== null}

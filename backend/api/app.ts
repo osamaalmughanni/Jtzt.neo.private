@@ -40,6 +40,18 @@ function getFrontendPath(requestPath: string) {
   return path.join(FRONTEND_ROOT, normalized);
 }
 
+function getFrontendCacheControl(requestPath: string) {
+  if (requestPath === "/" || requestPath.endsWith(".html")) {
+    return "no-store, max-age=0";
+  }
+
+  if (requestPath.startsWith("/assets/")) {
+    return "public, max-age=31536000, immutable";
+  }
+
+  return "public, max-age=0, must-revalidate";
+}
+
 async function readFrontendResponse(requestPath: string) {
   const assetPath = getFrontendPath(requestPath);
   try {
@@ -99,13 +111,73 @@ export function createApp(config: RuntimeConfig) {
       ok: true,
       env: config.appEnv,
       version: config.appVersion
+    }, 200, {
+      "Cache-Control": "no-store, max-age=0",
+      "X-App-Version": config.appVersion,
+    });
+  });
+
+  app.get("/api/app/version/stream", (c) => {
+    const config = c.get("config");
+    const encoder = new TextEncoder();
+    let closed = false;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const write = (chunk: string) => {
+          if (closed) {
+            return;
+          }
+          controller.enqueue(encoder.encode(chunk));
+        };
+
+        write(`event: version\ndata: ${JSON.stringify({ version: config.appVersion })}\n\n`);
+        heartbeatTimer = setInterval(() => {
+          write(`: keep-alive\n\n`);
+        }, 30000);
+
+        const handleAbort = () => {
+          if (closed) {
+            return;
+          }
+          closed = true;
+          if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+          }
+          controller.close();
+        };
+
+        c.req.raw.signal.addEventListener("abort", handleAbort, { once: true });
+      },
+      cancel() {
+        closed = true;
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+        "X-App-Version": config.appVersion,
+      },
     });
   });
 
   app.get("/", async (c) => {
     const body = await readFrontendResponse("/");
     const contentType = MIME_TYPES[".html"];
-    return c.body(body, 200, { "Content-Type": contentType });
+    return c.body(body, 200, {
+      "Content-Type": contentType,
+      "Cache-Control": getFrontendCacheControl("/"),
+    });
   });
 
   app.get("/*", async (c) => {
@@ -127,14 +199,20 @@ export function createApp(config: RuntimeConfig) {
       if (stat.isFile()) {
         const ext = path.extname(requestedFile).toLowerCase();
         const body = await fs.readFile(requestedFile);
-        return c.body(body, 200, { "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream" });
+        return c.body(body, 200, {
+          "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream",
+          "Cache-Control": getFrontendCacheControl(c.req.path),
+        });
       }
     } catch {
       // fall through to SPA shell
     }
 
     const body = await readFrontendResponse("/index.html");
-    return c.body(body, 200, { "Content-Type": MIME_TYPES[".html"] });
+    return c.body(body, 200, {
+      "Content-Type": MIME_TYPES[".html"],
+      "Cache-Control": getFrontendCacheControl("/index.html"),
+    });
   });
 
   app.notFound((c) => {

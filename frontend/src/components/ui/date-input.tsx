@@ -311,7 +311,7 @@ export const DateInput = forwardRef<
           ref={popupRef}
           role="dialog"
           aria-label={t("calendar.selectDate")}
-          className="absolute left-0 top-full z-50 mt-2 w-full min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-soft"
+          className="absolute right-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-soft"
           onMouseDown={(event) => event.stopPropagation()}
         >
           <div className="max-h-[min(30rem,calc(100vh-12rem))] overflow-auto p-2 sm:p-3">

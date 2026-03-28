@@ -67,6 +67,7 @@ const updateSettingsSchema = z.object({
     z.object({
       id: z.string().min(1).max(100),
       label: z.string().min(1).max(100),
+      description: z.string().max(250).nullable().optional(),
       type: z.enum(["text", "number", "date", "boolean", "select"]),
       targets: z.array(customFieldTargetSchema).min(1),
       required: z.boolean(),
@@ -119,6 +120,7 @@ settingsRoutes.put("/", requireCompanyAdmin, async (c) => {
     ...body,
     customFields: body.customFields.map((field) => ({
       ...field,
+      description: field.description?.trim() || null,
       options: field.options.map((option) => ({
         ...option,
         value: option.value?.trim() || option.id,

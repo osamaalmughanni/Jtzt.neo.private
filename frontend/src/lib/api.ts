@@ -23,6 +23,7 @@ import type {
   DeleteProjectInput,
   CalculationListResponse,
   CalculationValidationResponse,
+  AppHealthResponse,
   DeleteTaskInput,
   DeleteInvitationCodeInput,
   DeleteCompanyInput,
@@ -64,6 +65,12 @@ import type {
 } from "@shared/types/api";
 import type { TimeEntryView } from "@shared/types/models";
 import { emitAuthInvalid } from "./auth-events";
+
+const DEV_API_BASE_URL = "http://localhost:3000";
+
+export function getApiUrl(path: string) {
+  return import.meta.env.DEV ? `${DEV_API_BASE_URL}${path}` : path;
+}
 
 export interface ApiErrorPayload {
   error?: string;
@@ -260,7 +267,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!headers.has("Content-Type") && init?.body != null && typeof init.body === "string") {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(path, {
+  const requestUrl = getApiUrl(path);
+  const response = await fetch(requestUrl, {
     ...init,
     headers
   });
@@ -281,6 +289,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getHealth() {
+    return request<AppHealthResponse>("/api/health", {
+      headers: { "Cache-Control": "no-cache" }
+    });
+  },
+
   companyLogin(input: CompanyLoginInput) {
     return request<LoginResponse>("/api/auth/login", {
       method: "POST",
@@ -688,17 +702,18 @@ export const api = {
     formData.set("name", input.name);
     formData.set("file", input.file);
 
-    const response = await fetch("/api/admin/companies/create/import", {
+    const path = "/api/admin/companies/create/import";
+    const response = await fetch(getApiUrl(path), {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData
     });
 
     if (!response.ok) {
-      throw await buildApiRequestError(response, "/api/admin/companies/create/import", "POST");
+      throw await buildApiRequestError(response, path, "POST");
     }
 
-    return parseJsonResponse<CompanyMigrationImportResponse>(response, "/api/admin/companies/create/import", "POST");
+    return parseJsonResponse<CompanyMigrationImportResponse>(response, path, "POST");
   },
 
   deleteCompany(token: string, input: DeleteCompanyInput) {
@@ -776,7 +791,7 @@ export const api = {
     formData.set("file", file);
 
     const path = `/api/admin/companies/${companyId}/import`;
-    const response = await fetch(path, {
+    const response = await fetch(getApiUrl(path), {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData

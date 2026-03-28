@@ -32,11 +32,14 @@ import { UsersPage } from "@/pages/users-page";
 import { UserEditorPage } from "@/pages/user-editor-page";
 
 function PublicEntryRoute() {
-  const { loading, adminSession, companySession } = useAuth();
+  const { loading, adminSession, companySession, tabletAccess } = useAuth();
   if (loading) return <AppRouteLoadingState />;
   if (adminSession) return <Navigate to="/admin" replace />;
   if (companySession) {
     return <Navigate to={companySession.accessMode === "tablet" ? "/dashboard" : "/menu"} replace />;
+  }
+  if (tabletAccess) {
+    return <Navigate to="/tablet/pin" replace />;
   }
   return <AuthAccessPage />;
 }

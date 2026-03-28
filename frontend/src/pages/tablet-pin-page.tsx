@@ -84,32 +84,6 @@ export function TabletPinPage() {
     return () => window.clearTimeout(timer);
   }, [errorState]);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    const body = document.body;
-    const hadDarkClass = root.classList.contains("dark");
-    const rootStyle = root.style.backgroundColor;
-    const bodyStyle = body.style.backgroundColor;
-    const bodyColor = body.style.color;
-    const colorScheme = root.style.colorScheme;
-
-    root.classList.add("dark");
-    root.style.backgroundColor = "hsl(var(--background))";
-    root.style.colorScheme = "dark";
-    body.style.backgroundColor = "hsl(var(--background))";
-    body.style.color = "hsl(var(--foreground))";
-
-    return () => {
-      if (!hadDarkClass) {
-        root.classList.remove("dark");
-      }
-      root.style.backgroundColor = rootStyle;
-      root.style.colorScheme = colorScheme;
-      body.style.backgroundColor = bodyStyle;
-      body.style.color = bodyColor;
-    };
-  }, []);
-
   if (!tabletAccess) {
     return <Navigate to="/?mode=tablet" replace />;
   }
@@ -199,7 +173,7 @@ export function TabletPinPage() {
           }}
         >
         <div className="flex w-full justify-center pt-1">
-          <Logo size={104} tone="dark" />
+          <Logo size={104} />
         </div>
 
         <div className="grid min-h-0 w-full place-items-center py-4 sm:py-4">

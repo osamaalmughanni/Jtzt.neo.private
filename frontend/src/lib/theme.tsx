@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { appStorage, THEME_KEY } from "@/lib/storage";
 
 type Theme = "light" | "dark";
 
@@ -8,15 +9,15 @@ interface ThemeContextValue {
   toggleTheme: () => void;
 }
 
-const THEME_STORAGE_KEY = "jtzt.theme";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle("dark", theme === "dark");
+  document.documentElement.style.colorScheme = theme;
 }
 
 function getInitialTheme(): Theme {
-  const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+  const storedTheme = appStorage.getTheme();
   if (storedTheme === "light" || storedTheme === "dark") {
     return storedTheme;
   }
@@ -27,10 +28,29 @@ function getInitialTheme(): Theme {
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => getInitialTheme());
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     applyTheme(theme);
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    appStorage.setTheme(theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.storageArea !== localStorage || event.key !== THEME_KEY) {
+        return;
+      }
+
+      const nextTheme = appStorage.getTheme();
+      if (nextTheme) {
+        setThemeState(nextTheme);
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   const value = useMemo<ThemeContextValue>(
     () => ({

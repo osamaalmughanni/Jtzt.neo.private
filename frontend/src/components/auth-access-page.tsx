@@ -74,8 +74,6 @@ export function AuthAccessPage() {
       workspaceTokenLabel: t("auth.workspaceTokenLabel"),
       workspaceTokenPlaceholder: t("auth.workspaceTokenPlaceholder"),
       tabletTab: t("auth.tabletTab"),
-      tabletCodeLabel: t("auth.tabletCodeLabel"),
-      tabletCodePlaceholder: t("auth.tabletCodePlaceholder"),
       continueToTablet: t("auth.continueToTablet"),
       tabletChecking: t("auth.tabletChecking"),
       tabletAccessFailed: t("auth.tabletAccessFailed"),
@@ -119,7 +117,7 @@ export function AuthAccessPage() {
   const tabletCode = tabletForm.watch("code");
 
   useEffect(() => {
-    const normalizedCode = tabletCode.trim();
+    const normalizedCode = tabletCode.trim().toLowerCase();
     if (normalizedCode.length < 2) {
       setTabletAccessPreview(null);
       return;
@@ -198,11 +196,12 @@ export function AuthAccessPage() {
 
   async function onTabletSubmit(values: TabletAccessValues) {
     try {
-      const response = await api.tabletAccess({ code: values.code });
+      const normalizedCode = values.code.trim().toLowerCase();
+      const response = await api.tabletAccess({ code: normalizedCode });
 
       setTabletAccess({
         companyName: response.companyName,
-        code: values.code,
+        code: normalizedCode,
       });
       navigate("/tablet/pin");
     } catch (error) {
@@ -287,7 +286,13 @@ export function AuthAccessPage() {
               <TabsContent value="tablet" className="mt-0">
                 <Form {...tabletForm}>
                   <form className="space-y-4" onSubmit={tabletForm.handleSubmit(onTabletSubmit)}>
-                    <AuthField control={tabletForm.control} name="code" label={copy.tabletCodeLabel} placeholder={copy.tabletCodePlaceholder} />
+                    <AuthField
+                      control={tabletForm.control}
+                      name="code"
+                      label={t("auth.tabletCodeLabel")}
+                      placeholder={t("auth.tabletCodePlaceholder")}
+                      forceLowercase
+                    />
                     {tabletAccessPreview ? (
                       <div className="border border-border bg-muted/20 p-4">
                         <p className="text-sm font-semibold text-foreground">{tabletAccessPreview.companyName}</p>
@@ -368,12 +373,16 @@ function AuthField({
   label,
   placeholder,
   type = "text",
+  inputClassName,
+  forceLowercase = false,
 }: {
   control: any;
   name: string;
   label: string;
   placeholder?: string;
   type?: "text" | "password";
+  inputClassName?: string;
+  forceLowercase?: boolean;
 }) {
   return (
     <FormField
@@ -383,7 +392,16 @@ function AuthField({
         <FormItem className="space-y-2">
           <FormLabel className="text-sm font-medium text-foreground">{label}</FormLabel>
           <FormControl>
-            <Input {...field} type={type} placeholder={placeholder} className={cn("h-11 border-border/70 bg-background shadow-none")} />
+            <Input
+              {...field}
+              type={type}
+              placeholder={placeholder}
+              className={cn("h-11 border-border/70 bg-background shadow-none", inputClassName)}
+              onChange={(event) => {
+                const nextValue = forceLowercase ? event.target.value.toLowerCase() : event.target.value;
+                field.onChange(nextValue);
+              }}
+            />
           </FormControl>
           <FormMessage />
         </FormItem>

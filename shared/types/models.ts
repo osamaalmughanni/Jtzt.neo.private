@@ -25,6 +25,7 @@ export interface CompanyCustomFieldTarget {
 export interface CompanyCustomField {
   id: string;
   label: string;
+  description: string | null;
   type: CompanyCustomFieldType;
   targets: CompanyCustomFieldTarget[];
   required: boolean;

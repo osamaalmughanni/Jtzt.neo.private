@@ -1,15 +1,18 @@
+import { useEffect, useMemo } from "react";
 import type { CompanyCustomField } from "@shared/types/models";
 import { normalizeCustomFieldValue } from "@shared/utils/custom-fields";
-import { FieldCombobox } from "@/components/form-layout";
+import { Button } from "@/components/ui/button";
 import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 interface CustomFieldInputProps {
   field: CompanyCustomField;
   value: string | number | boolean | undefined;
   locale: string;
   onValueChange: (value: string | number | boolean | undefined) => void;
+  density?: "default" | "compact";
   booleanLabels?: {
     yes: string;
     no: string;
@@ -44,7 +47,24 @@ function CustomBooleanFieldInput({
   );
 }
 
-export function CustomFieldInput({ field, value, locale, onValueChange, booleanLabels }: CustomFieldInputProps) {
+export function CustomFieldInput({ field, value, locale, onValueChange, density = "default", booleanLabels }: CustomFieldInputProps) {
+  const normalizedValue = useMemo(() => normalizeCustomFieldValue(field, value), [field, value]);
+
+  useEffect(() => {
+    if (field.type !== "select") {
+      return;
+    }
+
+    const firstOptionId = field.options[0]?.id;
+    if (!firstOptionId) {
+      return;
+    }
+
+    if (normalizedValue === undefined || normalizedValue === "") {
+      onValueChange(firstOptionId);
+    }
+  }, [field.options, field.type, normalizedValue, onValueChange]);
+
   if (field.type === "boolean") {
     return (
       <CustomBooleanFieldInput
@@ -56,18 +76,37 @@ export function CustomFieldInput({ field, value, locale, onValueChange, booleanL
   }
 
   if (field.type === "select") {
-    const normalizedValue = normalizeCustomFieldValue(field, value);
+    const selectedValue = typeof normalizedValue === "string"
+      ? normalizedValue
+      : field.options[0]?.id ?? "";
+
     return (
-      <FieldCombobox
-        label={field.label}
-        value={typeof normalizedValue === "string" ? normalizedValue : ""}
-        onValueChange={onValueChange}
-        items={field.options.map((option) => ({
-          value: option.id,
-          label: option.label,
-        }))}
-        placeholder={field.placeholder ?? field.label}
-      />
+      <div role="radiogroup" aria-label={field.label} className={cn("flex flex-wrap", density === "compact" ? "gap-1" : "gap-1.5")}>
+        {field.options.map((option) => {
+          const selected = selectedValue === option.id;
+          return (
+            <Button
+              key={option.id}
+              type="button"
+              variant={selected ? "default" : "outline"}
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onValueChange(option.id)}
+              className={cn(
+                "h-auto w-auto items-center justify-start rounded-full whitespace-nowrap leading-none",
+                density === "compact" ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm",
+                selected
+                  ? "border-foreground bg-foreground text-background hover:bg-foreground hover:opacity-90"
+                  : "border-border bg-card text-foreground hover:bg-muted"
+              )}
+            >
+              <span className="text-inherit font-medium leading-none">
+                {option.label}
+              </span>
+            </Button>
+          );
+        })}
+      </div>
     );
   }
 

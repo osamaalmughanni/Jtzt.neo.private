@@ -1,4 +1,5 @@
-import rawLearnPage from "../content/learn/jtzt.md?raw";
+import rawLearnPageEn from "../content/learn/jtzt.en.md?raw";
+import rawLearnPageDe from "../content/learn/jtzt.de.md?raw";
 
 export interface LearnPageContent {
   title: string;
@@ -33,4 +34,11 @@ function parseFrontmatter(raw: string): LearnPageContent {
   };
 }
 
-export const learnPage = parseFrontmatter(rawLearnPage);
+const learnPages = {
+  en: parseFrontmatter(rawLearnPageEn),
+  de: parseFrontmatter(rawLearnPageDe),
+} satisfies Record<"en" | "de", LearnPageContent>;
+
+export function getLearnPage(language: string) {
+  return language.startsWith("de") ? learnPages.de : learnPages.en;
+}

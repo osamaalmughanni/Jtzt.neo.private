@@ -1,7 +1,7 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { resources, type AppLanguage } from "@/lib/locales";
-import { appStorage } from "@/lib/storage";
+import { appStorage, LANGUAGE_KEY } from "@/lib/storage";
 const fallbackLanguage: AppLanguage = "en";
 
 function detectLanguage(): AppLanguage {
@@ -18,6 +18,10 @@ function detectLanguage(): AppLanguage {
   return fallbackLanguage;
 }
 
+function normalizeLanguage(language: string) {
+  return language.toLowerCase().startsWith("de") ? "de" : "en";
+}
+
 void i18n.use(initReactI18next).init({
   resources,
   lng: detectLanguage(),
@@ -28,12 +32,24 @@ void i18n.use(initReactI18next).init({
 });
 
 void i18n.on("languageChanged", (language) => {
-  if (language === "en" || language === "de") {
-    appStorage.setLanguage(language);
+  const normalizedLanguage = normalizeLanguage(language);
+  if (normalizedLanguage === "en" || normalizedLanguage === "de") {
+    appStorage.setLanguage(normalizedLanguage);
   }
-  document.documentElement.lang = language;
+  document.documentElement.lang = normalizedLanguage;
 });
 
-document.documentElement.lang = i18n.language;
+document.documentElement.lang = normalizeLanguage(i18n.language);
+
+window.addEventListener("storage", (event) => {
+  if (event.storageArea !== localStorage || event.key !== LANGUAGE_KEY) {
+    return;
+  }
+
+  const nextLanguage = appStorage.getLanguage();
+  if (nextLanguage === "en" || nextLanguage === "de") {
+    void i18n.changeLanguage(nextLanguage);
+  }
+});
 
 export { i18n };

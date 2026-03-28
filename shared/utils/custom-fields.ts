@@ -217,6 +217,7 @@ export function normalizeCustomField(field: CompanyCustomField): CompanyCustomFi
   return {
     id: typeof field.id === "string" && field.id.trim().length > 0 ? field.id.trim() : crypto.randomUUID(),
     label: typeof field.label === "string" ? field.label.trim() : "",
+    description: typeof field.description === "string" ? field.description.trim() || null : null,
     type: rawType,
     targets: normalizeCustomFieldTargets(field.targets),
     required: Boolean(field.required),

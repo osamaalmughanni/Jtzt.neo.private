@@ -51,6 +51,7 @@ data/*.sqlite3
 cloudflare/
 .cache/
 .temp/
+.gradle/
 __pycache__/
 tmp/
 temp/
@@ -71,3 +72,14 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Android / APK generated output
+apk/.android-home/
+apk/.generated-assets/
+apk/.home/
+apk/release/
+apk/twa/.gradle/
+apk/twa/build/
+apk/twa/app/build/
+apk/twa/android.keystore
+frontend/public/jtzt.apk

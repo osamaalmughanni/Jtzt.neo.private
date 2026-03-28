@@ -24,7 +24,7 @@ import {
 } from "@shared/utils/time";
 import { getCustomFieldsForTarget } from "@shared/utils/custom-fields";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
-import { CustomFieldInput } from "@/components/custom-field-input";
+import { CustomFieldField } from "@/components/custom-field-field";
 import { EntryTypeTabs } from "@/components/entry-type-tabs";
 import { LeaveStateBars } from "@/components/leave-state-bars";
 import { Field, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
@@ -856,15 +856,14 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
                 </Field>
               ) : null}
               {activeCustomFields.map((field) => (
-                <Field key={field.id} label={field.label}>
-                  <CustomFieldInput
-                    field={field}
-                    value={customFieldValues[field.id]}
-                    locale={settings.locale}
-                    onValueChange={(value) => setCustomFieldValue(field, value)}
-                    booleanLabels={{ yes: t("recordEditor.yes"), no: t("recordEditor.no") }}
-                  />
-                </Field>
+                <CustomFieldField
+                  key={field.id}
+                  field={field}
+                  value={customFieldValues[field.id]}
+                  locale={settings.locale}
+                  onValueChange={(value) => setCustomFieldValue(field, value)}
+                  booleanLabels={{ yes: t("recordEditor.yes"), no: t("recordEditor.no") }}
+                />
               ))}
               <Field label={t("recordEditor.notes")}>
                 <Textarea

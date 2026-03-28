@@ -56,6 +56,7 @@ function createField(): CompanyCustomField {
   return {
     id: crypto.randomUUID(),
     label: "",
+    description: null,
     type: "text",
     targets: [{ scope: "time_entry", entryTypes: ["work"] }],
     required: false,
@@ -76,6 +77,7 @@ function createOption(): CompanyCustomFieldOption {
 function cloneField(field: CompanyCustomField): CompanyCustomField {
   return {
     ...field,
+    description: field.description ?? null,
     targets: field.targets.map((target) =>
       target.scope === "time_entry"
         ? { scope: "time_entry" as const, entryTypes: [...(target.entryTypes ?? ["work"])] }
@@ -105,6 +107,11 @@ function FieldSummaryCard({
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">{field.label.trim() || t("fields.field", { index: index + 1 })}</p>
+          {field.description?.trim() ? (
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {field.description.trim()}
+            </p>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(index)} type="button" aria-label={t("fields.editField")}>
@@ -198,6 +205,13 @@ function FieldEditorSheet({
                     placeholder={t("fields.labelPlaceholder")}
                     value={field.label}
                     onChange={(event) => onFieldChange({ ...field, label: event.target.value })}
+                  />
+                </Field>
+                <Field label={t("fields.descriptionLabel")}>
+                  <Input
+                    placeholder={t("fields.descriptionPlaceholder")}
+                    value={field.description ?? ""}
+                    onChange={(event) => onFieldChange({ ...field, description: event.target.value || null })}
                   />
                 </Field>
                 <Field label={t("fields.type")}>
@@ -522,7 +536,7 @@ export function FieldsPage() {
   }
 
   function setFieldDraftValue(nextField: CompanyCustomField) {
-    setFieldDraft(normalizeCustomField(nextField));
+    setFieldDraft(nextField);
   }
 
   function toggleDraftTargetScope(scope: CustomFieldTargetScope) {

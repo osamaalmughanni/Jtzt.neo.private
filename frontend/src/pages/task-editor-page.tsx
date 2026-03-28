@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
+import { CustomFieldField } from "@/components/custom-field-field";
 import { Field, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
-import { CustomFieldInput } from "@/components/custom-field-input";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
@@ -191,15 +191,14 @@ export function TaskEditorPage({ mode }: { mode: "create" | "edit" }) {
               </div>
               <FormFields>
                 {taskCustomFields.map((field) => (
-                  <Field key={field.id} label={field.label}>
-                    <CustomFieldInput
-                      field={field}
-                      value={form.customFieldValues[field.id]}
-                      locale={resource.data?.settings.locale ?? "en-GB"}
-                      onValueChange={(value) => setCustomFieldValue(field.id, value)}
-                      booleanLabels={{ yes: t("settings.enabled"), no: t("settings.disabled") }}
-                    />
-                  </Field>
+                  <CustomFieldField
+                    key={field.id}
+                    field={field}
+                    value={form.customFieldValues[field.id]}
+                    locale={resource.data?.settings.locale ?? "en-GB"}
+                    onValueChange={(value) => setCustomFieldValue(field.id, value)}
+                    booleanLabels={{ yes: t("settings.enabled"), no: t("settings.disabled") }}
+                  />
                 ))}
               </FormFields>
             </FormSection>

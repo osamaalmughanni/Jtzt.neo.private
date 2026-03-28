@@ -585,6 +585,7 @@ def make_custom_field_definitions(field_rows: list[sqlite3.Row], option_rows: li
             {
                 "id": str(field_id),
                 "label": str(row["label"] or ""),
+                "description": None,
                 "type": "select" if options else "text",
                 "targets": targets,
                 "required": bool(row["required"]),

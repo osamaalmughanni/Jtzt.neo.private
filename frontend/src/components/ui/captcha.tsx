@@ -51,18 +51,18 @@ export function Captcha({
         </Button>
       </div>
 
-      <div className="relative mt-4 overflow-hidden rounded-xl border border-border bg-background px-4 py-5">
+      <div className="relative mt-4 rounded-xl border border-border bg-background px-4 py-6">
         <div className="absolute inset-0 opacity-70">
           <span className="absolute left-[8%] top-[24%] h-16 w-16 rounded-full bg-foreground/5 blur-2xl" />
           <span className="absolute right-[14%] top-[10%] h-14 w-14 rounded-full bg-foreground/5 blur-2xl" />
           <span className="absolute bottom-[8%] left-[28%] h-12 w-12 rounded-full bg-foreground/5 blur-2xl" />
         </div>
-        <div className="relative flex items-center justify-center gap-2 overflow-hidden select-none">
+        <div className="relative flex flex-wrap items-center justify-center gap-2 px-2 select-none">
           {challenge.split("").map((char, index) => (
             <span
               key={`${char}-${index}`}
               className={cn(
-                "inline-flex h-11 min-w-9 items-center justify-center rounded-lg border border-border/70 bg-card px-2 font-mono text-lg font-semibold text-foreground shadow-sm",
+                "inline-flex min-h-11 min-w-9 items-center justify-center rounded-lg border border-border/70 bg-card px-2 py-1 font-mono text-lg font-semibold text-foreground shadow-sm",
                 index % 2 === 0 ? "translate-y-[-1px]" : "translate-y-[1px]"
               )}
               style={{

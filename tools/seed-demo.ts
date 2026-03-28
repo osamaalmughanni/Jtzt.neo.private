@@ -195,38 +195,38 @@ function buildAustriaHolidays(year: number) {
 
 function buildCustomFields(): CompanyCustomField[] {
   return [
-    { id: "user_cost_center", label: "Kostenstelle", type: "select", targets: [{ scope: "user" }], required: true, placeholder: null, options: [
+    { id: "user_cost_center", label: "Kostenstelle", description: "Used for payroll and reporting.", type: "select", targets: [{ scope: "user" }], required: true, placeholder: null, options: [
       { id: "engineering", label: "Engineering", value: "engineering" },
       { id: "operations", label: "Operations", value: "operations" },
       { id: "sales", label: "Sales", value: "sales" },
       { id: "admin", label: "Admin", value: "admin" },
     ] },
-    { id: "user_work_model", label: "Arbeitsmodell", type: "select", targets: [{ scope: "user" }], required: false, placeholder: null, options: [
+    { id: "user_work_model", label: "Arbeitsmodell", description: "Primary work arrangement for the user.", type: "select", targets: [{ scope: "user" }], required: false, placeholder: null, options: [
       { id: "office", label: "Office", value: "office" },
       { id: "hybrid", label: "Hybrid", value: "hybrid" },
       { id: "remote", label: "Remote", value: "remote" },
     ] },
-    { id: "user_home_office", label: "Home Office", type: "boolean", targets: [{ scope: "user" }], required: false, placeholder: null, options: [] },
-    { id: "project_client", label: "Kunde", type: "text", targets: [{ scope: "project" }], required: false, placeholder: "ÖBB", options: [] },
-    { id: "project_billable", label: "Abrechenbar", type: "boolean", targets: [{ scope: "project" }], required: false, placeholder: null, options: [] },
-    { id: "task_category", label: "Kategorie", type: "select", targets: [{ scope: "task" }], required: false, placeholder: null, options: [
+    { id: "user_home_office", label: "Home Office", description: null, type: "boolean", targets: [{ scope: "user" }], required: false, placeholder: null, options: [] },
+    { id: "project_client", label: "Kunde", description: "Client or account name for the project.", type: "text", targets: [{ scope: "project" }], required: false, placeholder: "ÖBB", options: [] },
+    { id: "project_billable", label: "Abrechenbar", description: "Marks the project as billable for reporting.", type: "boolean", targets: [{ scope: "project" }], required: false, placeholder: null, options: [] },
+    { id: "task_category", label: "Kategorie", description: "High-level task bucket used in reports.", type: "select", targets: [{ scope: "task" }], required: false, placeholder: null, options: [
       { id: "delivery", label: "Delivery", value: "delivery" },
       { id: "support", label: "Support", value: "support" },
       { id: "internal", label: "Internal", value: "internal" },
       { id: "training", label: "Training", value: "training" },
     ] },
-    { id: "task_priority", label: "Priorität", type: "select", targets: [{ scope: "task" }], required: false, placeholder: null, options: [
+    { id: "task_priority", label: "Priorität", description: "Optional priority for sorting work.", type: "select", targets: [{ scope: "task" }], required: false, placeholder: null, options: [
       { id: "low", label: "Low", value: "low" },
       { id: "medium", label: "Medium", value: "medium" },
       { id: "high", label: "High", value: "high" },
     ] },
-    { id: "time_entry_shift_type", label: "Schicht", type: "select", targets: [{ scope: "time_entry", entryTypes: ["work"] }], required: false, placeholder: null, options: [
+    { id: "time_entry_shift_type", label: "Schicht", description: "Shift type for work entries.", type: "select", targets: [{ scope: "time_entry", entryTypes: ["work"] }], required: false, placeholder: null, options: [
       { id: "office", label: "Office", value: "office" },
       { id: "remote", label: "Remote", value: "remote" },
       { id: "travel", label: "Travel", value: "travel" },
       { id: "weekend", label: "Weekend", value: "weekend" },
     ] },
-    { id: "time_entry_overtime_reason", label: "Überstunden Grund", type: "select", targets: [{ scope: "time_entry", entryTypes: ["work"] }], required: false, placeholder: null, options: [
+    { id: "time_entry_overtime_reason", label: "Überstunden Grund", description: "Reason why overtime was recorded.", type: "select", targets: [{ scope: "time_entry", entryTypes: ["work"] }], required: false, placeholder: null, options: [
       { id: "deadline", label: "Deadline", value: "deadline" },
       { id: "peak_load", label: "Peak load", value: "peak_load" },
       { id: "holiday_coverage", label: "Holiday coverage", value: "holiday_coverage" },

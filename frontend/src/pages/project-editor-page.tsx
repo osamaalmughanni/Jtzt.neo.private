@@ -6,12 +6,12 @@ import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
+import { CustomFieldField } from "@/components/custom-field-field";
 import { Field, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { CustomFieldInput } from "@/components/custom-field-input";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -296,15 +296,14 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
               </div>
               <FormFields>
                 {projectCustomFields.map((field) => (
-                  <Field key={field.id} label={field.label}>
-                    <CustomFieldInput
-                      field={field}
-                      value={form.customFieldValues[field.id]}
-                      locale={resource.data?.settings.locale ?? "en-GB"}
-                      onValueChange={(value) => setCustomFieldValue(field.id, value)}
-                      booleanLabels={{ yes: t("settings.enabled"), no: t("settings.disabled") }}
-                    />
-                  </Field>
+                  <CustomFieldField
+                    key={field.id}
+                    field={field}
+                    value={form.customFieldValues[field.id]}
+                    locale={resource.data?.settings.locale ?? "en-GB"}
+                    onValueChange={(value) => setCustomFieldValue(field.id, value)}
+                    booleanLabels={{ yes: t("settings.enabled"), no: t("settings.disabled") }}
+                  />
                 ))}
               </FormFields>
             </FormSection>

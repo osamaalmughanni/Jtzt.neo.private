@@ -312,7 +312,7 @@ function ShellContent({
           className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-background via-background/95 via-20% to-transparent transition-opacity duration-300 ease-out ${isRouteChromePending || showBottomFade ? "opacity-100" : "opacity-0"}`}
         />
       </main>
-      {bottomBar ? <AppContentLane className="pt-3 pb-4">{bottomBar}</AppContentLane> : null}
+      {bottomBar ? <AppContentLane className="mb-4 pt-3 pb-4">{bottomBar}</AppContentLane> : null}
       <AppContentLane>
         <AppFooter context="app" actions={footerActions} />
       </AppContentLane>
