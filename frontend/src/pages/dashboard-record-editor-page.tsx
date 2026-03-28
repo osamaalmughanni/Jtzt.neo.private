@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { motion } from "framer-motion";
 import type {
   CompanyCustomField,
   CompanySettings,
@@ -80,7 +79,6 @@ const defaultSummary: DashboardSummary = {
   contractStats: {
     currentContract: null,
     totalBalanceMinutes: 0,
-    today: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     week: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     month: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     vacation: { entitledDays: 0, usedDays: 0, availableDays: 0 },
@@ -250,17 +248,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const [sickLeaveElapsedDays, setSickLeaveElapsedDays] = useState(0);
   const [rangeEntryConflict, setRangeEntryConflict] = useState({ hasWork: false, hasLeave: false });
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary>(defaultSummary);
-  const workProgress = useMemo(() => {
-    const expected = Math.max(0, dashboardSummary.contractStats.today.expectedMinutes);
-    const recorded = Math.max(0, dashboardSummary.contractStats.today.recordedMinutes);
-    const scale = Math.max(expected, recorded, 1);
-    return {
-      expected,
-      recorded,
-      progress: Math.min(recorded, expected) / scale,
-      overflow: recorded > expected ? (recorded - expected) / scale : 0,
-    };
-  }, [dashboardSummary.contractStats.today.expectedMinutes, dashboardSummary.contractStats.today.recordedMinutes]);
 
   const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
   const selectedDay = parseDayParam(searchParams.get("day"));
@@ -758,33 +745,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
           <FormSection>
             <EntryTypeTabs value={entryType} onValueChange={setEntryType} items={entryTypeTabs} />
           </FormSection>
-
-          {entryType === "work" ? (
-            <div className="flex flex-col gap-1">
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-[11px] font-medium text-foreground">{t("recordEditor.working")}</p>
-                <p className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                  {formatMinutes(workProgress.recorded)} / {formatMinutes(workProgress.expected)}
-                </p>
-              </div>
-              <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-emerald-500/10 dark:bg-emerald-400/10">
-                <motion.div
-                  className="absolute inset-y-0 left-0 rounded-full bg-emerald-500 dark:bg-emerald-400"
-                  initial={false}
-                  animate={{ width: `${workProgress.progress * 100}%` }}
-                  transition={{ duration: 0.28, ease: "easeOut" }}
-                />
-                {workProgress.overflow > 0 ? (
-                  <motion.div
-                    className="absolute inset-y-0 rounded-full bg-rose-500 dark:bg-rose-400"
-                    initial={false}
-                    animate={{ left: `${workProgress.progress * 100}%`, width: `${workProgress.overflow * 100}%` }}
-                    transition={{ duration: 0.28, ease: "easeOut" }}
-                  />
-                ) : null}
-              </div>
-            </div>
-          ) : null}
 
           <LeaveStateBars
             locale={settings.locale}

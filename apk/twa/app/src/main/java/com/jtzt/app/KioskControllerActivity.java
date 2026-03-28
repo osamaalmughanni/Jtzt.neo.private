@@ -5,12 +5,14 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -18,10 +20,13 @@ import android.widget.TextView;
 import com.jtzt.app.android.AndroidUiController;
 import com.jtzt.app.android.KioskModeController;
 
+import java.util.Locale;
+
 public class KioskControllerActivity extends Activity {
     private TextView deviceState;
     private TextView launcherStatus;
     private TextView lockdownHint;
+    private EditText textZoomInput;
     private Button adminButton;
     private Button adminSettingsButton;
     private Button dedicatedSetupButton;
@@ -76,6 +81,8 @@ public class KioskControllerActivity extends Activity {
         lockdownHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         lockdownHint.setGravity(Gravity.CENTER);
 
+        textZoomInput = buildNumberInput("Text zoom % e.g. 110");
+
         Button openAppButton = new Button(this);
         openAppButton.setText("Open Jtzt");
         openAppButton.setAllCaps(false);
@@ -93,6 +100,16 @@ public class KioskControllerActivity extends Activity {
         dedicatedSetupButton.setText("Dedicated setup");
         dedicatedSetupButton.setAllCaps(false);
         dedicatedSetupButton.setOnClickListener(v -> showDedicatedSetupDialog());
+
+        Button applyScaleButton = new Button(this);
+        applyScaleButton.setText("Apply text zoom");
+        applyScaleButton.setAllCaps(false);
+        applyScaleButton.setOnClickListener(v -> applyScaleSetting());
+
+        Button resetScaleButton = new Button(this);
+        resetScaleButton.setText("Reset text zoom");
+        resetScaleButton.setAllCaps(false);
+        resetScaleButton.setOnClickListener(v -> resetScaleSetting());
 
         launcherPrimaryButton = new Button(this);
         launcherPrimaryButton.setAllCaps(false);
@@ -128,6 +145,12 @@ public class KioskControllerActivity extends Activity {
         root.addView(adminSettingsButton, adminSettingsParams);
         LinearLayout.LayoutParams dedicatedSetupParams = fullWidthParams(dp(8));
         root.addView(dedicatedSetupButton, dedicatedSetupParams);
+        LinearLayout.LayoutParams textZoomParams = fullWidthParams(dp(12));
+        root.addView(textZoomInput, textZoomParams);
+        LinearLayout.LayoutParams applyScaleParams = fullWidthParams(dp(8));
+        root.addView(applyScaleButton, applyScaleParams);
+        LinearLayout.LayoutParams resetScaleParams = fullWidthParams(dp(8));
+        root.addView(resetScaleButton, resetScaleParams);
         LinearLayout.LayoutParams launcherPrimaryParams = fullWidthParams(dp(12));
         root.addView(launcherPrimaryButton, launcherPrimaryParams);
         LinearLayout.LayoutParams launcherSettingsParams = fullWidthParams(dp(8));
@@ -188,9 +211,9 @@ public class KioskControllerActivity extends Activity {
     private void syncLauncherControls() {
         boolean isAdminActive = DevicePolicyHelper.isDeviceAdminActive(this);
         boolean isDeviceOwner = DevicePolicyHelper.isDeviceOwner(this);
-        boolean isLockTaskPermitted = DevicePolicyHelper.isLockTaskPermitted(this);
         boolean isLockTaskActive = DevicePolicyHelper.isLockTaskActive(this);
         boolean isDefaultHome = HomeRoleHelper.isDefaultHome(this);
+        textZoomInput.setText(String.valueOf(SessionStore.getWebViewTextZoom(this)));
 
         if (isDeviceOwner) {
             deviceState.setText(isLockTaskActive
@@ -242,6 +265,38 @@ public class KioskControllerActivity extends Activity {
                 .show();
     }
 
+    private void applyScaleSetting() {
+        String textZoomValue = readInput(textZoomInput);
+
+        if (textZoomValue.isEmpty()) {
+            showScaleError("Enter a text zoom value.");
+            return;
+        }
+
+        try {
+            int textZoom = Integer.parseInt(textZoomValue);
+            SessionStore.setWebViewTextZoom(this, textZoom);
+            textZoomInput.setText(String.valueOf(SessionStore.getWebViewTextZoom(this)));
+            returnToKiosk();
+        } catch (NumberFormatException exception) {
+            showScaleError("Text zoom uses a whole number like 110 or 125.");
+        }
+    }
+
+    private void resetScaleSetting() {
+        SessionStore.setWebViewTextZoom(this, 100);
+        textZoomInput.setText("100");
+        returnToKiosk();
+    }
+
+    private void showScaleError(String message) {
+        new AlertDialog.Builder(this)
+                .setTitle("Invalid scale")
+                .setMessage(message)
+                .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                .show();
+    }
+
     private LinearLayout.LayoutParams fullWidthParams(int topMarginDp) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -253,6 +308,19 @@ public class KioskControllerActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(getResources().getDisplayMetrics().density * value);
+    }
+
+    private EditText buildNumberInput(String hint) {
+        EditText input = new EditText(this);
+        input.setHint(hint);
+        input.setHintTextColor(0xFF7A7A7A);
+        input.setTextColor(0xFFFFFFFF);
+        input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        return input;
+    }
+
+    private String readInput(EditText input) {
+        return input.getText() == null ? "" : input.getText().toString().trim();
     }
 
     private void registerBackHandler() {

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { useAppHeaderState } from "@/components/app-header-state";
+import { Logo } from "@/components/logo";
 import { Stack } from "@/components/stack";
 import { cn } from "@/lib/utils";
 
@@ -23,13 +24,7 @@ export function PageLoadingState({
 }) {
   return (
     <div className={cn("flex w-full flex-1 flex-col items-center justify-center gap-5 bg-black", minHeightClassName, className)}>
-      <img
-        alt="Jtzt"
-        aria-hidden="true"
-        className="h-auto w-32 select-none opacity-100"
-        draggable={false}
-        src="/logo.svg"
-      />
+      <Logo size={128} tone="light" />
       {label ? <p className="text-sm tracking-wide text-white/70">{label}</p> : null}
     </div>
   );

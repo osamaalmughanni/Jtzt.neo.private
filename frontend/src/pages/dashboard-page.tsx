@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Briefcase, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
@@ -45,6 +45,7 @@ import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useCompanySettings } from "@/lib/company-settings";
+import { useAppHeaderState } from "@/components/app-header-state";
 import { getEntryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
 import { formatCompanyDate, formatCompanyDateRange } from "@/lib/locale-format";
 import { toast } from "@/lib/toast";
@@ -88,7 +89,6 @@ const defaultSummary: DashboardSummary = {
   contractStats: {
     currentContract: null,
     totalBalanceMinutes: 0,
-    today: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     week: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     month: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     vacation: { entitledDays: 0, usedDays: 0, availableDays: 0 },
@@ -273,6 +273,7 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const { companySession, companyIdentity, isTabletMode } = useAuth();
   const { settings: companySettings } = useCompanySettings();
+  const { setHomeAction } = useAppHeaderState();
   const { t } = useTranslation();
   const entryStateUi = useMemo(() => getEntryStateUi(t), [t]);
   const getEntryLabel = (entryType: TimeEntryView["entryType"]) => getEntryTypeLabel(entryType, t);
@@ -504,17 +505,34 @@ export function DashboardPage() {
     [settings.customFields]
   );
 
-  function updateContext(next: { userId?: number | null; day?: Date }) {
-    const params = new URLSearchParams(searchParams);
-    const userId = next.userId ?? effectiveUserId;
-    const day = next.day ?? selectedDate;
+  const searchParamsRef = useRef(searchParams);
+  const effectiveUserIdRef = useRef<number | null>(effectiveUserId);
+  const selectedDateRef = useRef(selectedDate);
+  useEffect(() => {
+    searchParamsRef.current = searchParams;
+  }, [searchParams]);
+  useEffect(() => {
+    effectiveUserIdRef.current = effectiveUserId;
+  }, [effectiveUserId]);
+  useEffect(() => {
+    selectedDateRef.current = selectedDate;
+  }, [selectedDate]);
+  const updateContext = useCallback((next: { userId?: number | null; day?: Date }) => {
+    const params = new URLSearchParams(searchParamsRef.current);
+    const userId = next.userId ?? effectiveUserIdRef.current;
+    const day = next.day ?? selectedDateRef.current;
 
     if (userId) params.set("user", String(userId));
     else params.delete("user");
 
     params.set("day", formatLocalDay(day));
     setSearchParams(params, { replace: true });
-  }
+  }, [setSearchParams]);
+  const goToToday = useCallback(() => {
+    const todayDate = parseLocalDay(getLocalNowSnapshot(new Date(), settings.timeZone).localDay) ?? new Date();
+    setVisibleMonth(startOfMonth(todayDate));
+    updateContext({ day: todayDate });
+  }, [settings.timeZone, updateContext]);
 
   const dashboardResource = usePageResource<{
     settings: CompanySettings;
@@ -793,6 +811,37 @@ export function DashboardPage() {
       : typeof currentValue === "number";
   });
   const canStartTabletPunch = canUseTabletPunch && tabletPunchProjectReady && tabletPunchTaskReady && tabletPunchCustomFieldsReady;
+  const tabletSetupDockKey = [
+    "tablet-setup",
+    tabletPunchSetupOpen ? "1" : "0",
+    tabletPunchSubmitting ? "1" : "0",
+    tabletPunchProjectId,
+    tabletPunchTaskId,
+    canStartTabletPunch ? "1" : "0",
+    JSON.stringify(tabletPunchValues),
+  ].join("|");
+  const dashboardDockKey = [
+    "dashboard-dock",
+    dashboardResource.isLoading ? "1" : "0",
+    isTabletMode ? "1" : "0",
+    summary.activeEntry?.id ?? "none",
+    dockShowsStop ? "1" : "0",
+    dockShowsPlay ? "1" : "0",
+    canAddRecordButton ? "1" : "0",
+    canUseTabletPunch ? "1" : "0",
+    createRecordHref,
+    createRecordMessage ?? "",
+    singleRecordMessage ?? "",
+  ].join("|");
+
+  useEffect(() => {
+    setHomeAction({
+      key: "dashboard-home-today",
+      label: "Today",
+      onClick: goToToday,
+    });
+    return () => setHomeAction(null);
+  }, [goToToday, setHomeAction]);
 
   if (isTabletMode && tabletPunchSetupOpen) {
     return (
@@ -844,7 +893,7 @@ export function DashboardPage() {
             ))}
           </FormFields>
         </FormSection>
-        <PageDock>
+        <PageDock cacheKey={tabletSetupDockKey}>
           <DockActionStack
             primary={(
               <Button
@@ -890,7 +939,7 @@ export function DashboardPage() {
 
   return (
     <FormPage className="min-h-0 flex-none">
-      <PageDock>
+      <PageDock cacheKey={dashboardDockKey}>
         <DockActionStack
           primary={dashboardResource.isLoading ? null : isTabletMode ? (
             <>
@@ -1041,8 +1090,8 @@ export function DashboardPage() {
             </div>
           </FormSection>
           <div className="flex flex-col gap-0.5 pt-1">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex flex-col">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-stretch gap-3">
+              <div className="flex min-w-0 flex-col justify-center gap-0.5">
                 <p className="min-w-0 truncate text-base font-semibold tracking-[-0.04em] text-foreground sm:text-lg">
                   {selectedDate.toLocaleDateString(settings.locale, {
                     weekday: "long",
@@ -1063,26 +1112,13 @@ export function DashboardPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                className="h-8 px-3 text-[11px] min-w-[5rem]"
-                onClick={() => {
-                  const todayDate = parseLocalDay(getLocalNowSnapshot(new Date(), settings.timeZone).localDay) ?? new Date();
-                  setVisibleMonth(startOfMonth(todayDate));
-                  updateContext({ day: todayDate });
-                }}
+                className="self-stretch min-w-[5.5rem] px-4 py-2 text-[11px] !h-auto"
+                onClick={goToToday}
                 type="button"
               >
                 {t("dashboard.today")}
               </Button>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              {t("dashboard.expected", { value: formatMinutes(summary.contractStats.today.expectedMinutes) })}
-              <span className="mx-1 opacity-50">/</span>
-              {t("dashboard.recordedBadge", { value: formatMinutes(summary.contractStats.today.recordedMinutes) })}
-              <span className="mx-1 opacity-50">/</span>
-              {t("dashboard.vacationAvailable", { value: Math.max(0, summary.contractStats.vacation.availableDays).toFixed(1) })}
-              <span className="mx-1 opacity-50">/</span>
-              {t("dashboard.timeOffAvailable", { value: (Math.max(0, summary.contractStats.timeOffInLieu.availableMinutes) / 60).toFixed(1) })}
-            </p>
             <Calendar
               selected={selectedDate}
               month={visibleMonth}

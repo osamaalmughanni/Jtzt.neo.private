@@ -235,11 +235,6 @@ export interface DashboardSummary {
       schedule: UserContractScheduleDay[];
     } | null;
     totalBalanceMinutes: number;
-    today: {
-      expectedMinutes: number;
-      recordedMinutes: number;
-      balanceMinutes: number;
-    };
     week: {
       expectedMinutes: number;
       recordedMinutes: number;

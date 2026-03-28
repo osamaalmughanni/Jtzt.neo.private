@@ -47,7 +47,9 @@ export function Logo({
       <svg
         viewBox="0 0 1535 1000"
         preserveAspectRatio="xMidYMid meet"
-        className="block h-auto w-full"
+        shapeRendering="geometricPrecision"
+        textRendering="geometricPrecision"
+        className="block h-auto w-full select-none [image-rendering:optimizeQuality]"
         fill="currentColor"
       >
         <g fillRule="evenodd" clipRule="evenodd">

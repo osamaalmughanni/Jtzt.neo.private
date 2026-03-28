@@ -1,6 +1,6 @@
 import { HTTPException } from "hono/http-exception";
 import type { UpdateOvertimeSettingsInput, UpdateSettingsInput } from "../../shared/types/api";
-import type { TimeEntryType } from "../../shared/types/models";
+import type { PublicHolidayRecord, TimeEntryType } from "../../shared/types/models";
 import {
   DEFAULT_COMPANY_DATE_TIME_FORMAT,
   DEFAULT_COMPANY_LOCALE,
@@ -18,8 +18,50 @@ import type { AppDatabase } from "../runtime/types";
 
 const HOLIDAY_CACHE_MAX_AGE_DAYS = 30;
 const CURRENT_YEAR_CACHE_MAX_AGE_DAYS = 7;
+const HOLIDAY_FETCH_TIMEOUT_MS = 10_000;
+const HOLIDAY_SOURCE_COOLDOWN_MS = 10 * 60 * 1000;
+const OPEN_HOLIDAYS_SUPPORTED_COUNTRIES = new Set([
+  "AL",
+  "AD",
+  "AT",
+  "BY",
+  "BE",
+  "BR",
+  "BG",
+  "HR",
+  "CZ",
+  "EE",
+  "FR",
+  "DE",
+  "HU",
+  "IE",
+  "IT",
+  "LV",
+  "LI",
+  "LT",
+  "LU",
+  "MT",
+  "MX",
+  "MD",
+  "MC",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SM",
+  "RS",
+  "SK",
+  "SI",
+  "ZA",
+  "ES",
+  "SE",
+  "CH",
+  "VA",
+]);
+type HolidaySourceId = "nager" | "openholidays";
 type CustomFieldValue = string | number | boolean;
 type CustomFieldValues = Record<string, CustomFieldValue>;
+const holidaySourceCooldowns = new Map<HolidaySourceId, number>();
 
 function parseCustomFieldValuesJson(value: string | null | undefined): CustomFieldValues {
   if (typeof value !== "string" || value.length === 0) {
@@ -183,6 +225,135 @@ function enumerateYears(startDate: string, endDate: string) {
   return Array.from(years);
 }
 
+function isHolidaySourceOnCooldown(source: HolidaySourceId) {
+  const cooldownUntil = holidaySourceCooldowns.get(source);
+  return typeof cooldownUntil === "number" && cooldownUntil > Date.now();
+}
+
+function markHolidaySourceFailed(source: HolidaySourceId) {
+  holidaySourceCooldowns.set(source, Date.now() + HOLIDAY_SOURCE_COOLDOWN_MS);
+}
+
+function markHolidaySourceHealthy(source: HolidaySourceId) {
+  holidaySourceCooldowns.delete(source);
+}
+
+function pickString(value: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const rawValue = value[key];
+    if (typeof rawValue === "string" && rawValue.trim().length > 0) {
+      return rawValue.trim();
+    }
+  }
+  return null;
+}
+
+function normalizeHolidayDate(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const dateMatch = /^\d{4}-\d{2}-\d{2}/.exec(value);
+  return dateMatch ? dateMatch[0] : null;
+}
+
+function normalizeHolidayPayload(payload: unknown, fallbackCountryCode: string): PublicHolidayRecord[] {
+  const rows: unknown[] = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === "object"
+      ? (() => {
+          const objectValue = payload as Record<string, unknown>;
+          for (const key of ["holidays", "items", "value", "results"]) {
+            const candidate = objectValue[key];
+            if (Array.isArray(candidate)) {
+              return candidate;
+            }
+          }
+          return [];
+        })()
+      : [];
+
+  const holidays: PublicHolidayRecord[] = [];
+
+  for (const row of rows) {
+    if (!row || typeof row !== "object") {
+      continue;
+    }
+
+    const value = row as Record<string, unknown>;
+    const date = normalizeHolidayDate(pickString(value, ["date", "startDate", "validFrom", "from", "day"]));
+    if (!date) {
+      continue;
+    }
+
+    const localName = pickString(value, ["localName", "local_name", "nameLocal", "displayName", "title", "name"])
+      ?? pickString(value, ["name", "label"])
+      ?? date;
+    const name = pickString(value, ["name", "englishName", "title", "label"])
+      ?? localName;
+    const countryCode = pickString(value, ["countryCode", "countryIsoCode", "country_code", "country"]) ?? fallbackCountryCode;
+
+    holidays.push({
+      date,
+      localName,
+      name,
+      countryCode,
+    });
+  }
+
+  return holidays;
+}
+
+async function fetchJsonWithTimeout(url: string, timeoutMs = HOLIDAY_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        accept: "application/json, text/json;q=0.9, */*;q=0.1",
+      },
+    });
+    return response;
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
+}
+
+async function fetchHolidaySource(
+  source: HolidaySourceId,
+  countryCode: string,
+  year: number,
+): Promise<PublicHolidayRecord[]> {
+  const normalizedCountry = countryCode.trim().toUpperCase();
+
+  if (source === "nager") {
+    const response = await fetchJsonWithTimeout(`https://date.nager.at/api/v3/PublicHolidays/${year}/${normalizedCountry}`);
+    if (!response.ok) {
+      throw new Error(`Nager.Date failed with ${response.status}`);
+    }
+
+    const payload = await response.json();
+    return normalizeHolidayPayload(payload, normalizedCountry);
+  }
+
+  if (!OPEN_HOLIDAYS_SUPPORTED_COUNTRIES.has(normalizedCountry) || year < 2020) {
+    throw new Error(`OpenHolidays API does not support ${normalizedCountry} for ${year}`);
+  }
+
+  const validFrom = `${year}-01-01`;
+  const validTo = `${year}-12-31`;
+  const response = await fetchJsonWithTimeout(
+    `https://openholidaysapi.org/PublicHolidays?countryIsoCode=${encodeURIComponent(normalizedCountry)}&validFrom=${validFrom}&validTo=${validTo}`,
+  );
+  if (!response.ok) {
+    throw new Error(`OpenHolidays API failed with ${response.status}`);
+  }
+
+  const payload = await response.json();
+  return normalizeHolidayPayload(payload, normalizedCountry);
+}
+
 export const settingsService = {
   async getSettings(db: AppDatabase, companyId: string) {
     await ensureSettingsRow(db, companyId);
@@ -285,46 +456,52 @@ export const settingsService = {
     if (cached && isFreshForYear(cached.fetched_at, year)) {
       return {
         holidays: JSON.parse(cached.payload_json),
-        cached: true
+        cached: true,
+        source: "nager" as const
       };
     }
 
-    try {
-      const response = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${normalizedCountry}`);
-      if (!response.ok) {
-        throw new Error(`Holiday API failed with ${response.status}`);
+    const sources: HolidaySourceId[] = ["nager", "openholidays"];
+    const errors: string[] = [];
+
+    for (const source of sources) {
+      if (isHolidaySourceOnCooldown(source)) {
+        continue;
       }
 
-      const holidays = (await response.json()) as Array<{
-        date: string;
-        localName: string;
-        name: string;
-        countryCode: string;
-      }>;
+      try {
+        const holidays = await fetchHolidaySource(source, normalizedCountry, year);
+        markHolidaySourceHealthy(source);
 
-      await db.run(
-        `INSERT INTO public_holiday_cache (country_code, year, payload_json, fetched_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(country_code, year)
-         DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at`
-      , [normalizedCountry, year, JSON.stringify(holidays), new Date().toISOString()]);
+        await db.run(
+          `INSERT INTO public_holiday_cache (country_code, year, payload_json, fetched_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(country_code, year)
+           DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at`,
+        [normalizedCountry, year, JSON.stringify(holidays), new Date().toISOString()]);
 
-      return {
-        holidays,
-        cached: false
-      };
-    } catch (error) {
-      if (cached) {
         return {
-          holidays: JSON.parse(cached.payload_json),
-          cached: true
+          holidays,
+          cached: false,
+          source
         };
+      } catch (error) {
+        markHolidaySourceFailed(source);
+        errors.push(`${source}: ${error instanceof Error ? error.message : "request failed"}`);
       }
-
-      throw new HTTPException(502, {
-        message: error instanceof Error ? error.message : "Could not fetch public holidays"
-      });
     }
+
+    if (cached) {
+      return {
+        holidays: JSON.parse(cached.payload_json),
+        cached: true,
+        source: "nager" as const
+      };
+    }
+
+    throw new HTTPException(502, {
+      message: errors.length > 0 ? errors.join(" | ") : "Could not fetch public holidays"
+    });
   },
 
   async isPublicHoliday(db: AppDatabase, companyId: string, date: string) {

@@ -2,10 +2,11 @@ import type { Icon } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { ArrowLeft, List, LockSimple } from "phosphor-react";
-import { formatLocalDay } from "@shared/utils/time";
+import { getLocalNowSnapshot } from "@shared/utils/time";
 import { Logo } from "@/components/logo";
 import { PageLabel } from "@/components/page-label";
 import { useAppHeaderState } from "@/components/app-header-state";
+import { useCompanySettings } from "@/lib/company-settings";
 import { getHomePath, type NavigationScope } from "@/lib/navigation";
 import { getPageMeta } from "@/lib/page-meta";
 
@@ -57,7 +58,8 @@ export function AppHeader({
 }) {
   const location = useLocation();
   const { t } = useTranslation();
-  const { actions: pageActions } = useAppHeaderState();
+  const { actions: pageActions, homeAction } = useAppHeaderState();
+  const { settings: companySettings } = useCompanySettings();
   const meta = scope === "public" ? null : getPageMeta(location.pathname);
   const resolvedTitle = title ?? (meta?.titleKey ? t(meta.titleKey) : undefined);
   const resolvedDescription = description ?? (meta?.descriptionKey ? t(meta.descriptionKey) : undefined);
@@ -70,6 +72,10 @@ export function AppHeader({
   const contextualActions = scope === "tablet" ? fallbackActions : pageActions ?? fallbackActions;
   const resolvedActions = mergeHeaderActions(contextualActions, actions);
   const homeTo = (() => {
+    if (homeAction) {
+      return null;
+    }
+
     const basePath = getHomePath(scope);
     if (scope !== "company" && scope !== "tablet") {
       return basePath;
@@ -81,7 +87,8 @@ export function AppHeader({
     if (user) {
       nextParams.set("user", user);
     }
-    nextParams.set("day", formatLocalDay(new Date()));
+    const todayDay = getLocalNowSnapshot(new Date(), companySettings?.timeZone).localDay;
+    nextParams.set("day", todayDay);
     const query = nextParams.toString();
     return query ? `${basePath}?${query}` : basePath;
   })();
@@ -90,9 +97,20 @@ export function AppHeader({
     <header className="bg-background">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex flex-col gap-0.5">
-          <Link to={homeTo} className="inline-flex flex-col items-start">
-            <Logo size={88} />
-          </Link>
+          {homeAction ? (
+            <button
+              aria-label={homeAction.label}
+              className="inline-flex flex-col items-start"
+              onClick={homeAction.onClick}
+              type="button"
+            >
+              <Logo size={88} />
+            </button>
+          ) : (
+            <Link to={homeTo ?? "/"} className="inline-flex flex-col items-start">
+              <Logo size={88} />
+            </Link>
+          )}
           {resolvedTitle ? (
             <PageLabel title={resolvedTitle} description={resolvedDescription} />
           ) : null}

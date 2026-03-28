@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 type DateParts = { year: string; month: string; day: string };
 type SegmentType = "day" | "month" | "year";
+type PopupPosition = { top: number; left: number; width: number; maxHeight: number };
 
 function parseIsoDate(value: string): DateParts {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -184,6 +185,7 @@ export const DateInput = forwardRef<
   const popupRef = useRef<HTMLDivElement | null>(null);
   const [focused, setFocused] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [popupPosition, setPopupPosition] = useState<PopupPosition | null>(null);
   const selectedDate = useMemo(() => parseIsoDateToDate(value), [value]);
   const [viewMonth, setViewMonth] = useState<Date>(() => {
     const todayIso = getLocalNowSnapshot(new Date(), timeZone).localDay;
@@ -244,6 +246,68 @@ export const DateInput = forwardRef<
       setViewMonth(selectedDate ?? parseIsoDateToDate(todayIso) ?? new Date());
     }
   }, [calendarOpen, selectedDate, timeZone]);
+
+  useEffect(() => {
+    if (!calendarOpen) {
+      setPopupPosition(null);
+      return;
+    }
+
+    const updatePopupPosition = () => {
+      const wrapper = wrapperRef.current;
+      const popup = popupRef.current;
+      if (!wrapper || !popup) {
+        return;
+      }
+
+      const padding = 8;
+      const gap = 8;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const popupWidth = Math.min(21 * 16, Math.max(12 * 16, viewportWidth - padding * 2));
+      const popupHeight = Math.min(30 * 16, Math.max(16 * 16, viewportHeight - padding * 2));
+      const spaceBelow = viewportHeight - wrapperRect.bottom - gap - padding;
+      const spaceAbove = wrapperRect.top - gap - padding;
+      const openDownward = spaceBelow >= Math.min(popupHeight, 18 * 16) || spaceBelow >= spaceAbove;
+      const top = openDownward
+        ? Math.min(viewportHeight - padding - popupHeight, wrapperRect.bottom + gap)
+        : Math.max(padding, wrapperRect.top - gap - popupHeight);
+      const preferredLeft = wrapperRect.right - popupWidth;
+      const left = Math.max(padding, Math.min(preferredLeft, viewportWidth - padding - popupWidth));
+      const maxHeight = Math.max(12 * 16, Math.min(popupHeight, openDownward ? spaceBelow : spaceAbove));
+
+      setPopupPosition({
+        top,
+        left,
+        width: popupWidth,
+        maxHeight,
+      });
+    };
+
+    updatePopupPosition();
+
+    let frame = 0;
+    let rafId = 0;
+    const bootstrap = () => {
+      updatePopupPosition();
+      frame += 1;
+      if (frame < 4) {
+        rafId = window.requestAnimationFrame(bootstrap);
+      }
+    };
+    rafId = window.requestAnimationFrame(bootstrap);
+
+    const handleViewportChange = () => updatePopupPosition();
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [calendarOpen]);
 
   function commit(rawValue: string) {
     const nextValue = parseSmartDateInput(rawValue, order, value || getLocalNowSnapshot(new Date(), timeZone).localDay);
@@ -311,10 +375,20 @@ export const DateInput = forwardRef<
           ref={popupRef}
           role="dialog"
           aria-label={t("calendar.selectDate")}
-          className="absolute right-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-soft"
+          className="fixed z-50 overflow-hidden rounded-2xl border border-border bg-card shadow-soft"
+          style={
+            popupPosition
+              ? {
+                  top: `${popupPosition.top}px`,
+                  left: `${popupPosition.left}px`,
+                  width: `${popupPosition.width}px`,
+                  maxHeight: `${popupPosition.maxHeight}px`,
+                }
+              : undefined
+          }
           onMouseDown={(event) => event.stopPropagation()}
         >
-          <div className="max-h-[min(30rem,calc(100vh-12rem))] overflow-auto p-2 sm:p-3">
+          <div className="overflow-auto p-2 sm:p-3" style={popupPosition ? { maxHeight: `${popupPosition.maxHeight}px` } : undefined}>
             <Calendar
               selected={selectedDate}
               month={viewMonth}

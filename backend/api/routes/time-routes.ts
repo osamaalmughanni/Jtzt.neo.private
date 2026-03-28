@@ -510,7 +510,6 @@ async function buildDashboardSummary(db: AppDatabase, companyId: string, userId:
   const todayRecordedMinutes = calculateRecordedMinutesForRange(todayEntries, focusDay, focusDay, settings, holidaySet, contracts);
   const weekRecordedMinutes = calculateRecordedMinutesForRange(weekEntries, weekRange.startDay, weekRange.endDay, settings, holidaySet, contracts);
   const monthRecordedMinutes = calculateRecordedMinutesForRange(monthEntries, monthRange.startDay, monthRange.endDay, settings, holidaySet, contracts);
-  const todayExpectedMinutes = calculateExpectedContractMinutesForRange(focusDay, focusDay, holidaySet, contracts);
   const weekExpectedMinutes = calculateExpectedContractMinutesForRange(weekRange.startDay, weekRange.endDay, holidaySet, contracts);
   const monthExpectedMinutes = calculateExpectedContractMinutesForRange(monthRange.startDay, monthRange.endDay, holidaySet, contracts);
   const totalRecordedMinutes = calculateRecordedMinutesForRange(allEntries, historyStartDay, focusDay, settings, holidaySet, contracts);
@@ -534,11 +533,6 @@ async function buildDashboardSummary(db: AppDatabase, companyId: string, userId:
           }
         : null,
       totalBalanceMinutes: totalRecordedMinutes - totalExpectedMinutes,
-      today: {
-        expectedMinutes: todayExpectedMinutes,
-        recordedMinutes: todayRecordedMinutes,
-        balanceMinutes: todayRecordedMinutes - todayExpectedMinutes
-      },
       week: {
         expectedMinutes: weekExpectedMinutes,
         recordedMinutes: weekRecordedMinutes,

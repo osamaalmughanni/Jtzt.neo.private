@@ -2,9 +2,17 @@ import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { HeaderAction } from "@/components/app-header";
 
+export interface HeaderHomeAction {
+  key?: string;
+  label: string;
+  onClick: () => void;
+}
+
 interface AppHeaderStateValue {
   actions: HeaderAction[] | null;
   setActions: (actions: HeaderAction[] | null) => void;
+  homeAction: HeaderHomeAction | null;
+  setHomeAction: (action: HeaderHomeAction | null) => void;
   bottomBar: ReactNode | null;
   setBottomBar: (bottomBar: ReactNode | null) => void;
   loadingCount: number;
@@ -16,6 +24,7 @@ const AppHeaderStateContext = createContext<AppHeaderStateValue | null>(null);
 
 export function AppHeaderStateProvider({ children }: { children: React.ReactNode }) {
   const [actions, setActions] = useState<HeaderAction[] | null>(null);
+  const [homeAction, setHomeAction] = useState<HeaderHomeAction | null>(null);
   const [bottomBar, setBottomBar] = useState<ReactNode | null>(null);
   const [loadingCount, setLoadingCount] = useState(0);
   const startLoading = useCallback(() => {
@@ -28,13 +37,15 @@ export function AppHeaderStateProvider({ children }: { children: React.ReactNode
     () => ({
       actions,
       setActions,
+      homeAction,
+      setHomeAction,
       bottomBar,
       setBottomBar,
       loadingCount,
       startLoading,
       stopLoading,
     }),
-    [actions, bottomBar, loadingCount, startLoading, stopLoading]
+    [actions, bottomBar, homeAction, loadingCount, startLoading, stopLoading]
   );
   return <AppHeaderStateContext.Provider value={value}>{children}</AppHeaderStateContext.Provider>;
 }

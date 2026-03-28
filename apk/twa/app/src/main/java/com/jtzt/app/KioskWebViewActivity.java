@@ -6,6 +6,8 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
@@ -22,10 +24,14 @@ import com.jtzt.app.android.KioskModeController;
 public class KioskWebViewActivity extends Activity {
     private static final String HOME_URL = "https://app.jtzt.com/";
     private static final String KIOSK_EXIT_PATH = "/native/exit";
+    private static final int MANAGE_TAP_THRESHOLD = 10;
+    private static final long MANAGE_TAP_WINDOW_MS = 400L;
 
     private WebView webView;
     private OnBackInvokedCallback backInvokedCallback;
     private boolean managePageOpening;
+    private int rapidTapCount;
+    private long lastRapidTapAt;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,8 +57,6 @@ public class KioskWebViewActivity extends Activity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setUseWideViewPort(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setSupportMultipleWindows(false);
         settings.setAllowContentAccess(true);
@@ -82,14 +86,22 @@ public class KioskWebViewActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 SessionStore.persist(KioskWebViewActivity.this, url);
+                applyTextZoom();
                 super.onPageFinished(view, url);
             }
+        });
+        webView.setOnTouchListener((view, event) -> {
+            if (event != null && event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                maybeOpenManagePageFromRapidTaps();
+            }
+            return false;
         });
 
         FrameLayout root = new FrameLayout(this);
         root.addView(webView);
         setContentView(root);
 
+        applyTextZoom();
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
@@ -106,6 +118,7 @@ public class KioskWebViewActivity extends Activity {
         managePageOpening = false;
         AndroidUiController.applyFullscreen(this);
         KioskModeController.enter(this);
+        applyTextZoom();
     }
 
     @Override
@@ -212,6 +225,19 @@ public class KioskWebViewActivity extends Activity {
         startActivity(intent);
     }
 
+    private void maybeOpenManagePageFromRapidTaps() {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastRapidTapAt > MANAGE_TAP_WINDOW_MS) {
+            rapidTapCount = 0;
+        }
+        lastRapidTapAt = now;
+        rapidTapCount += 1;
+        if (rapidTapCount >= MANAGE_TAP_THRESHOLD) {
+            rapidTapCount = 0;
+            openExitGate();
+        }
+    }
+
     private void handleBackNavigation() {
         if (webView != null && webView.canGoBack()) {
             webView.goBack();
@@ -219,6 +245,16 @@ public class KioskWebViewActivity extends Activity {
         }
 
         openExitGate();
+    }
+
+    private void applyTextZoom() {
+        if (webView == null) {
+            return;
+        }
+
+        int textZoom = SessionStore.getWebViewTextZoom(this);
+        WebSettings settings = webView.getSettings();
+        settings.setTextZoom(textZoom);
     }
 
     private void registerBackHandler() {
