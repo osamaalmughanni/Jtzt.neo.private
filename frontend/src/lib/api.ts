@@ -291,7 +291,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   getHealth() {
     return request<AppHealthResponse>("/api/health", {
-      headers: { "Cache-Control": "no-cache" }
+      cache: "no-store"
     });
   },
 

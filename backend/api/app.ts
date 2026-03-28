@@ -16,6 +16,19 @@ import { createSystemDatabase } from "../db/runtime-database";
 import type { RuntimeConfig } from "../runtime/types";
 import type { AppRouteConfig } from "./context";
 
+const ALLOWED_CORS_HEADERS = [
+  "Accept",
+  "Accept-Language",
+  "Authorization",
+  "Cache-Control",
+  "Content-Language",
+  "Content-Type",
+  "If-None-Match",
+  "Pragma",
+  "X-API-Key",
+  "X-Requested-With",
+].join(", ");
+
 const FRONTEND_ROOT = path.resolve(process.cwd(), "dist/frontend");
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -77,9 +90,10 @@ export function createApp(config: RuntimeConfig) {
     const requestId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     c.header("X-Request-Id", requestId);
     c.header("Access-Control-Allow-Origin", "*");
-    c.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key");
+    c.header("Access-Control-Allow-Headers", ALLOWED_CORS_HEADERS);
     c.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     c.header("Access-Control-Expose-Headers", "X-Request-Id");
+    c.header("Vary", "Origin");
 
     if (c.req.method === "OPTIONS") {
       return c.body(null, 204);
@@ -162,11 +176,16 @@ export function createApp(config: RuntimeConfig) {
 
     return new Response(stream, {
       headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": ALLOWED_CORS_HEADERS,
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Expose-Headers": "X-Request-Id",
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
         "X-App-Version": config.appVersion,
+        "Vary": "Origin",
       },
     });
   });

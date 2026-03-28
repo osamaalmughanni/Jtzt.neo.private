@@ -41,9 +41,20 @@ export function closeNodeDatabaseConnection(databasePath: string) {
 
 export async function createNodeDatabase(databasePath: string, schema: string, kind: DatabaseKind): Promise<AppDatabase> {
   const connection = initializeSqliteConnection(databasePath, schema, kind);
+  let schemaReadyPromise: Promise<void> | null = null;
+
   async function ensureSchemaReady() {
-    await runSqliteMigrations(connection, kind);
-    hardenSchemaForDatabase(connection, kind);
+    if (!schemaReadyPromise) {
+      schemaReadyPromise = (async () => {
+        await runSqliteMigrations(connection, kind);
+        hardenSchemaForDatabase(connection, kind);
+      })().catch((error) => {
+        schemaReadyPromise = null;
+        throw error;
+      });
+    }
+
+    await schemaReadyPromise;
   }
 
   return {

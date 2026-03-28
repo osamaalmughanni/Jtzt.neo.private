@@ -9,6 +9,7 @@ import {
   getCustomFieldLabel,
   resolveCustomFieldValueLabel,
 } from "../../shared/utils/custom-fields";
+import { normalizeCompanyDateTimeFormat, normalizeCompanyLocale } from "../../shared/utils/company-locale";
 import { calculateLeaveCompensation, calculateWorkCostAmount, calculateWorkDurationMinutes } from "./time-entry-metrics-service";
 import { aggregateOvertimeMeta, buildOvertimeReportMeta } from "./overtime-report-service";
 import { settingsService } from "./settings-service";
@@ -260,6 +261,9 @@ export const reportService = {
     if (input.endDate < input.startDate) throw new HTTPException(400, { message: "End date must be on or after start date" });
 
     const settings = await settingsService.getSettings(db, companyId);
+    const reportLocale = normalizeCompanyLocale(settings.locale);
+    const reportTimeZone = settings.timeZone;
+    const reportDateTimeFormat = normalizeCompanyDateTimeFormat(settings.dateTimeFormat);
     const customFieldValueLabels = buildCustomFieldValueLabelLookup(settings.customFields);
     const timeEntryCustomFields = getCustomFieldsForTarget(settings.customFields, { scope: "time_entry" });
     const holidaySet = await getHolidaySet(db, companyId, settings.country, input.startDate, input.endDate);
@@ -396,7 +400,7 @@ export const reportService = {
       { entryCount: 0, durationMinutes: 0, cost: 0 }
     );
 
-    const vacationOverview = await buildVacationOverview(db, companyId, rows, settings.locale, input.endDate);
+    const vacationOverview = await buildVacationOverview(db, companyId, rows, reportLocale, input.endDate);
 
     if (!grouped) {
       const columns = input.columns.map((key) => getColumnDefinition(key, timeEntryCustomFields)).filter((value): value is ReportColumnDefinition => value !== null);
@@ -429,9 +433,9 @@ export const reportService = {
         rows: detailRows,
         rowMeta,
         totals,
-        locale: settings.locale,
-        timeZone: settings.timeZone,
-        dateTimeFormat: settings.dateTimeFormat,
+        locale: reportLocale,
+        timeZone: reportTimeZone,
+        dateTimeFormat: reportDateTimeFormat,
         currency: settings.currency,
         grouped: false,
         timeline: rows.map((row) => ({
@@ -504,9 +508,9 @@ export const reportService = {
       rows: groupedRows,
       rowMeta: groupedRowMeta,
       totals,
-      locale: settings.locale,
-      timeZone: settings.timeZone,
-      dateTimeFormat: settings.dateTimeFormat,
+      locale: reportLocale,
+      timeZone: reportTimeZone,
+      dateTimeFormat: reportDateTimeFormat,
       currency: settings.currency,
       grouped: true,
       timeline: rows.map((row) => ({

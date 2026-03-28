@@ -44,8 +44,22 @@ function formatCellValue(
   timeZone: string,
   dateTimeFormat: string,
   t: TranslateFn,
+  rowType?: string | null,
+  row?: Record<string, string | number | null>,
 ) {
-  if (value === null || value === "") return "--";
+  if (value === null || value === "") return "—";
+  const normalizedRowType = typeof rowType === "string" ? rowType.toLowerCase() : "";
+  const isVacationRow = normalizedRowType === "vacation";
+  if (isVacationRow && (columnKey === "start" || columnKey === "finish")) {
+    return "—";
+  }
+  if (isVacationRow && columnKey === "date" && row) {
+    const startDate = typeof row.start === "string" ? row.start : null;
+    const endDate = typeof row.finish === "string" ? row.finish : null;
+    if (startDate && endDate && startDate !== endDate) {
+      return `${formatCompanyDate(startDate, locale)} - ${formatCompanyDate(endDate, locale)}`;
+    }
+  }
   if (columnKey === "type" && typeof value === "string") return translateEntryType(value, t);
   if (kind === "duration" && typeof value === "number") return formatMinutes(value);
   if (kind === "currency" && typeof value === "number") {
@@ -96,8 +110,19 @@ function getRawExcelValue(
   column: ReportResponse["report"]["columns"][number],
 ) {
   const value = normalizeRawScalar(row[column.key] ?? null, column.key);
+  const normalizedRowType = typeof row.type === "string" ? row.type.toLowerCase() : "";
   const overtimeMeta = report.rowMeta[rowIndex]?.overtime ?? null;
 
+  if (normalizedRowType === "vacation" && (column.key === "start" || column.key === "finish")) {
+    return null;
+  }
+  if (normalizedRowType === "vacation" && column.key === "date") {
+    const startDate = typeof row.start === "string" ? row.start : null;
+    const endDate = typeof row.finish === "string" ? row.finish : null;
+    if (startDate && endDate && startDate !== endDate) {
+      return `${formatCompanyDate(startDate, report.locale)} - ${formatCompanyDate(endDate, report.locale)}`;
+    }
+  }
   if (column.key === "overtime_state") {
     return overtimeMeta?.state ?? value;
   }
@@ -220,13 +245,15 @@ function formatPdfCellValue(
   timeZone: string,
   dateTimeFormat: string,
   t: TranslateFn,
+  rowType?: string | null,
+  row?: Record<string, string | number | null>,
 ) {
   if (value === null || value === "") return "";
   if (kind === "currency" && typeof value === "number") {
     return `${value.toFixed(2)} ${currency}`;
   }
 
-  return normalizePdfText(formatCellValue(value, columnKey, kind, locale, currency, timeZone, dateTimeFormat, t));
+  return normalizePdfText(formatCellValue(value, columnKey, kind, locale, currency, timeZone, dateTimeFormat, t, rowType, row));
 }
 
 function buildPdf(report: ReportResponse["report"], t: TranslateFn) {
@@ -255,6 +282,8 @@ function buildPdf(report: ReportResponse["report"], t: TranslateFn) {
           report.timeZone,
           report.dateTimeFormat,
           t,
+          typeof row.type === "string" ? row.type : null,
+          row,
         ),
         maxCharsPerCell,
       ),

@@ -1329,12 +1329,13 @@ export const adminSqliteMigrationService = {
           metadata?.tablet_code_hash ?? null,
           metadata?.tablet_code_updated_at ?? null,
           metadata?.created_at ?? new Date().toISOString(),
-        ],
+          ],
       );
+
+      const liveOrderedTables = await loadMigrationTables(companyDb);
 
       try {
         await runInTransaction(companyDb, async () => {
-          const liveOrderedTables = await loadMigrationTables(companyDb);
           await clearImportedTables(companyDb, liveOrderedTables);
           await validatePackageDatabaseSchema(packageDb, liveOrderedTables);
           await importTableData(companyDb, liveOrderedTables, packageDb);
@@ -1438,8 +1439,9 @@ export const adminSqliteMigrationService = {
         throw new HTTPException(409, { message: "Company already exists", cause: report });
       }
 
+      const liveOrderedTables = await loadMigrationTables(companyDb);
+
       await runInTransaction(companyDb, async () => {
-        const liveOrderedTables = await loadMigrationTables(companyDb);
         await clearImportedTables(companyDb, liveOrderedTables);
         await validatePackageDatabaseSchema(packageDb, liveOrderedTables);
         await importTableData(companyDb, liveOrderedTables, packageDb);

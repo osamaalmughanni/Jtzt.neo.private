@@ -11,6 +11,7 @@ import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
@@ -61,8 +62,22 @@ function formatCellValue(
   timeZone: string,
   dateTimeFormat: string,
   t: ReturnType<typeof useTranslation>["t"],
+  rowType?: string | null,
+  row?: Record<string, string | number | null>,
 ) {
-  if (value === null || value === "") return "--";
+  if (value === null || value === "") return "—";
+  const normalizedRowType = typeof rowType === "string" ? rowType.toLowerCase() : "";
+  const isVacationRow = normalizedRowType === "vacation";
+  if (isVacationRow && (columnKey === "start" || columnKey === "finish")) {
+    return "—";
+  }
+  if (isVacationRow && columnKey === "date" && row) {
+    const startDate = typeof row.start === "string" ? row.start : null;
+    const endDate = typeof row.finish === "string" ? row.finish : null;
+    if (startDate && endDate && startDate !== endDate) {
+      return `${formatCompanyDate(startDate, locale)} - ${formatCompanyDate(endDate, locale)}`;
+    }
+  }
   if (columnKey === "type" && typeof value === "string") return translateEntryType(value, t);
   if (kind === "duration" && typeof value === "number") return formatMinutes(value);
   if (kind === "currency" && typeof value === "number") {
@@ -90,21 +105,27 @@ function getOvertimeSegmentClass(kind: "base" | "standard_overtime" | "employee_
   return "";
 }
 
-function getOvertimeLegendDotClass(kind: "base" | "standard_overtime" | "employee_choice" | "break") {
-  if (kind === "base") return "bg-sky-500";
-  if (kind === "standard_overtime") return "bg-violet-500";
-  if (kind === "employee_choice") return "bg-orange-500";
-  return "";
-}
-
 function getOvertimeSegmentStyle(kind: "base" | "standard_overtime" | "employee_choice" | "break") {
   if (kind !== "break") return undefined;
   return { backgroundColor: "#ef4444" };
 }
 
-function getOvertimeLegendDotStyle(kind: "base" | "standard_overtime" | "employee_choice" | "break") {
-  if (kind !== "break") return undefined;
-  return { backgroundColor: "#ef4444" };
+function getOvertimeSegmentLabel(kind: "base" | "standard_overtime" | "employee_choice" | "break", t: ReturnType<typeof useTranslation>["t"]) {
+  if (kind === "base") return t("reports.overtimeBase");
+  if (kind === "standard_overtime") return t("reports.overtimeStandard");
+  if (kind === "employee_choice") return t("reports.overtimeEmployeeChoice");
+  return t("reports.overtimeBreak");
+}
+
+function formatOvertimeSegmentTooltip(
+  kind: "base" | "standard_overtime" | "employee_choice" | "break",
+  minutes: number,
+  t: ReturnType<typeof useTranslation>["t"],
+) {
+  return t("reports.overtimeSegmentTooltip", {
+    label: getOvertimeSegmentLabel(kind, t),
+    value: formatDecimalHours(minutes),
+  });
 }
 
 function OvertimeStateBadge({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
@@ -121,32 +142,32 @@ function OvertimeStateBadge({ meta }: { meta: NonNullable<ReportResponse["report
 }
 
 function OvertimeTimelineCell({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
+  const { t } = useTranslation();
   const totalMinutes = Math.max(meta.workedMinutes, meta.segments.reduce((sum, segment) => sum + segment.minutes, 0));
   if (totalMinutes <= 0) {
-    return <span className="text-muted-foreground">--</span>;
+    return <span className="text-muted-foreground">—</span>;
   }
 
   return (
-    <div className="flex min-w-[16rem] flex-col gap-2">
-      <div className="flex h-3 overflow-hidden rounded-full bg-muted">
-        {meta.segments.map((segment, index) => (
-          <div
-            key={`${segment.kind}-${index}`}
-            className={getOvertimeSegmentClass(segment.kind)}
-            style={{ width: `${(segment.minutes / totalMinutes) * 100}%`, ...getOvertimeSegmentStyle(segment.kind) }}
-            title={`${segment.label}: ${formatDecimalHours(segment.minutes)}`}
-          />
-        ))}
+    <TooltipProvider delayDuration={150}>
+      <div className="flex min-w-[16rem] items-center">
+        <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+          {meta.segments.map((segment, index) => (
+            <Tooltip key={`${segment.kind}-${index}`}>
+              <TooltipTrigger asChild>
+                <div
+                  className={`${getOvertimeSegmentClass(segment.kind)} cursor-help`}
+                  style={{ width: `${(segment.minutes / totalMinutes) * 100}%`, ...getOvertimeSegmentStyle(segment.kind) }}
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                {formatOvertimeSegmentTooltip(segment.kind, segment.minutes, t)}
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
       </div>
-      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-        {meta.segments.map((segment, index) => (
-          <span key={`${segment.kind}-legend-${index}`} className="inline-flex items-center gap-1">
-            <span className={`h-2.5 w-2.5 rounded-full ${getOvertimeLegendDotClass(segment.kind)}`} style={getOvertimeLegendDotStyle(segment.kind)} />
-            <span>{segment.label} {formatDecimalHours(segment.minutes)}</span>
-          </span>
-        ))}
-      </div>
-    </div>
+    </TooltipProvider>
   );
 }
 
@@ -155,9 +176,9 @@ function OvertimeSummaryCell({ meta }: { meta: NonNullable<ReportResponse["repor
   const rows = [
     { label: t("reports.overtimeTarget"), value: formatDecimalHours(meta.targetMinutes) },
     { label: t("reports.overtimeActual"), value: formatDecimalHours(meta.paidMinutes) },
-    { label: t("reports.overtimePremium"), value: meta.overtimeMinutes > 0 ? `+${meta.premiumPercent}%` : "--" },
-    { label: t("reports.overtimePremiumCredit"), value: meta.overtimeMinutes > 0 ? formatDecimalHours(meta.premiumCreditMinutes) : "--" },
-    { label: t("reports.overtimeTimeOffCredit"), value: meta.overtimeMinutes > 0 ? formatDecimalHours(meta.timeOffInLieuCreditMinutes) : "--" },
+    { label: t("reports.overtimePremium"), value: meta.overtimeMinutes > 0 ? `+${meta.premiumPercent}%` : "—" },
+    { label: t("reports.overtimePremiumCredit"), value: meta.overtimeMinutes > 0 ? formatDecimalHours(meta.premiumCreditMinutes) : "—" },
+    { label: t("reports.overtimeTimeOffCredit"), value: meta.overtimeMinutes > 0 ? formatDecimalHours(meta.timeOffInLieuCreditMinutes) : "—" },
   ];
 
   return (
@@ -602,32 +623,37 @@ export function ReportsPreviewPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {rowsWithMeta.map(({ row, meta }, index) => (
-                            <tr key={index} className="border-b border-border/70 last:border-b-0">
-                              {resolvedColumns.map((column) => (
-                                <td key={column.key} className="min-w-[10rem] px-4 py-3 text-muted-foreground align-middle">
-                                  {column.kind === "overtime_state" && meta.overtime ? (
-                                    <OvertimeStateBadge meta={meta.overtime} />
-                                  ) : column.kind === "overtime_timeline" && meta.overtime ? (
-                                    <OvertimeTimelineCell meta={meta.overtime} />
-                                  ) : (
-                                    <span className="block whitespace-normal break-words leading-5">
-                                      {formatCellValue(
-                                        row[column.key] ?? null,
-                                        column.key,
-                                        column.kind,
-                                        report.locale,
-                                        report.currency,
-                                        report.timeZone,
-                                        report.dateTimeFormat,
-                                        t,
-                                      )}
-                                    </span>
-                                  )}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
+                          {rowsWithMeta.map(({ row, meta }, index) => {
+                            const rowType = typeof row.type === "string" ? row.type : null;
+                            return (
+                              <tr key={index} className="border-b border-border/70 last:border-b-0">
+                                {resolvedColumns.map((column) => (
+                                  <td key={column.key} className="min-w-[10rem] px-4 py-3 text-muted-foreground align-middle">
+                                    {column.kind === "overtime_state" && meta.overtime ? (
+                                      <OvertimeStateBadge meta={meta.overtime} />
+                                    ) : column.kind === "overtime_timeline" && meta.overtime ? (
+                                      <OvertimeTimelineCell meta={meta.overtime} />
+                                    ) : (
+                                      <span className="block whitespace-normal break-words leading-5">
+                                        {formatCellValue(
+                                          row[column.key] ?? null,
+                                          column.key,
+                                          column.kind,
+                                          report.locale,
+                                          report.currency,
+                                          report.timeZone,
+                                          report.dateTimeFormat,
+                                          t,
+                                          rowType,
+                                          row,
+                                        )}
+                                      </span>
+                                    )}
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -841,7 +867,7 @@ export function ReportsPreviewPage() {
                                   <div className="rounded-xl border border-border bg-muted/20 px-3 py-3">
                                     <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationContractAllowance")}</p>
                                     <p className="mt-1 text-sm font-medium text-foreground">
-                                      {row.currentContractVacationDays === null ? "--" : formatDayAmount(row.currentContractVacationDays)}
+                                      {row.currentContractVacationDays === null ? "—" : formatDayAmount(row.currentContractVacationDays)}
                                     </p>
                                   </div>
                                 </div>
@@ -851,13 +877,13 @@ export function ReportsPreviewPage() {
                                     <p className="mt-1 text-sm font-medium text-foreground">
                                       {row.currentWorkYearStart && row.currentWorkYearEnd
                                         ? `${formatCompanyDate(row.currentWorkYearStart, report.locale)} to ${formatCompanyDate(row.currentWorkYearEnd, report.locale)}`
-                                        : "--"}
+                                          : "—"}
                                     </p>
                                   </div>
                                   <div className="rounded-xl border border-border bg-muted/20 px-3 py-3">
                                     <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationNextGrant")}</p>
                                     <p className="mt-1 text-sm font-medium text-foreground">
-                                      {row.nextFullEntitlementDate ? formatCompanyDate(row.nextFullEntitlementDate, report.locale) : "--"}
+                                      {row.nextFullEntitlementDate ? formatCompanyDate(row.nextFullEntitlementDate, report.locale) : "—"}
                                     </p>
                                   </div>
                                   <div className="rounded-xl border border-border bg-muted/20 px-3 py-3">
@@ -883,7 +909,7 @@ export function ReportsPreviewPage() {
                                             {formatCompanyDate(period.startDate, report.locale)} to {formatCompanyDate(period.endDate, report.locale)}
                                           </td>
                                           <td className="px-4 py-3 text-muted-foreground">{period.days}</td>
-                                          <td className="px-4 py-3 text-muted-foreground">{period.notes?.trim() || "--"}</td>
+                                          <td className="px-4 py-3 text-muted-foreground">{period.notes?.trim() || "—"}</td>
                                         </tr>
                                       ))}
                                     </tbody>
