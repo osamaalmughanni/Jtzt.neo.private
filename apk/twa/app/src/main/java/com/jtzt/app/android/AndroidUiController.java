@@ -38,10 +38,6 @@ public final class AndroidUiController {
         }
 
         controller.hide(WindowInsetsCompat.Type.systemBars());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_DEFAULT);
-        } else {
-            controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-        }
+        controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
     }
 }

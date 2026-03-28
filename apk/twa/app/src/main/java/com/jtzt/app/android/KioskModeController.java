@@ -8,6 +8,7 @@ import android.os.Build;
 import android.os.PowerManager;
 import android.os.UserManager;
 
+import com.jtzt.app.HomeRoleHelper;
 import com.jtzt.app.KioskDeviceAdminReceiver;
 
 public final class KioskModeController {
@@ -21,16 +22,22 @@ public final class KioskModeController {
             return;
         }
 
-        AndroidUiController.applyFullscreen(activity);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            activity.setTurnScreenOn(true);
-            activity.setShowWhenLocked(true);
+        if (!shouldEnforce(activity)) {
+            exit(activity);
+            return;
         }
 
         DevicePolicyManager devicePolicyManager = activity.getSystemService(DevicePolicyManager.class);
         if (devicePolicyManager != null) {
             applyEnterprisePolicies(activity, devicePolicyManager);
         }
+
+        AndroidUiController.applyFullscreen(activity);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            activity.setTurnScreenOn(true);
+            activity.setShowWhenLocked(true);
+        }
+
         if (devicePolicyManager != null && devicePolicyManager.isLockTaskPermitted(activity.getPackageName())) {
             tryStartLockTask(activity);
         }
@@ -118,5 +125,13 @@ public final class KioskModeController {
                 wakeLock = null;
             }
         }
+    }
+
+    public static boolean shouldEnforce(Activity activity) {
+        if (activity == null) {
+            return false;
+        }
+
+        return HomeRoleHelper.isDefaultHome(activity);
     }
 }

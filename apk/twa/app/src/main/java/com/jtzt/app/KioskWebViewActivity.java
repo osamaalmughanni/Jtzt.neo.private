@@ -16,6 +16,7 @@ import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 import android.widget.FrameLayout;
 
+import com.jtzt.app.android.AndroidUiController;
 import com.jtzt.app.android.KioskModeController;
 
 public class KioskWebViewActivity extends Activity {
@@ -29,6 +30,7 @@ public class KioskWebViewActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        AndroidUiController.applyFullscreen(this);
         SessionStore.markKioskStarted(this);
 
         Uri startUri = getIntent() == null ? null : getIntent().getData();
@@ -102,6 +104,7 @@ public class KioskWebViewActivity extends Activity {
     protected void onResume() {
         super.onResume();
         managePageOpening = false;
+        AndroidUiController.applyFullscreen(this);
         KioskModeController.enter(this);
     }
 
@@ -109,6 +112,7 @@ public class KioskWebViewActivity extends Activity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
+            AndroidUiController.applyFullscreen(this);
             KioskModeController.enter(this);
         }
     }
@@ -167,7 +171,9 @@ public class KioskWebViewActivity extends Activity {
     @Override
     public void onUserLeaveHint() {
         super.onUserLeaveHint();
-        KioskModeController.enter(this);
+        if (KioskModeController.shouldEnforce(this)) {
+            KioskModeController.enter(this);
+        }
     }
 
     @Override

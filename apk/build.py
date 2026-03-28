@@ -33,6 +33,8 @@ def run_command(command: list[str], *, cwd: Path | None = None, env: dict[str, s
         env=env,
         text=True,
         capture_output=True,
+        encoding="utf-8",
+        errors="replace",
     )
     output = f"{result.stdout}{result.stderr}"
     if output:
