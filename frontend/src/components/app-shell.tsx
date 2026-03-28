@@ -22,6 +22,7 @@ export function AppShell({ mode }: AppShellProps) {
   const location = useLocation();
   const { companyIdentity, companySession, lockTablet, logoutAdmin } = useAuth();
   const { settings, loading: settingsLoading } = useCompanySettings();
+  const shouldBlockCompanyShell = mode === "company" && companySession && (!settings || settingsLoading);
   const [tabletIdleTimeoutSeconds, setTabletIdleTimeoutSeconds] = useState(10);
   const idleTimerRef = useRef<number | null>(null);
   const firstRouteRef = useRef(true);
@@ -31,14 +32,10 @@ export function AppShell({ mode }: AppShellProps) {
       ? undefined
       : companySession?.accessMode === "tablet"
         ? undefined
-        : companyIdentity?.user.role === "admin"
+      : companyIdentity?.user.role === "admin"
         ? "/menu"
         : "/menu";
   const scope = mode === "company" && companySession?.accessMode === "tablet" ? "tablet" : mode;
-
-  if (mode === "company" && companySession && settingsLoading && !settings) {
-    return <AppRouteLoadingState />;
-  }
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
@@ -128,6 +125,10 @@ export function AppShell({ mode }: AppShellProps) {
       }
     };
   }, [companySession, lockTablet, navigate, tabletIdleTimeoutSeconds]);
+
+  if (shouldBlockCompanyShell) {
+    return <AppRouteLoadingState />;
+  }
 
   return (
     <AppFrame appShell>

@@ -88,7 +88,7 @@ const holidayQuerySchema = z.object({
 });
 
 const tabletCodeSchema = z.object({
-  code: z.string().min(1).max(64)
+  code: z.string().max(64)
 });
 
 const overtimeSettingsSchema = z.object({

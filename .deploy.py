@@ -41,6 +41,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+for stream_name in ("stdout", "stderr"):
+    stream = getattr(sys, stream_name, None)
+    if stream is not None and hasattr(stream, "reconfigure"):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
 ROOT = Path(__file__).resolve().parent
 ENV_FILE = ROOT / ".env"
 
@@ -388,6 +396,25 @@ def print_report(env: dict[str, str], release: str | None = None) -> None:
     print("")
 
 
+def print_size_report(env: dict[str, str], release: str | None = None, *, remote_text: str | None = None) -> None:
+    print("")
+    print(green(bold("JTZT SIZE REPORT")))
+    print(cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+    if release:
+        print(f"{bold('Release')}      {release}")
+    print(f"{bold('System DB')}    {env['NODE_SYSTEM_SQLITE_PATH']}")
+    print(f"{bold('Company DBs')}  {env['NODE_COMPANY_SQLITE_DIR']}")
+    print(f"{bold('Releases')}     {env['DEPLOY_BASE_DIR']}")
+    print(f"{bold('Backups')}      {env['DEPLOY_BACKUP_DIR']}")
+    print(f"{bold('Public root')}  {env['DEPLOY_PUBLIC_DIR']}")
+    print("")
+    if remote_text:
+        print(remote_text.rstrip())
+        print("")
+    print(cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+    print("")
+
+
 def summarize_remote_firewall(env: dict[str, str]) -> None:
     remote_run(
         env,
@@ -407,6 +434,8 @@ def release_paths() -> list[Path]:
     return [
         ROOT / "dist" / "backend",
         ROOT / "dist" / "frontend",
+        ROOT / "backend" / "db" / "system-migrations",
+        ROOT / "backend" / "db" / "company-migrations",
         ROOT / "package.json",
         ROOT / "package-lock.json",
     ]
@@ -808,7 +837,9 @@ systemctl start {env['DEPLOY_SERVICE']}
         remote_run(env, deploy_script)
         wait_for_remote_health(env)
         wait_for_public_website(env)
+        prune_releases(env, keep=3)
         info(f"deploy complete: {release}")
+        size_report(env, release=release)
         print_report(env, release)
     except Exception:
         info("deploy failed, attempting rollback")
@@ -862,6 +893,77 @@ def logs(env: dict[str, str]) -> None:
     remote_run(env, f"journalctl -u {env['DEPLOY_SERVICE']} -n 200 --no-pager")
 
 
+def size_report(env: dict[str, str], release: str | None = None) -> None:
+    ensure_local_tools()
+    validate_env(env)
+    result = remote_run(
+        env,
+        f"""
+set -euo pipefail
+echo "== filesystem =="
+du -sh {env['DEPLOY_BASE_DIR']} {env['DEPLOY_SHARED_DIR']} {env['DEPLOY_BACKUP_DIR']} 2>/dev/null || true
+echo ""
+echo "== releases =="
+if [ -d {env['DEPLOY_BASE_DIR']}/releases ]; then
+  du -sh {env['DEPLOY_BASE_DIR']}/releases/* 2>/dev/null | sort -h || true
+fi
+echo ""
+echo "== database files =="
+if [ -f {env['NODE_SYSTEM_SQLITE_PATH']} ]; then
+  ls -lh {env['NODE_SYSTEM_SQLITE_PATH']}
+fi
+if [ -d {env['NODE_COMPANY_SQLITE_DIR']} ]; then
+  ls -lh {env['NODE_COMPANY_SQLITE_DIR']}/*.sqlite 2>/dev/null || true
+fi
+echo ""
+echo "== current symlink =="
+readlink -f {env['DEPLOY_BASE_DIR']}/current || true
+echo "== previous symlink =="
+readlink -f {env['DEPLOY_BASE_DIR']}/previous || true
+""".strip(),
+        capture_output=True,
+    )
+    if result.stdout:
+        print_size_report(env, release=release, remote_text=result.stdout)
+    if result.stderr:
+        print(result.stderr, file=sys.stderr)
+
+
+def prune_releases(env: dict[str, str], keep: int = 3) -> None:
+    ensure_local_tools()
+    validate_env(env)
+    if keep < 1:
+        fail("keep must be at least 1")
+
+    remote_run(
+        env,
+        f"""
+set -euo pipefail
+releases_dir={env['DEPLOY_BASE_DIR']}/releases
+if [ ! -d "$releases_dir" ]; then
+  exit 0
+fi
+mapfile -t releases < <(find "$releases_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+count=${{#releases[@]}}
+if [ "$count" -le {keep} ]; then
+  exit 0
+fi
+delete_count=$((count - {keep}))
+for ((i=0; i<delete_count; i++)); do
+  release="${{releases[$i]}}"
+  target="$releases_dir/$release"
+  current_target="$(readlink -f {env['DEPLOY_BASE_DIR']}/current 2>/dev/null || true)"
+  previous_target="$(readlink -f {env['DEPLOY_BASE_DIR']}/previous 2>/dev/null || true)"
+  target_real="$(readlink -f "$target" 2>/dev/null || true)"
+  if [ "$target_real" = "$current_target" ] || [ "$target_real" = "$previous_target" ]; then
+    continue
+  fi
+  rm -rf "$target"
+done
+""".strip(),
+    )
+
+
 def diagnose(env: dict[str, str]) -> None:
     ensure_local_tools()
     validate_env(env)
@@ -874,10 +976,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Jtzt Hetzner deployment helper")
     parser.add_argument(
         "command",
-        choices=["doctor", "bootstrap", "build", "typecheck", "deploy", "status", "rollback", "logs", "diagnose", "full"],
+        choices=["doctor", "bootstrap", "build", "typecheck", "deploy", "status", "rollback", "logs", "diagnose", "full", "size-report", "prune-releases"],
         nargs="?",
         default="full",
     )
+    parser.add_argument("--keep", type=int, default=3, help="Number of remote releases to keep when pruning")
     return parser.parse_args()
 
 
@@ -914,6 +1017,12 @@ def main() -> None:
             return
         if args.command == "logs":
             logs(build_release_env(env, allow_generate=False))
+            return
+        if args.command == "size-report":
+            size_report(build_release_env(env, allow_generate=False))
+            return
+        if args.command == "prune-releases":
+            prune_releases(build_release_env(env, allow_generate=False), keep=args.keep)
             return
         if args.command == "diagnose":
             diagnose(build_release_env(env, allow_generate=False))

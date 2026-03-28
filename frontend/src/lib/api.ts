@@ -152,6 +152,40 @@ function parseJsonSafely<T>(value: string): T | null {
   }
 }
 
+function formatJsonForDisplay(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function buildApiErrorMessage(response: Response, path: string, method: string, payload: ApiErrorPayload | null, responseText: string) {
+  const summary = payload?.error?.trim() || response.statusText || "Request failed";
+  const lines = [`${summary} (${response.status})`, `${method} ${path}`];
+
+  const requestId = response.headers.get("X-Request-Id") ?? payload?.requestId ?? null;
+  if (requestId) {
+    lines.push(`Request ID: ${requestId}`);
+  }
+
+  if (payload?.runtime || payload?.env) {
+    lines.push(`Runtime: ${payload.runtime ?? "unknown"}${payload.env ? ` / ${payload.env}` : ""}`);
+  }
+
+  const payloadText = payload ? formatJsonForDisplay(payload) : responseText.trim();
+  if (payloadText) {
+    lines.push("");
+    lines.push(payloadText);
+  }
+
+  return lines.join("\n");
+}
+
 function getRequestMethod(init?: RequestInit) {
   return init?.method?.toUpperCase() ?? "GET";
 }
@@ -183,7 +217,7 @@ async function parseJsonResponse<T>(response: Response, path: string, method: st
 async function buildApiRequestError(response: Response, path: string, method: string) {
   const responseText = await response.text();
   const payload = parseJsonSafely<ApiErrorPayload>(responseText);
-  const message = payload?.error?.trim() || response.statusText || "Request failed";
+  const message = buildApiErrorMessage(response, path, method, payload, responseText);
   return new ApiRequestError(message, response.status, {
     path,
     method,
@@ -197,31 +231,7 @@ async function buildApiRequestError(response: Response, path: string, method: st
 
 export function describeApiError(error: unknown, fallback = "Request failed") {
   if (error instanceof ApiRequestError) {
-    const lines = [
-      `${error.message} (${error.status})`,
-      `${error.method} ${error.path}`,
-    ];
-
-    if (error.requestId) {
-      lines.push(`Request ID: ${error.requestId}`);
-    }
-    if (error.runtime || error.env) {
-      lines.push(`Runtime: ${error.runtime ?? "unknown"}${error.env ? ` / ${error.env}` : ""}`);
-    }
-
-    const detailText =
-      typeof error.payload?.details === "string"
-        ? error.payload.details
-        : error.payload?.details
-          ? JSON.stringify(error.payload.details)
-          : error.payload?.debugMessage || "";
-    if (detailText) {
-      lines.push(detailText);
-    } else if (error.responseText && !error.payload?.error) {
-      lines.push(error.responseText.slice(0, 500));
-    }
-
-    return lines.join("\n");
+    return error.message;
   }
 
   if (error instanceof Error) {

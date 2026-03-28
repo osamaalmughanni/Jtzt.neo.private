@@ -113,15 +113,15 @@ export const systemService = {
 
   async setTabletCode(db: AppDatabase, companyId: string, code: string) {
     const normalized = normalizeTabletCode(code);
-    if (normalized.length === 0 || normalized.length > 24) {
-      throw new HTTPException(400, { message: "Tablet code must contain at least 1 letter or number and at most 24" });
+    if (normalized.length > 24) {
+      throw new HTTPException(400, { message: "Tablet code must contain at most 24 letters or numbers" });
     }
 
-    const updatedAt = new Date().toISOString();
+    const updatedAt = normalized.length > 0 ? new Date().toISOString() : null;
     try {
       await db.run("UPDATE companies SET tablet_code_value = ?, tablet_code_hash = ?, tablet_code_updated_at = ? WHERE id = ?", [
-        normalized,
-        hashTabletCode(normalized),
+        normalized.length > 0 ? normalized : null,
+        normalized.length > 0 ? hashTabletCode(normalized) : null,
         updatedAt,
         companyId
       ]);
@@ -135,8 +135,8 @@ export const systemService = {
     return {
       code: normalized,
       tabletCode: {
-        configured: true,
-        code: normalized,
+        configured: normalized.length > 0,
+        code: normalized.length > 0 ? normalized : null,
         updatedAt
       }
     };

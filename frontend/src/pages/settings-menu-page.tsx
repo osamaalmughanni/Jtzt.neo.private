@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { CompanySettings, TabletCodeStatus } from "@shared/types/models";
 import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
+import { Copy, Power } from "phosphor-react";
 import { Field, FieldCombobox, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
@@ -89,7 +90,6 @@ export function SettingsMenuPage() {
   const { settings: companySettings, setSettings: setCompanySettings } = useCompanySettings();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [tabletCodeStatus, setTabletCodeStatus] = useState<TabletCodeStatus>(defaultTabletCode);
-  const [tabletCodeInput, setTabletCodeInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [tabletSaving, setTabletSaving] = useState(false);
   const pageResource = usePageResource<{ tabletCodeStatus: TabletCodeStatus }>({
@@ -143,7 +143,6 @@ export function SettingsMenuPage() {
     if (!companySession) return;
     const response = await api.getTabletCodeStatus(companySession.token);
     setTabletCodeStatus(response.tabletCode);
-    setTabletCodeInput(response.tabletCode.code ?? "");
   }
 
   useEffect(() => {
@@ -158,17 +157,12 @@ export function SettingsMenuPage() {
     }
 
     setTabletCodeStatus(pageResource.data.tabletCodeStatus);
-    setTabletCodeInput(pageResource.data.tabletCodeStatus.code ?? "");
   }, [pageResource.data]);
 
   async function handleSave() {
     if (!companySession) return;
     try {
       setSaving(true);
-      const nextTabletCode = tabletCodeInput.trim();
-      if (nextTabletCode.length > 0 && nextTabletCode !== (tabletCodeStatus.code ?? "")) {
-        await api.updateTabletCode(companySession.token, { code: nextTabletCode });
-      }
       const response = await api.updateSettings(companySession.token, settings);
       setSettings(response.settings);
       setCompanySettings(response.settings);
@@ -184,33 +178,38 @@ export function SettingsMenuPage() {
     }
   }
 
-  async function handleSaveTabletCode() {
+  async function handleCopyTabletCode() {
     if (!companySession) return;
+    const nextTabletCode = tabletCodeStatus.code?.trim() ?? "";
+    if (nextTabletCode.length === 0) {
+      return;
+    }
     try {
-      setTabletSaving(true);
-      await api.updateTabletCode(companySession.token, { code: tabletCodeInput });
-      await refreshTabletCodeStatus();
-      toast({ title: t("settings.saveTabletCode") });
-    } catch (error) {
+      await navigator.clipboard.writeText(nextTabletCode);
+      toast({ title: t("common.copied", { defaultValue: "Copied" }) });
+    } catch {
       toast({
-        title: t("settings.saveTabletCodeFailed"),
-        description: error instanceof Error ? error.message : "Request failed",
+        title: t("common.copyFailed", { defaultValue: "Could not copy" }),
       });
-    } finally {
-      setTabletSaving(false);
     }
   }
 
-  async function handleRegenerateTabletCode() {
+  async function handleToggleTabletCode(checked: boolean) {
     if (!companySession) return;
     try {
       setTabletSaving(true);
-      await api.regenerateTabletCode(companySession.token);
+      if (checked) {
+        await api.regenerateTabletCode(companySession.token);
+      } else {
+        await api.updateTabletCode(companySession.token, { code: "" });
+      }
       await refreshTabletCodeStatus();
-      toast({ title: t("settings.regenerateTabletCode") });
+      toast({
+        title: checked ? t("settings.regenerateTabletCode") : t("settings.tabletCodeDisabled", { defaultValue: "Tablet code disabled" }),
+      });
     } catch (error) {
       toast({
-        title: t("settings.regenerateTabletCodeFailed"),
+        title: checked ? t("settings.regenerateTabletCodeFailed") : t("settings.saveTabletCodeFailed"),
         description: error instanceof Error ? error.message : "Request failed",
       });
     } finally {
@@ -527,47 +526,45 @@ export function SettingsMenuPage() {
         </FormSection>
 
         <FormSection>
-          <div className="flex flex-col gap-4 rounded-2xl border border-border p-4">
+          <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4">
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium text-foreground">{t("settings.tabletAccess")}</p>
               <p className="text-sm text-muted-foreground">
                 {t("settings.tabletAccessDescription")}
               </p>
             </div>
-            <FormFields>
-              <Field label={t("settings.tabletCode")}>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
                 <Input
-                  placeholder={t("auth.tabletCodePlaceholder")}
-                  value={tabletCodeInput}
-                  onChange={(event) => setTabletCodeInput(event.target.value)}
+                  disabled
+                  value={tabletCodeStatus.code ?? "-"}
+                  className="h-9 min-w-0 flex-1 font-mono tracking-[0.2em]"
                 />
-              </Field>
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">
-                  {tabletCodeStatus.configured ? t("settings.tabletModeActive") : t("settings.noTabletCode")}
-                </span>
-                {tabletCodeStatus.updatedAt ? (
-                  <span className="text-muted-foreground">{formatCompanyDateTime(tabletCodeStatus.updatedAt, settings.locale, settings.dateTimeFormat, settings.timeZone)}</span>
-                ) : null}
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  className="h-9 w-9 shrink-0"
+                  disabled={!tabletCodeStatus.code}
+                  onClick={() => void handleCopyTabletCode()}
+                  aria-label={t("common.copy", { defaultValue: "Copy" })}
+                  title={t("common.copy", { defaultValue: "Copy" })}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant={tabletCodeStatus.configured ? "default" : "outline"}
+                  className="h-9 w-9 shrink-0"
+                  disabled={tabletSaving}
+                  onClick={() => void handleToggleTabletCode(!tabletCodeStatus.configured)}
+                  aria-label={tabletCodeStatus.configured ? t("settings.tabletModeActive") : t("settings.noTabletCode")}
+                  title={tabletCodeStatus.configured ? t("settings.tabletModeActive") : t("settings.noTabletCode")}
+                >
+                  <Power className="h-4 w-4" weight="bold" />
+                </Button>
               </div>
-              {tabletCodeStatus.code ? (
-                <div className="rounded-2xl border border-border bg-muted/30 px-4 py-3 text-sm">
-                  <p className="text-muted-foreground">{t("settings.currentCode")}</p>
-                  <p className="text-base font-medium tracking-[0.16em] text-foreground">{tabletCodeStatus.code}</p>
-                </div>
-              ) : null}
-            </FormFields>
-            <div className="flex items-center gap-2">
-              <Button
-                disabled={tabletSaving || tabletCodeInput.trim().length === 0}
-                onClick={() => void handleSaveTabletCode()}
-                type="button"
-              >
-                {tabletSaving ? t("settings.saving") : tabletCodeStatus.configured ? t("settings.changeCode") : t("settings.createCode")}
-              </Button>
-              <Button disabled={tabletSaving} variant="ghost" onClick={() => void handleRegenerateTabletCode()} type="button">
-                {t("settings.regenerate")}
-              </Button>
             </div>
           </div>
         </FormSection>
