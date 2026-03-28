@@ -1,7 +1,15 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { CompanyMeResponse } from "@shared/types/api";
 import { ApiRequestError, api } from "./api";
-import { sessionStorage, type StoredSession, type StoredTabletAccess } from "./storage";
+import {
+  ADMIN_SESSION_KEY,
+  COMPANY_SESSION_KEY,
+  TABLET_ACCESS_KEY,
+  sessionStorage,
+  type StoredSession,
+  type StoredTabletAccess,
+} from "./storage";
+import { AUTH_INVALID_EVENT, type AuthInvalidEventDetail } from "./auth-events";
 
 interface AuthContextValue {
   companySession: StoredSession | null;
@@ -24,7 +32,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function isAuthInvalidError(error: unknown) {
-  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
+  return error instanceof ApiRequestError && error.status === 401;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -35,15 +43,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [adminIdentity, setAdminIdentity] = useState<{ username: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function bootstrap() {
+  function clearCompanySession() {
+    sessionStorage.clearCompanySession();
+    setCompanySession(null);
+    setCompanyIdentity(null);
+  }
+
+  function clearAdminSession() {
+    sessionStorage.clearAdminSession();
+    setAdminSession(null);
+    setAdminIdentity(null);
+  }
+
+  async function validateActiveSessions() {
     if (companySession) {
       try {
         setCompanyIdentity(await api.getCompanyMe(companySession.token));
       } catch (error) {
         if (isAuthInvalidError(error)) {
-          sessionStorage.clearCompanySession();
-          setCompanySession(null);
-          setCompanyIdentity(null);
+          clearCompanySession();
         }
       }
     }
@@ -53,19 +71,101 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAdminIdentity(await api.getAdminMe(adminSession.token));
       } catch (error) {
         if (isAuthInvalidError(error)) {
-          sessionStorage.clearAdminSession();
-          setAdminSession(null);
-          setAdminIdentity(null);
+          clearAdminSession();
         }
       }
     }
+  }
 
+  async function bootstrap() {
+    await validateActiveSessions();
     setLoading(false);
   }
 
   useEffect(() => {
     void bootstrap();
   }, []);
+
+  useEffect(() => {
+    const syncFromStorage = (event: StorageEvent) => {
+      if (event.storageArea !== localStorage) {
+        return;
+      }
+
+      if (event.key === COMPANY_SESSION_KEY) {
+        setCompanySession(sessionStorage.getCompanySession());
+        setCompanyIdentity(null);
+      }
+
+      if (event.key === ADMIN_SESSION_KEY) {
+        setAdminSession(sessionStorage.getAdminSession());
+        setAdminIdentity(null);
+      }
+
+      if (event.key === TABLET_ACCESS_KEY) {
+        setTabletAccessState(sessionStorage.getTabletAccess());
+      }
+    };
+
+    window.addEventListener("storage", syncFromStorage);
+    return () => {
+      window.removeEventListener("storage", syncFromStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading || (!companySession && !adminSession)) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const runValidation = async () => {
+      if (cancelled) {
+        return;
+      }
+
+      await validateActiveSessions();
+    };
+
+    const onFocus = () => {
+      void runValidation();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void runValidation();
+      }
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [adminSession, companySession, loading]);
+
+  useEffect(() => {
+    const handleAuthInvalid = (event: Event) => {
+      const { token } = (event as CustomEvent<AuthInvalidEventDetail>).detail;
+
+      if (companySession?.token === token) {
+        clearCompanySession();
+      }
+
+      if (adminSession?.token === token) {
+        clearAdminSession();
+      }
+    };
+
+    window.addEventListener(AUTH_INVALID_EVENT, handleAuthInvalid);
+    return () => {
+      window.removeEventListener(AUTH_INVALID_EVENT, handleAuthInvalid);
+    };
+  }, [adminSession?.token, companySession?.token]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -83,9 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setCompanyIdentity(await api.getCompanyMe(session.token));
         } catch (error) {
           if (isAuthInvalidError(error)) {
-            sessionStorage.clearCompanySession();
-            setCompanySession(null);
-            setCompanyIdentity(null);
+            clearCompanySession();
             throw error;
           }
         }
@@ -97,9 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setAdminIdentity(await api.getAdminMe(session.token));
         } catch (error) {
           if (isAuthInvalidError(error)) {
-            sessionStorage.clearAdminSession();
-            setAdminSession(null);
-            setAdminIdentity(null);
+            clearAdminSession();
             throw error;
           }
         }
@@ -113,19 +209,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setTabletAccessState(null);
       },
       lockTablet() {
-        sessionStorage.clearCompanySession();
-        setCompanySession(null);
-        setCompanyIdentity(null);
+        clearCompanySession();
       },
       logoutCompany() {
-        sessionStorage.clearCompanySession();
-        setCompanySession(null);
-        setCompanyIdentity(null);
+        clearCompanySession();
       },
       logoutAdmin() {
-        sessionStorage.clearAdminSession();
-        setAdminSession(null);
-        setAdminIdentity(null);
+        clearAdminSession();
       },
       async refreshCompany() {
         if (!companySession) return;
@@ -133,9 +223,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setCompanyIdentity(await api.getCompanyMe(companySession.token));
         } catch (error) {
           if (isAuthInvalidError(error)) {
-            sessionStorage.clearCompanySession();
-            setCompanySession(null);
-            setCompanyIdentity(null);
+            clearCompanySession();
             throw error;
           }
         }

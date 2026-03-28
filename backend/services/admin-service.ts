@@ -46,39 +46,37 @@ function validateSnapshot(snapshot: CompanySnapshot) {
 
 async function deleteCompanyData(db: AppDatabase, companyId: string) {
   await db.batch([
-    { sql: "DELETE FROM tasks WHERE company_id = ?", params: [companyId] },
-    { sql: "DELETE FROM projects WHERE company_id = ?", params: [companyId] },
-    { sql: "DELETE FROM time_entries WHERE company_id = ?", params: [companyId] },
-    { sql: "DELETE FROM user_contract_schedule_blocks WHERE contract_id IN (SELECT id FROM user_contracts WHERE company_id = ?)", params: [companyId] },
-    { sql: "DELETE FROM user_contracts WHERE company_id = ?", params: [companyId] },
-    { sql: "DELETE FROM public_holiday_cache WHERE company_id = ?", params: [companyId] },
-    { sql: "DELETE FROM company_settings WHERE company_id = ?", params: [companyId] },
-    { sql: "DELETE FROM users WHERE company_id = ?", params: [companyId] }
+    { sql: "DELETE FROM tasks", params: [] },
+    { sql: "DELETE FROM projects", params: [] },
+    { sql: "DELETE FROM time_entries", params: [] },
+    { sql: "DELETE FROM user_contract_schedule_blocks", params: [] },
+    { sql: "DELETE FROM user_contracts", params: [] },
+    { sql: "DELETE FROM public_holiday_cache", params: [] },
+    { sql: "DELETE FROM company_settings", params: [] },
+    { sql: "DELETE FROM users", params: [] }
   ]);
 }
 
 async function seedCompanyAdmin(db: AppDatabase, companyId: string, payload: { username: string; password: string; fullName: string }) {
-  const result = await db.run(
-    `INSERT INTO users (
-      company_id,
+    const result = await db.run(
+      `INSERT INTO users (
       username,
       full_name,
       password_hash,
       role,
       created_at
-    ) VALUES (?, ?, ?, ?, 'admin', ?)`,
-    [companyId, payload.username, payload.fullName, bcrypt.hashSync(payload.password, 10), new Date().toISOString()]
+    ) VALUES (?, ?, ?, 'admin', ?)`,
+    [payload.username, payload.fullName, bcrypt.hashSync(payload.password, 10), new Date().toISOString()]
   );
   return Number(result.lastRowId);
 }
 
 async function seedDefaultProjects(db: AppDatabase, companyId: string) {
-  const existing = await db.first<{ count: number }>("SELECT COUNT(*) as count FROM projects WHERE company_id = ?", [companyId]);
+  const existing = await db.first<{ count: number }>("SELECT COUNT(*) as count FROM projects", []);
   if ((existing?.count ?? 0) > 0) {
     return;
   }
-  await db.run("INSERT INTO projects (company_id, name, description, created_at) VALUES (?, ?, ?, ?)", [
-    companyId,
+  await db.run("INSERT INTO projects (name, description, created_at) VALUES (?, ?, ?)", [
     "General",
     "Default project",
     new Date().toISOString()
@@ -93,7 +91,6 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
   if (snapshot.settings) {
     await db.run(
       `INSERT INTO company_settings (
-        company_id,
         currency,
         locale,
         time_zone,
@@ -115,9 +112,8 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         tasks_enabled,
         overtime_settings_json,
         custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
       [
-        companyId,
         snapshot.settings.currency,
         snapshot.settings.locale,
         snapshot.settings.timeZone,
@@ -147,7 +143,6 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
   for (const user of snapshot.users) {
     const result = await db.run(
       `INSERT INTO users (
-        company_id,
         username,
         full_name,
         password_hash,
@@ -158,9 +153,8 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         email,
         custom_field_values_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
       [
-        companyId,
         user.username,
         user.fullName,
         user.passwordHash,
@@ -180,7 +174,6 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
   for (const project of snapshot.projects) {
     const result = await db.run(
       `INSERT INTO projects (
-        company_id,
         name,
         description,
         budget,
@@ -189,9 +182,8 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         allow_all_tasks,
         custom_field_values_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)` ,
       [
-        companyId,
         project.name,
         project.description,
         project.budget ?? 0,
@@ -207,8 +199,7 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
 
   const taskIdMap = new Map<number, number>();
   for (const task of snapshot.tasks) {
-    const result = await db.run("INSERT INTO tasks (company_id, title, is_active, custom_field_values_json, created_at) VALUES (?, ?, ?, ?, ?)", [
-      companyId,
+    const result = await db.run("INSERT INTO tasks (title, is_active, custom_field_values_json, created_at) VALUES (?, ?, ?, ?)", [
       task.title,
       task.isActive ? 1 : 0,
       JSON.stringify(task.customFieldValues ?? {}),
@@ -222,7 +213,6 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
     if (!userId) continue;
     const result = await db.run(
       `INSERT INTO user_contracts (
-        company_id,
         user_id,
         hours_per_week,
         start_date,
@@ -231,7 +221,7 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         annual_vacation_days,
         created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [companyId, userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, contract.annualVacationDays, contract.createdAt]
+      [userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, contract.annualVacationDays, contract.createdAt]
     );
     const contractId = Number(result.lastRowId);
     const schedule = Array.isArray((contract as { schedule?: unknown }).schedule) ? contract.schedule : [];
@@ -259,7 +249,6 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
     const taskId = entry.taskId != null ? taskIdMap.get(entry.taskId) ?? null : null;
     await db.run(
       `INSERT INTO time_entries (
-        company_id,
         user_id,
         entry_type,
         entry_date,
@@ -273,7 +262,6 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        companyId,
         userId,
         entry.entryType,
         entry.entryDate,
@@ -291,12 +279,11 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
 
   for (const cacheRow of snapshot.publicHolidayCache) {
     await db.run(
-      `INSERT INTO public_holiday_cache (company_id, country_code, year, payload_json, fetched_at)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(company_id, country_code, year)
+      `INSERT INTO public_holiday_cache (country_code, year, payload_json, fetched_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(country_code, year)
        DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at`,
       [
-        companyId,
         cacheRow.countryCode,
         cacheRow.year,
         cacheRow.payloadJson,
@@ -442,14 +429,13 @@ export const adminService = {
     }
     await companyDb.run(
       `INSERT INTO users (
-        company_id,
         username,
         full_name,
         password_hash,
         role,
         created_at
-      ) VALUES (?, ?, ?, ?, 'admin', ?)`,
-      [company.id, input.username.trim(), input.fullName.trim(), bcrypt.hashSync(input.password, 10), new Date().toISOString()]
+      ) VALUES (?, ?, ?, 'admin', ?)`,
+      [input.username.trim(), input.fullName.trim(), bcrypt.hashSync(input.password, 10), new Date().toISOString()]
     );
   },
 
@@ -587,10 +573,10 @@ export const adminService = {
       throw new HTTPException(404, { message: "Company not found" });
     }
 
-    const settingsRow = await companyDb.first("SELECT * FROM company_settings WHERE company_id = ?", [companyId]);
+    const settingsRow = await companyDb.first("SELECT * FROM company_settings LIMIT 1");
     const users = (await companyDb.all(
-      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, email, created_at FROM users WHERE company_id = ? ORDER BY id ASC",
-      [companyId]
+      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, email, created_at FROM users ORDER BY id ASC",
+      []
     ))
       .map(mapCompanyUser)
       .map((user) => ({
@@ -608,8 +594,8 @@ export const adminService = {
       }));
 
     const contractRows = await companyDb.all(
-      "SELECT id, user_id, hours_per_week, start_date, end_date, payment_per_hour, annual_vacation_days, created_at FROM user_contracts WHERE company_id = ? ORDER BY id ASC",
-      [companyId]
+      "SELECT id, user_id, hours_per_week, start_date, end_date, payment_per_hour, annual_vacation_days, created_at FROM user_contracts ORDER BY id ASC",
+      []
     ) as Array<{
       id: number;
       user_id: number;
@@ -629,9 +615,9 @@ export const adminService = {
         end_time,
         minutes
        FROM user_contract_schedule_blocks
-       WHERE contract_id IN (SELECT id FROM user_contracts WHERE company_id = ?)
+       WHERE contract_id IN (SELECT id FROM user_contracts)
        ORDER BY contract_id ASC, weekday ASC, block_order ASC`,
-      [companyId]
+      []
     ) as Array<{
       contract_id: number;
       weekday: number;
@@ -661,22 +647,21 @@ export const adminService = {
         custom_field_values_json,
         created_at
        FROM time_entries
-       WHERE company_id = ?
        ORDER BY id ASC`,
-      [companyId]
+      []
     )).map(mapTimeEntry);
 
     const projectRows = await companyDb.all(
-      "SELECT id, name, description, budget, is_active, allow_all_users, allow_all_tasks, custom_field_values_json, created_at FROM projects WHERE company_id = ? ORDER BY id ASC",
-      [companyId]
+      "SELECT id, name, description, budget, is_active, allow_all_users, allow_all_tasks, custom_field_values_json, created_at FROM projects ORDER BY id ASC",
+      []
     );
     const projectUserRows = await companyDb.all<{ project_id: number; user_id: number }>(
-      "SELECT project_id, user_id FROM project_users WHERE project_id IN (SELECT id FROM projects WHERE company_id = ?)",
-      [companyId]
+      "SELECT project_id, user_id FROM project_users WHERE project_id IN (SELECT id FROM projects)",
+      []
     );
     const projectTaskRows = await companyDb.all<{ project_id: number; task_id: number }>(
-      "SELECT project_id, task_id FROM project_tasks WHERE project_id IN (SELECT id FROM projects WHERE company_id = ?)",
-      [companyId]
+      "SELECT project_id, task_id FROM project_tasks WHERE project_id IN (SELECT id FROM projects)",
+      []
     );
     const projectUsersByProjectId = new Map<number, number[]>();
     for (const row of projectUserRows) {
@@ -698,10 +683,10 @@ export const adminService = {
         taskIds: project.allowAllTasks ? [] : Array.from(new Set(projectTasksByProjectId.get(project.id) ?? [])),
       };
     });
-    const tasks = (await companyDb.all("SELECT id, title, is_active, custom_field_values_json, created_at FROM tasks WHERE company_id = ? ORDER BY id ASC", [companyId])).map(mapTask);
+    const tasks = (await companyDb.all("SELECT id, title, is_active, custom_field_values_json, created_at FROM tasks ORDER BY id ASC", [])).map(mapTask);
     const publicHolidayCache = await companyDb.all<{ country_code: string; year: number; payload_json: string; fetched_at: string }>(
-      "SELECT country_code, year, payload_json, fetched_at FROM public_holiday_cache WHERE company_id = ? ORDER BY year ASC, country_code ASC",
-      [companyId]
+      "SELECT country_code, year, payload_json, fetched_at FROM public_holiday_cache ORDER BY year ASC, country_code ASC",
+      []
     );
 
     return {

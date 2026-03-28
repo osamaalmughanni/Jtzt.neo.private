@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { createDefaultCompanySettings, useCompanySettings } from "@/lib/company-settings";
 import { toast } from "@/lib/toast";
 import type { ProjectTaskManagementResponse } from "@shared/types/api";
 import type { CompanyCustomField, CompanySettings } from "@shared/types/models";
@@ -38,6 +39,7 @@ export function TaskEditorPage({ mode }: { mode: "create" | "edit" }) {
   const { t } = useTranslation();
   const { taskId } = useParams();
   const { companySession } = useAuth();
+  const { settings: companySettings } = useCompanySettings();
   const [settingsCustomFields, setSettingsCustomFields] = useState<CompanyCustomField[]>([]);
   const [form, setForm] = useState<TaskFormState>(createEmptyForm);
   const [saving, setSaving] = useState(false);
@@ -49,15 +51,12 @@ export function TaskEditorPage({ mode }: { mode: "create" | "edit" }) {
     deps: [companySession?.token, mode, taskId, t],
     load: async () => {
       if (!companySession) {
-        return { users: [], projects: [], tasks: [], projectUsers: [], projectTasks: [], settings: { customFields: [] } as unknown as CompanySettings };
+        return { users: [], projects: [], tasks: [], projectUsers: [], projectTasks: [], settings: companySettings ?? createDefaultCompanySettings() };
       }
 
       try {
-        const [projectData, settingsResponse] = await Promise.all([
-          api.listProjectData(companySession.token),
-          api.getSettings(companySession.token),
-        ]);
-        return { ...projectData, settings: settingsResponse.settings };
+        const projectData = await api.listProjectData(companySession.token);
+        return { ...projectData, settings: companySettings ?? createDefaultCompanySettings() };
       } catch (error) {
         toast({
           title: t("tasks.loadFailed"),

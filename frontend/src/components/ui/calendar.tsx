@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { formatCompanyMonthYear } from "@/lib/locale-format";
 import { cn } from "@/lib/utils";
+import { isWeekendDay } from "@shared/utils/time";
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -35,8 +36,10 @@ export function Calendar({
   onMonthChange,
   compact = false,
   disableDate,
+  bare = false,
+  weekendDays = [6, 7],
 }: {
-  selected: Date;
+  selected?: Date | null;
   month?: Date;
   onSelect: (date: Date) => void;
   firstDayOfWeek?: number;
@@ -47,17 +50,20 @@ export function Calendar({
   onMonthChange?: (date: Date) => void;
   compact?: boolean;
   disableDate?: (date: Date) => boolean;
+  bare?: boolean;
+  weekendDays?: number[];
 }) {
   const { t, i18n } = useTranslation();
   const entryStateUi = useMemo(() => getEntryStateUi(t), [t]);
-  const [uncontrolledViewDate, setUncontrolledViewDate] = useState(startOfMonth(selected));
+  const initialViewDate = startOfMonth(selected ?? month ?? new Date());
+  const [uncontrolledViewDate, setUncontrolledViewDate] = useState(initialViewDate);
   const normalizedFirstDayOfWeek = ((Math.trunc(firstDayOfWeek) % 7) + 7) % 7;
   const displayLocale = (i18n.resolvedLanguage?.trim() || locale || "en-GB").trim();
   const viewDate = startOfMonth(month ?? uncontrolledViewDate);
 
   useEffect(() => {
     if (!month) {
-      setUncontrolledViewDate(startOfMonth(selected));
+      setUncontrolledViewDate(startOfMonth(selected ?? new Date()));
     }
   }, [month, selected]);
 
@@ -88,9 +94,13 @@ export function Calendar({
     return Array.from({ length: 7 }, (_, index) => {
       const date = new Date(baseSunday);
       date.setUTCDate(baseSunday.getUTCDate() + ((normalizedFirstDayOfWeek + index) % 7));
-      return new Intl.DateTimeFormat(displayLocale, { weekday: "short", timeZone: "UTC" }).format(date);
+      const isoDay = ((date.getUTCDay() + 6) % 7) + 1;
+      return {
+        label: new Intl.DateTimeFormat(displayLocale, { weekday: "short", timeZone: "UTC" }).format(date),
+        isWeekend: weekendDays.includes(isoDay),
+      };
     });
-  }, [displayLocale, normalizedFirstDayOfWeek]);
+  }, [displayLocale, normalizedFirstDayOfWeek, weekendDays]);
   const holidaySet = useMemo(() => new Set(holidayDates), [holidayDates]);
   const cellClassName = compact ? "h-7 text-[11px]" : "h-12 text-sm";
   const emptyCellClassName = compact ? "h-7" : "h-12";
@@ -101,7 +111,14 @@ export function Calendar({
   const navButtonClassName = compact ? "h-7 w-7 p-0" : "h-9 px-3";
 
   return (
-    <div className={cn("flex flex-col rounded-2xl border border-border bg-card", wrapperClassName, className)}>
+    <div
+      className={cn(
+        "flex flex-col",
+        bare ? "rounded-none border-0 bg-transparent" : "rounded-2xl border border-border bg-card",
+        wrapperClassName,
+        className,
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
         <Button
           size="sm"
@@ -130,7 +147,12 @@ export function Calendar({
 
       <div className={cn("grid grid-cols-7 gap-1 text-center text-muted-foreground", weekdayClassName)}>
         {weekdayLabels.map((day) => (
-          <div key={day}>{day}</div>
+          <div
+            key={day.label}
+            className={cn(day.isWeekend ? "text-foreground/80" : undefined)}
+          >
+            {day.label}
+          </div>
         ))}
       </div>
 
@@ -141,8 +163,9 @@ export function Calendar({
           const isoDate = formatLocalDay(day);
           const isHoliday = holidaySet.has(isoDate);
           const dayState = dayStates[isoDate];
-          const isSelected = isSameDay(day, selected);
+          const isSelected = selected ? isSameDay(day, selected) : false;
           const isDisabled = disableDate?.(day) ?? false;
+          const weekend = isWeekendDay(isoDate, weekendDays);
 
           return (
             <button
@@ -157,7 +180,9 @@ export function Calendar({
                   ? entryStateUi[dayState].calendarCellClassName
                   : isHoliday
                     ? entryStateUi.holiday.calendarCellClassName
-                  : "border-transparent bg-background text-foreground hover:bg-muted",
+                  : weekend
+                    ? "border-transparent bg-muted/50 text-foreground hover:bg-muted"
+                    : "border-transparent bg-background text-foreground hover:bg-muted",
                 isSelected ? "border-2 border-foreground shadow-sm" : undefined,
                 isHoliday && !dayState ? "ring-1 ring-inset ring-border/80" : undefined,
               )}
@@ -181,12 +206,13 @@ export function Calendar({
               ) : null}
               <span
                 className={cn(
-                  "flex items-center justify-center rounded-full font-medium",
-                  innerClassName,
-                  dayState ? entryStateUi[dayState].calendarInnerClassName : undefined,
-                  isHoliday && !dayState ? entryStateUi.holiday.calendarInnerClassName : undefined,
-                  isSelected ? "font-bold" : undefined,
-                )}
+                "flex items-center justify-center rounded-full font-medium",
+                innerClassName,
+                dayState ? entryStateUi[dayState].calendarInnerClassName : undefined,
+                isHoliday && !dayState ? entryStateUi.holiday.calendarInnerClassName : undefined,
+                weekend && !dayState && !isHoliday ? "opacity-90" : undefined,
+                isSelected ? "font-bold" : undefined,
+              )}
               >
                 {day.getDate()}
               </span>

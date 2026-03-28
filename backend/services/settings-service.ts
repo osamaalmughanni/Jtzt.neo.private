@@ -1,5 +1,6 @@
 import { HTTPException } from "hono/http-exception";
 import type { UpdateOvertimeSettingsInput, UpdateSettingsInput } from "../../shared/types/api";
+import type { TimeEntryType } from "../../shared/types/models";
 import {
   DEFAULT_COMPANY_DATE_TIME_FORMAT,
   DEFAULT_COMPANY_LOCALE,
@@ -11,17 +12,102 @@ import {
 } from "../../shared/utils/company-locale";
 import { getLocalNowSnapshot, normalizeTimeZone } from "../../shared/utils/time";
 import { createDefaultOvertimeSettings, normalizeOvertimeSettings } from "../../shared/utils/overtime";
-import { getRemovedCustomFieldIds, normalizeCustomFields, stripRemovedCustomFieldValues } from "../../shared/utils/custom-fields";
+import { normalizeCustomFields, sanitizeCustomFieldValuesForTarget } from "../../shared/utils/custom-fields";
 import { mapCompanySettings } from "../db/mappers";
 import type { AppDatabase } from "../runtime/types";
 
 const HOLIDAY_CACHE_MAX_AGE_DAYS = 30;
 const CURRENT_YEAR_CACHE_MAX_AGE_DAYS = 7;
+type CustomFieldValue = string | number | boolean;
+type CustomFieldValues = Record<string, CustomFieldValue>;
+
+function parseCustomFieldValuesJson(value: string | null | undefined): CustomFieldValues {
+  if (typeof value !== "string" || value.length === 0) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    const next: CustomFieldValues = {};
+    for (const [key, rawValue] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof rawValue === "string" || typeof rawValue === "number" || typeof rawValue === "boolean") {
+        next[key] = rawValue;
+      }
+    }
+
+    return next;
+  } catch {
+    return {};
+  }
+}
+
+function stringifyCustomFieldValues(values: CustomFieldValues) {
+  return JSON.stringify(values);
+}
+
+async function cleanupCustomFieldValuesForTable(
+  db: AppDatabase,
+  table: "users" | "projects" | "tasks" | "time_entries",
+  customFields: UpdateSettingsInput["customFields"],
+  target: { scope: "user" | "project" | "task" | "time_entry"; entryType?: TimeEntryType },
+) {
+  if (table === "time_entries") {
+    const rows = await db.all<{ id: number; entry_type: TimeEntryType; custom_field_values_json: string }>(
+      "SELECT id, entry_type, custom_field_values_json FROM time_entries"
+    );
+
+    for (const row of rows) {
+      const parsedValues = parseCustomFieldValuesJson(row.custom_field_values_json);
+      const resolvedValues = sanitizeCustomFieldValuesForTarget(
+        customFields,
+        { scope: "time_entry", entryType: row.entry_type },
+        parsedValues
+      );
+
+      if (JSON.stringify(resolvedValues) === JSON.stringify(parsedValues)) {
+        continue;
+      }
+
+      await db.run(
+        "UPDATE time_entries SET custom_field_values_json = ? WHERE id = ?",
+        [stringifyCustomFieldValues(resolvedValues), row.id]
+      );
+    }
+
+    return;
+  }
+
+  const rows = await db.all<{ id: number; custom_field_values_json: string }>(
+    `SELECT id, custom_field_values_json FROM ${table}`
+  );
+
+  for (const row of rows) {
+    const parsedValues = parseCustomFieldValuesJson(row.custom_field_values_json);
+    const resolvedValues = sanitizeCustomFieldValuesForTarget(customFields, { scope: target.scope }, parsedValues);
+
+    if (JSON.stringify(resolvedValues) === JSON.stringify(parsedValues)) {
+      continue;
+    }
+
+    await db.run(
+      `UPDATE ${table} SET custom_field_values_json = ? WHERE id = ?`,
+      [stringifyCustomFieldValues(resolvedValues), row.id]
+    );
+  }
+}
 
 async function ensureSettingsRow(db: AppDatabase, companyId: string) {
+  const existing = await db.first("SELECT rowid FROM company_settings LIMIT 1");
+  if (existing) {
+    return;
+  }
+
   await db.run(
     `INSERT INTO company_settings (
-        company_id,
         currency,
         locale,
         time_zone,
@@ -43,10 +129,8 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
         tasks_enabled,
         overtime_settings_json,
         custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(company_id) DO NOTHING`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      companyId,
       "EUR",
       DEFAULT_COMPANY_LOCALE,
       DEFAULT_COMPANY_TIME_ZONE,
@@ -67,7 +151,7 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
       0,
       0,
       JSON.stringify(createDefaultOvertimeSettings()),
-      "[]"
+      "[]",
     ]
   );
 }
@@ -102,21 +186,17 @@ function enumerateYears(startDate: string, endDate: string) {
 export const settingsService = {
   async getSettings(db: AppDatabase, companyId: string) {
     await ensureSettingsRow(db, companyId);
-    const row = await db.first("SELECT * FROM company_settings WHERE company_id = ?", [companyId]);
+    const row = await db.first("SELECT * FROM company_settings LIMIT 1");
     return mapCompanySettings(row);
   },
 
   async updateSettings(db: AppDatabase, companyId: string, input: UpdateSettingsInput) {
     await ensureSettingsRow(db, companyId);
-    const previousRow = await db.first<{ custom_fields_json: string }>(
-      "SELECT custom_fields_json FROM company_settings WHERE company_id = ?",
-      [companyId]
-    );
+    const previousRow = await db.first<{ custom_fields_json: string }>("SELECT custom_fields_json FROM company_settings LIMIT 1");
     const previousCustomFields = normalizeCustomFields(
       previousRow ? JSON.parse(previousRow.custom_fields_json || "[]") : []
     );
     const nextCustomFields = normalizeCustomFields(input.customFields);
-    const removedCustomFieldIds = getRemovedCustomFieldIds(previousCustomFields, nextCustomFields);
     const nextLocale = normalizeCompanyLocale(input.locale);
     const nextDateTimeFormat = normalizeCompanyDateTimeFormat(input.dateTimeFormat);
     const nextTimeZone = normalizeSettingsTimeZone(input.timeZone);
@@ -153,8 +233,7 @@ export const settingsService = {
              projects_enabled = ?,
              tasks_enabled = ?,
              overtime_settings_json = ?,
-             custom_fields_json = ?
-           WHERE company_id = ?`,
+             custom_fields_json = ?`,
         [
           input.currency,
           nextLocale,
@@ -177,32 +256,14 @@ export const settingsService = {
           nextTasksEnabled ? 1 : 0,
           nextOvertimeJson,
           JSON.stringify(nextCustomFields),
-          companyId
         ]
       );
 
-      if (removedCustomFieldIds.length > 0) {
-        const tables: Array<"users" | "projects" | "tasks" | "time_entries"> = ["users", "projects", "tasks", "time_entries"];
-        for (const table of tables) {
-          const rows = await db.all<{ id: number; custom_field_values_json: string }>(
-            `SELECT id, custom_field_values_json FROM ${table} WHERE company_id = ?`,
-            [companyId]
-          );
-          for (const row of rows) {
-            const parsedValues = typeof row.custom_field_values_json === "string" && row.custom_field_values_json.length > 0
-              ? JSON.parse(row.custom_field_values_json) as Record<string, string | number | boolean>
-              : {};
-            const nextValues = stripRemovedCustomFieldValues(parsedValues, removedCustomFieldIds);
-            if (JSON.stringify(nextValues) === JSON.stringify(parsedValues)) {
-              continue;
-            }
-
-            await db.run(
-              `UPDATE ${table} SET custom_field_values_json = ? WHERE id = ? AND company_id = ?`,
-              [JSON.stringify(nextValues), row.id, companyId]
-            );
-          }
-        }
+      if (JSON.stringify(previousCustomFields) !== JSON.stringify(nextCustomFields)) {
+        await cleanupCustomFieldValuesForTable(db, "users", nextCustomFields, { scope: "user" });
+        await cleanupCustomFieldValuesForTable(db, "projects", nextCustomFields, { scope: "project" });
+        await cleanupCustomFieldValuesForTable(db, "tasks", nextCustomFields, { scope: "task" });
+        await cleanupCustomFieldValuesForTable(db, "time_entries", nextCustomFields, { scope: "time_entry" });
       }
 
       await db.exec("COMMIT");
@@ -217,8 +278,8 @@ export const settingsService = {
   async getPublicHolidays(db: AppDatabase, companyId: string, countryCode: string, year: number) {
     const normalizedCountry = countryCode.trim().toUpperCase();
     const cached = await db.first(
-      "SELECT payload_json, fetched_at FROM public_holiday_cache WHERE company_id = ? AND country_code = ? AND year = ?",
-      [companyId, normalizedCountry, year]
+      "SELECT payload_json, fetched_at FROM public_holiday_cache WHERE country_code = ? AND year = ?",
+      [normalizedCountry, year]
     ) as { payload_json: string; fetched_at: string } | null;
 
     if (cached && isFreshForYear(cached.fetched_at, year)) {
@@ -242,11 +303,11 @@ export const settingsService = {
       }>;
 
       await db.run(
-        `INSERT INTO public_holiday_cache (company_id, country_code, year, payload_json, fetched_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(company_id, country_code, year)
+        `INSERT INTO public_holiday_cache (country_code, year, payload_json, fetched_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(country_code, year)
          DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at`
-      , [companyId, normalizedCountry, year, JSON.stringify(holidays), new Date().toISOString()]);
+      , [normalizedCountry, year, JSON.stringify(holidays), new Date().toISOString()]);
 
       return {
         holidays,
@@ -302,8 +363,8 @@ export const settingsService = {
     await db.run(
       `UPDATE company_settings
          SET overtime_settings_json = ?
-       WHERE company_id = ?`,
-      [JSON.stringify(normalizeOvertimeSettings(input.overtime)), companyId]
+       WHERE rowid = (SELECT rowid FROM company_settings LIMIT 1)`,
+      [JSON.stringify(normalizeOvertimeSettings(input.overtime))]
     );
 
     return this.getOvertimeSettings(db, companyId);

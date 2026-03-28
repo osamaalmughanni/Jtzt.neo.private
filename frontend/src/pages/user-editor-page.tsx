@@ -22,6 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCompanySettings } from "@/lib/company-settings";
 import { getCustomFieldsForTarget } from "@shared/utils/custom-fields";
 import { formatCompanyDateRange } from "@/lib/locale-format";
 import { usePageResource } from "@/hooks/use-page-resource";
@@ -226,26 +227,12 @@ function ContractSummaryCard({
   const statusLabel = getContractStatus(contract, t, settingsTimeZone);
 
   return (
-    <div className="flex flex-col gap-2 border border-border bg-background px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">{t("userEditor.contract", { index: index + 1 })}</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(index)} type="button" aria-label={t("userEditor.editContract")}>
-            <PencilSimple size={16} />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onRemove(index)} type="button" aria-label={t("userEditor.remove")}>
-            <Trash size={16} />
-          </Button>
-        </div>
-      </div>
-
-      <div className="flex min-w-0 flex-wrap gap-1.5">
+    <div className="flex flex-wrap items-center gap-2 border border-border bg-background px-3 py-3 sm:px-4">
+      <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-2 overflow-hidden">
         <Badge
           variant="outline"
           title={statusLabel}
-          className={`max-w-[6.5rem] shrink-0 overflow-hidden rounded-none px-2.5 py-0.5 text-[11px] font-medium whitespace-nowrap ${
+          className={`shrink-0 ${
             statusKey === "ongoing"
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
               : statusKey === "scheduled"
@@ -255,22 +242,30 @@ function ContractSummaryCard({
                   : "border-border bg-muted/40 text-muted-foreground"
           }`}
         >
-          <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{statusLabel}</span>
+          <span className="max-w-[12rem] overflow-hidden text-ellipsis whitespace-nowrap">{statusLabel}</span>
         </Badge>
         <Badge
           variant="outline"
           title={periodLabel}
-          className="max-w-[10rem] min-w-0 flex-1 shrink-0 overflow-hidden rounded-none border-border bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground whitespace-nowrap"
+          className="min-w-0 shrink overflow-hidden border-border bg-muted/40 text-muted-foreground"
         >
-          <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{periodLabel}</span>
+          <span className="max-w-[20rem] overflow-hidden text-ellipsis whitespace-nowrap">{periodLabel}</span>
         </Badge>
         <Badge
           variant="outline"
           title={t("userEditor.hoursPerWeekValue", { value: formatHours(contract.hoursPerWeek) })}
-          className="max-w-[5.5rem] shrink-0 overflow-hidden rounded-none border-border bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground whitespace-nowrap"
+          className="shrink-0 border-border bg-muted/40 text-muted-foreground"
         >
-          <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{t("userEditor.hoursPerWeekValue", { value: formatHours(contract.hoursPerWeek) })}</span>
+          <span className="max-w-[10rem] overflow-hidden text-ellipsis whitespace-nowrap">{t("userEditor.hoursPerWeekValue", { value: formatHours(contract.hoursPerWeek) })}</span>
         </Badge>
+      </div>
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(index)} type="button" aria-label={t("userEditor.editContract")}>
+          <PencilSimple size={16} />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onRemove(index)} type="button" aria-label={t("userEditor.remove")}>
+          <Trash size={16} />
+        </Button>
       </div>
     </div>
   );
@@ -283,6 +278,8 @@ function ContractEditorSheet({
   title,
   settingsLocale,
   settingsTimeZone,
+  settingsFirstDayOfWeek,
+  settingsWeekendDays,
   weekdayLabels,
   onOpenChange,
   onSetField,
@@ -300,6 +297,8 @@ function ContractEditorSheet({
   title: string;
   settingsLocale: string;
   settingsTimeZone: string;
+  settingsFirstDayOfWeek: number;
+  settingsWeekendDays: number[];
   weekdayLabels: Record<ContractWeekday, string>;
   onOpenChange: (open: boolean) => void;
   onSetField: (index: number, key: "startDate" | "endDate" | "paymentPerHour" | "annualVacationDays", value: string | number | null) => void;
@@ -350,11 +349,25 @@ function ContractEditorSheet({
                     <Input type="number" value={contract.hoursPerWeek} disabled className="disabled:cursor-default disabled:opacity-100" />
                   </Field>
                   <Field label={t("userEditor.startDate")}>
-                    <DateInput value={contract.startDate} locale={settingsLocale} onChange={(value) => onSetField(contractIndex, "startDate", value)} />
+                    <DateInput
+                      value={contract.startDate}
+                      locale={settingsLocale}
+                      timeZone={settingsTimeZone}
+                      firstDayOfWeek={settingsFirstDayOfWeek}
+                      weekendDays={settingsWeekendDays}
+                      onChange={(value) => onSetField(contractIndex, "startDate", value)}
+                    />
                   </Field>
                   {contract.endDate === null ? null : (
                     <Field label={t("userEditor.endDate")}>
-                      <DateInput value={contract.endDate ?? ""} locale={settingsLocale} onChange={(value) => onSetField(contractIndex, "endDate", value || null)} />
+                      <DateInput
+                        value={contract.endDate ?? ""}
+                        locale={settingsLocale}
+                        timeZone={settingsTimeZone}
+                        firstDayOfWeek={settingsFirstDayOfWeek}
+                        weekendDays={settingsWeekendDays}
+                        onChange={(value) => onSetField(contractIndex, "endDate", value || null)}
+                      />
                     </Field>
                   )}
                   <Field label={t("userEditor.paymentPerHour")}>
@@ -601,8 +614,11 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { companySession, companyIdentity } = useAuth();
+  const { settings: companySettings } = useCompanySettings();
   const [settingsLocale, setSettingsLocale] = useState("en-GB");
   const [settingsTimeZone, setSettingsTimeZone] = useState("Europe/Vienna");
+  const [settingsFirstDayOfWeek, setSettingsFirstDayOfWeek] = useState(1);
+  const [settingsWeekendDays, setSettingsWeekendDays] = useState<number[]>([6, 7]);
   const [settingsCustomFields, setSettingsCustomFields] = useState<CompanyCustomField[]>([]);
   const [form, setForm] = useState<UserFormState>(createEmptyForm);
   const [saving, setSaving] = useState(false);
@@ -640,6 +656,8 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   const pageResource = usePageResource<{
     settingsLocale: string;
     settingsTimeZone: string;
+    settingsFirstDayOfWeek: number;
+    settingsWeekendDays: number[];
     settingsCustomFields: CompanyCustomField[];
     form: UserFormState;
   }>({
@@ -650,27 +668,32 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
         return {
           settingsLocale: "en-GB",
           settingsTimeZone: "Europe/Vienna",
+          settingsFirstDayOfWeek: 1,
+          settingsWeekendDays: [6, 7],
           settingsCustomFields: [],
           form: createEmptyForm()
         };
       }
 
       try {
-        const settingsResponse = await api.getSettings(companySession.token);
         if (mode !== "edit" || !userId) {
           return {
-            settingsLocale: settingsResponse.settings.locale,
-            settingsTimeZone: settingsResponse.settings.timeZone,
-            settingsCustomFields: settingsResponse.settings.customFields,
+            settingsLocale: companySettings?.locale ?? "en-GB",
+            settingsTimeZone: companySettings?.timeZone ?? "Europe/Vienna",
+            settingsFirstDayOfWeek: companySettings?.firstDayOfWeek ?? 1,
+            settingsWeekendDays: companySettings?.weekendDays ?? [6, 7],
+            settingsCustomFields: companySettings?.customFields ?? [],
             form: createEmptyForm()
           };
         }
 
         const userResponse = await api.getUser(companySession.token, Number(userId));
         return {
-          settingsLocale: settingsResponse.settings.locale,
-          settingsTimeZone: settingsResponse.settings.timeZone,
-          settingsCustomFields: settingsResponse.settings.customFields,
+          settingsLocale: companySettings?.locale ?? "en-GB",
+          settingsTimeZone: companySettings?.timeZone ?? "Europe/Vienna",
+          settingsFirstDayOfWeek: companySettings?.firstDayOfWeek ?? 1,
+          settingsWeekendDays: companySettings?.weekendDays ?? [6, 7],
+          settingsCustomFields: companySettings?.customFields ?? [],
           form: {
             fullName: userResponse.user.fullName,
             username: userResponse.user.username,
@@ -704,9 +727,21 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   });
 
   useEffect(() => {
+    if (companySettings) {
+      setSettingsLocale(companySettings.locale);
+      setSettingsTimeZone(companySettings.timeZone);
+      setSettingsFirstDayOfWeek(companySettings.firstDayOfWeek);
+      setSettingsWeekendDays(companySettings.weekendDays);
+      setSettingsCustomFields(companySettings.customFields);
+    }
+  }, [companySettings]);
+
+  useEffect(() => {
     if (!pageResource.data) return;
     setSettingsLocale(pageResource.data.settingsLocale);
     setSettingsTimeZone(pageResource.data.settingsTimeZone);
+    setSettingsFirstDayOfWeek(pageResource.data.settingsFirstDayOfWeek);
+    setSettingsWeekendDays(pageResource.data.settingsWeekendDays);
     setSettingsCustomFields(pageResource.data.settingsCustomFields);
     setForm(pageResource.data.form);
   }, [pageResource.data]);
@@ -1105,6 +1140,8 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
               title={contractEditorMode === "create" ? t("userEditor.addContract") : t("userEditor.editContract")}
               settingsLocale={settingsLocale}
               settingsTimeZone={settingsTimeZone}
+              settingsFirstDayOfWeek={settingsFirstDayOfWeek}
+              settingsWeekendDays={settingsWeekendDays}
               weekdayLabels={weekdayLabels}
               onOpenChange={(open) => {
                 setContractEditorOpen(open);

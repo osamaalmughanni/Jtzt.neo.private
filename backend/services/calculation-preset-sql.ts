@@ -311,7 +311,7 @@ yearly_used AS (
   FROM vacation_days vd
   CROSS JOIN year_bounds y
   LEFT JOIN holidays h ON h.date = vd.day
-  LEFT JOIN company_settings cs ON cs.company_id = (SELECT company_id FROM company_settings LIMIT 1)
+  LEFT JOIN company_settings cs ON 1=1
   WHERE vd.day BETWEEN y.year_start AND y.year_end
     AND h.date IS NULL
     AND instr(',' || COALESCE(REPLACE(cs.weekend_days_json, ' ', ''), '[6,7]') || ',', ',' ||

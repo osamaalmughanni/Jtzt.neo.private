@@ -96,10 +96,10 @@ async function resolveTargetUserId(
     const firstActiveUser = await db.first<{ id: number }>(
       `SELECT id
        FROM users
-       WHERE company_id = ? AND deleted_at IS NULL
+       WHERE deleted_at IS NULL
        ORDER BY is_active DESC, full_name COLLATE NOCASE ASC, id ASC
        LIMIT 1`,
-      [session.companyId]
+      []
     );
     if (!firstActiveUser) {
       throw new Error("No active users found");
@@ -150,7 +150,7 @@ async function resolveProjectTaskSelection(
     return { projectId: null, taskId: null };
   }
 
-  const project = await db.first("SELECT id, is_active FROM projects WHERE company_id = ? AND id = ?", [companyId, projectId]) as
+  const project = await db.first("SELECT id, is_active FROM projects WHERE id = ?", [projectId]) as
     | { id: number; is_active: number }
     | undefined;
   if (!project || !project.is_active) {
@@ -166,7 +166,7 @@ async function resolveProjectTaskSelection(
     return { projectId, taskId: null };
   }
 
-  const task = await db.first("SELECT id, is_active FROM tasks WHERE company_id = ? AND id = ?", [companyId, taskId]) as
+  const task = await db.first("SELECT id, is_active FROM tasks WHERE id = ?", [taskId]) as
     | { id: number; is_active: number }
     | undefined;
   if (!task || !task.is_active) {

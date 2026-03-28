@@ -38,6 +38,7 @@ import { TimeInput } from "@/components/ui/time-input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCompanySettings } from "@/lib/company-settings";
 import { toast } from "@/lib/toast";
 import {
   DEFAULT_COMPANY_DATE_TIME_FORMAT,
@@ -134,6 +135,7 @@ interface DashboardRecordEditorPageProps {
 function EntryScheduleFields({
   locale,
   timeZone,
+  settings,
   entryType,
   startDate,
   endDate,
@@ -150,6 +152,7 @@ function EntryScheduleFields({
 }: {
   locale: string;
   timeZone: string;
+  settings: Pick<CompanySettings, "firstDayOfWeek" | "weekendDays">;
   entryType: TimeEntryType;
   startDate: string;
   endDate: string;
@@ -168,15 +171,33 @@ function EntryScheduleFields({
     <>
       {entryType === "work" ? (
         <Field label={fromDateLabel}>
-          <DateInput value={startDate} locale={locale} onChange={onStartDateChange} />
+          <DateInput
+            value={startDate}
+            locale={locale}
+            firstDayOfWeek={settings.firstDayOfWeek}
+            weekendDays={settings.weekendDays}
+            onChange={onStartDateChange}
+          />
         </Field>
       ) : (
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <Field className="flex-1" label={fromDateLabel}>
-            <DateInput value={startDate} locale={locale} onChange={onStartDateChange} />
+            <DateInput
+              value={startDate}
+              locale={locale}
+              firstDayOfWeek={settings.firstDayOfWeek}
+              weekendDays={settings.weekendDays}
+              onChange={onStartDateChange}
+            />
           </Field>
           <Field className="flex-1" label={toDateLabel}>
-            <DateInput value={endDate} locale={locale} onChange={onEndDateChange} />
+            <DateInput
+              value={endDate}
+              locale={locale}
+              firstDayOfWeek={settings.firstDayOfWeek}
+              weekendDays={settings.weekendDays}
+              onChange={onEndDateChange}
+            />
           </Field>
         </div>
       )}
@@ -211,6 +232,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
   const { t } = useTranslation();
   const { entryId } = useParams();
   const { companySession, companyIdentity, isTabletMode } = useAuth();
+  const { settings: companySettings } = useCompanySettings();
   const [searchParams] = useSearchParams();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
@@ -445,10 +467,13 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       : null;
   const blockingError = dayLimitError ?? workDayConflictError ?? vacationError ?? timeOffInLieuError;
   useEffect(() => {
+    if (companySettings) {
+      setSettings(companySettings);
+    }
+  }, [companySettings]);
+
+  useEffect(() => {
     if (!companySession) return;
-
-    void api.getSettings(companySession.token).then((response) => setSettings(response.settings)).catch(() => undefined);
-
     if (!canSwitchUser) return;
     void api.listUsers(companySession.token).then((response) => setUsers(response.users)).catch(() => undefined);
   }, [canSwitchUser, companySession]);
@@ -786,6 +811,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
               <EntryScheduleFields
                 locale={settings.locale}
                 timeZone={settings.timeZone}
+                settings={settings}
                 entryType={entryType}
                 startDate={startDate}
                 endDate={endDate}

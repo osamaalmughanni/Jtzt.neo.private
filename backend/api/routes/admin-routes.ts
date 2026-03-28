@@ -109,15 +109,15 @@ adminRoutes.post("/companies/create/import", async (c) => {
 
   const companyId = crypto.randomUUID();
   const companyDb = await createCompanyDatabase(c.get("config"), companyId);
-    return c.json({
-      company: await adminSqliteMigrationService.createCompanyFromSQLite(
-        c.get("systemDb"),
-        companyDb,
-        { file, name: name || undefined },
-        companyId,
-      ),
-    });
-  });
+  return c.json(
+    await adminSqliteMigrationService.createCompanyFromSQLite(
+      c.get("systemDb"),
+      companyDb,
+      { file, name: name || undefined },
+      companyId,
+    ),
+  );
+});
 
 adminRoutes.post("/companies/delete", async (c) => {
   const body = deleteCompanySchema.parse(await c.req.json());
@@ -158,14 +158,14 @@ adminRoutes.post("/companies/:companyId/import", async (c) => {
   }
 
   const companyDb = await createCompanyDatabase(c.get("config"), companyId);
-    return c.json({
-      company: await adminSqliteMigrationService.replaceCompanyFromSQLite(c.get("systemDb"), companyDb, {
-        companyId,
-        companyName: company.name,
-        file,
-      }),
-    });
-  });
+  return c.json(
+    await adminSqliteMigrationService.replaceCompanyFromSQLite(c.get("systemDb"), companyDb, {
+      companyId,
+      companyName: company.name,
+      file,
+    }),
+  );
+});
 
 adminRoutes.post("/companies/admins/create", async (c) => {
   const body = createCompanyAdminSchema.parse(await c.req.json());

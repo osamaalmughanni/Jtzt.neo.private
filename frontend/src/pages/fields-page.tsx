@@ -19,6 +19,7 @@ import { PencilSimple, Plus, Trash } from "phosphor-react";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCompanySettings } from "@/lib/company-settings";
 import { toast } from "@/lib/toast";
 import {
   DEFAULT_COMPANY_DATE_TIME_FORMAT,
@@ -316,6 +317,7 @@ function FieldEditorSheet({
 export function FieldsPage() {
   const { t } = useTranslation();
   const { companySession } = useAuth();
+  const { settings: companySettings, setSettings: setCompanySettings } = useCompanySettings();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [saving, setSaving] = useState(false);
   const [confirmDeleteFieldIndex, setConfirmDeleteFieldIndex] = useState<number | null>(null);
@@ -325,26 +327,11 @@ export function FieldsPage() {
   const [fieldDraft, setFieldDraft] = useState<CompanyCustomField | null>(null);
   const fieldEditorCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fieldEditorHadOpenedRef = useRef(false);
-  const pageResource = usePageResource<CompanySettings>({
-    enabled: Boolean(companySession),
-    deps: [companySession?.token, t],
-    load: async () => {
-      if (!companySession) {
-        return defaultSettings;
-      }
-
-      try {
-        const response = await api.getSettings(companySession.token);
-        return response.settings;
-      } catch (error) {
-        toast({
-          title: t("fields.loadFailed"),
-          description: error instanceof Error ? error.message : "Request failed",
-        });
-        throw error;
-      }
-    }
-  });
+  const pageResource = {
+    data: companySettings ?? defaultSettings,
+    isLoading: false,
+    isRefreshing: false,
+  };
   const fieldTypeOptions = [
     { value: "text", label: t("fields.typeText") },
     { value: "number", label: t("fields.typeNumber") },
@@ -366,10 +353,10 @@ export function FieldsPage() {
   ];
 
   useEffect(() => {
-    if (pageResource.data) {
-      setSettings(pageResource.data);
+    if (companySettings) {
+      setSettings(companySettings);
     }
-  }, [pageResource.data]);
+  }, [companySettings]);
 
   useEffect(() => {
     if (fieldEditorCleanupRef.current) {
@@ -521,6 +508,7 @@ export function FieldsPage() {
         customFields: cleanedFields,
       });
       setSettings(response.settings);
+      setCompanySettings(response.settings);
       toast({ title: t("fields.saved") });
     } catch (error) {
       toast({

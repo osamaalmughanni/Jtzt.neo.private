@@ -4,6 +4,8 @@ import { HTTPException } from "hono/http-exception";
 import { createCompanyDatabase } from "../db/runtime-database";
 import type { SessionTokenPayload } from "./jwt";
 import { verifySessionToken } from "./jwt";
+import { systemService } from "../services/system-service";
+import crypto from "node:crypto";
 
 function extractBearerToken(header: string | undefined): string {
   if (!header?.startsWith("Bearer ")) {
@@ -13,6 +15,10 @@ function extractBearerToken(header: string | undefined): string {
   return header.slice("Bearer ".length);
 }
 
+function hashAdminAccessToken(value: string) {
+  return crypto.createHash("sha256").update(value.trim()).digest("hex");
+}
+
 export const authMiddleware = createMiddleware<{
   Variables: {
     session: SessionTokenPayload;
@@ -20,7 +26,54 @@ export const authMiddleware = createMiddleware<{
 }>(async (c: Context, next: Next) => {
   const token = extractBearerToken(c.req.header("Authorization"));
   try {
-    c.set("session", await verifySessionToken(c.get("config"), token));
+    const session = await verifySessionToken(c.get("config"), token);
+    if (session.actorType === "admin") {
+      if (session.adminAuthFingerprint !== hashAdminAccessToken(c.get("config").adminAccessToken)) {
+        throw new Error("Stale admin session");
+      }
+      c.set("session", session);
+      await next();
+      return;
+    }
+
+    const company = await systemService.getCompanyAuthState(c.get("systemDb"), session.companyId);
+    if (!company) {
+      throw new Error("Unknown company");
+    }
+
+    if (session.actorType === "workspace") {
+      if (session.companyName !== company.name || session.workspaceAuthVersion !== company.authVersion) {
+        throw new Error("Stale workspace session");
+      }
+
+      c.set("session", {
+        ...session,
+        companyName: company.name,
+      });
+      await next();
+      return;
+    }
+
+    const companyDb = await createCompanyDatabase(c.get("config"), session.companyId);
+    const user = await companyDb.first<{
+      id: number;
+      role: "employee" | "manager" | "admin";
+      is_active: number;
+      deleted_at: string | null;
+    }>(
+      "SELECT id, role, is_active, deleted_at FROM users WHERE id = ?",
+      [session.userId]
+    );
+
+    if (!user || user.deleted_at !== null || !user.is_active) {
+      throw new Error("Inactive or missing company user");
+    }
+
+    c.set("session", {
+      ...session,
+      companyName: company.name,
+      role: user.role,
+    });
   } catch {
     throw new HTTPException(401, { message: "Invalid or expired bearer token" });
   }

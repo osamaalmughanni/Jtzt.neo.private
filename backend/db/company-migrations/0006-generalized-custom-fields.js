@@ -103,7 +103,7 @@ export async function up({ context: db }) {
       }
     }
 
-    const settingsRows = db.prepare("SELECT company_id, custom_fields_json FROM company_settings").all();
+    const settingsRows = db.prepare("SELECT custom_fields_json FROM company_settings").all();
     for (const row of settingsRows) {
       let parsed = [];
       try {
@@ -112,14 +112,13 @@ export async function up({ context: db }) {
         parsed = [];
       }
       const normalized = normalizeCustomFields(parsed);
-      db.prepare("UPDATE company_settings SET custom_fields_json = ? WHERE company_id = ?").run(JSON.stringify(normalized), row.company_id);
+      db.prepare("UPDATE company_settings SET custom_fields_json = ?").run(JSON.stringify(normalized));
     }
 
     db.exec("DROP VIEW IF EXISTS custom_field_values");
     db.exec(`
       CREATE VIEW custom_field_values AS
       SELECT
-        company_id,
         'user' AS entity_type,
         id AS entity_id,
         NULL AS entry_type,
@@ -139,7 +138,6 @@ export async function up({ context: db }) {
       FROM users, json_each(users.custom_field_values_json)
       UNION ALL
       SELECT
-        company_id,
         'project' AS entity_type,
         id AS entity_id,
         NULL AS entry_type,
@@ -159,7 +157,6 @@ export async function up({ context: db }) {
       FROM projects, json_each(projects.custom_field_values_json)
       UNION ALL
       SELECT
-        company_id,
         'task' AS entity_type,
         id AS entity_id,
         NULL AS entry_type,
@@ -179,7 +176,6 @@ export async function up({ context: db }) {
       FROM tasks, json_each(tasks.custom_field_values_json)
       UNION ALL
       SELECT
-        company_id,
         'time_entry' AS entity_type,
         id AS entity_id,
         entry_type,

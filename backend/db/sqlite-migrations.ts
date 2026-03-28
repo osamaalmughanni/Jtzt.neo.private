@@ -17,12 +17,7 @@ type SqliteContext = Database.Database;
 
 class SqliteMigrationStorage implements UmzugStorage<SqliteContext> {
   constructor(private readonly db: SqliteContext, private readonly migrationTable: string) {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS ${this.migrationTable} (
-        name TEXT PRIMARY KEY,
-        executed_at TEXT NOT NULL
-      )
-    `);
+    ensureMigrationTable(this.db, this.migrationTable);
   }
 
   async logMigration({ name }: { name: string }) {
@@ -37,6 +32,15 @@ class SqliteMigrationStorage implements UmzugStorage<SqliteContext> {
     const rows = this.db.prepare(`SELECT name FROM ${this.migrationTable} ORDER BY executed_at ASC, name ASC`).all() as Array<{ name: string }>;
     return rows.map((row) => row.name);
   }
+}
+
+export function ensureMigrationTable(db: SqliteContext, migrationTable: string) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ${migrationTable} (
+      name TEXT PRIMARY KEY,
+      executed_at TEXT NOT NULL
+    )
+  `);
 }
 
 async function loadFileBasedMigrations(db: SqliteContext, kind: DatabaseKind) {
@@ -85,6 +89,7 @@ async function loadFileBasedMigrations(db: SqliteContext, kind: DatabaseKind) {
 }
 
 export async function runSqliteMigrations(db: SqliteContext, kind: DatabaseKind) {
+  ensureMigrationTable(db, getMigrationTable(kind));
   const umzug = new Umzug({
     migrations: await loadFileBasedMigrations(db, kind),
     storage: new SqliteMigrationStorage(db, getMigrationTable(kind)),

@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
 import { companySchema, systemSchema } from "./schema";
 import { hardenSchemaForDatabase, type DatabaseKind } from "./app-database";
@@ -104,5 +105,30 @@ export async function destroyCompanyDatabase(config: { nodeCompanySqliteDir: str
   closeNodeDatabaseConnection(databasePath);
   if (fs.existsSync(databasePath)) {
     fs.unlinkSync(databasePath);
+  }
+}
+
+export async function cleanupOrphanCompanyDatabases(
+  config: { nodeCompanySqliteDir: string },
+  systemDb: AppDatabase,
+) {
+  await fsp.mkdir(config.nodeCompanySqliteDir, { recursive: true });
+  const rows = await systemDb.all<{ id: string }>("SELECT id FROM companies");
+  const knownCompanyIds = new Set(rows.map((row) => row.id));
+  const entries = await fsp.readdir(config.nodeCompanySqliteDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".sqlite")) {
+      continue;
+    }
+
+    const companyId = path.basename(entry.name, ".sqlite");
+    if (knownCompanyIds.has(companyId)) {
+      continue;
+    }
+
+    const databasePath = path.join(config.nodeCompanySqliteDir, entry.name);
+    closeNodeDatabaseConnection(databasePath);
+    await fsp.unlink(databasePath).catch(() => undefined);
   }
 }

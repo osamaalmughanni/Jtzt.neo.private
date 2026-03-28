@@ -4,17 +4,20 @@ function hardenCompanySchema(exec: (sql: string) => void) {
   exec(`
     DROP INDEX IF EXISTS idx_users_company_username;
     DROP INDEX IF EXISTS idx_users_company_pin_code;
+    DROP INDEX IF EXISTS idx_users_username;
+    DROP INDEX IF EXISTS idx_users_pin_code;
 
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_company_username
-    ON users (company_id, username)
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username
+    ON users (username)
     WHERE deleted_at IS NULL;
 
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_company_pin_code
-    ON users (company_id, pin_code)
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_pin_code
+    ON users (pin_code)
     WHERE deleted_at IS NULL;
 
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_public_holiday_cache_company_country_year
-    ON public_holiday_cache (company_id, country_code, year);
+    DROP INDEX IF EXISTS idx_public_holiday_cache_company_country_year;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_public_holiday_cache_country_year
+    ON public_holiday_cache (country_code, year);
   `);
 }
 

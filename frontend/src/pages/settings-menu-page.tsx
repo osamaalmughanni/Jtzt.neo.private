@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCompanySettings } from "@/lib/company-settings";
 import { formatCompanyDateTime } from "@/lib/locale-format";
 import { toast } from "@/lib/toast";
 import {
@@ -85,26 +86,23 @@ function getDateTimeFormatPreview(locale: string, dateTimeFormat: string, timeZo
 export function SettingsMenuPage() {
   const { t, i18n } = useTranslation();
   const { companySession } = useAuth();
+  const { settings: companySettings, setSettings: setCompanySettings } = useCompanySettings();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [tabletCodeStatus, setTabletCodeStatus] = useState<TabletCodeStatus>(defaultTabletCode);
   const [tabletCodeInput, setTabletCodeInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [tabletSaving, setTabletSaving] = useState(false);
-  const pageResource = usePageResource<{ settings: CompanySettings; tabletCodeStatus: TabletCodeStatus }>({
+  const pageResource = usePageResource<{ tabletCodeStatus: TabletCodeStatus }>({
     enabled: Boolean(companySession),
     deps: [companySession?.token, t],
     load: async () => {
       if (!companySession) {
-        return { settings: defaultSettings, tabletCodeStatus: defaultTabletCode };
+        return { tabletCodeStatus: defaultTabletCode };
       }
 
       try {
-        const [settingsResponse, tabletCodeResponse] = await Promise.all([
-          api.getSettings(companySession.token),
-          api.getTabletCodeStatus(companySession.token)
-        ]);
+        const tabletCodeResponse = await api.getTabletCodeStatus(companySession.token);
         return {
-          settings: settingsResponse.settings,
           tabletCodeStatus: tabletCodeResponse.tabletCode
         };
       } catch (error) {
@@ -149,11 +147,16 @@ export function SettingsMenuPage() {
   }
 
   useEffect(() => {
+    if (companySettings) {
+      setSettings(companySettings);
+    }
+  }, [companySettings]);
+
+  useEffect(() => {
     if (!pageResource.data) {
       return;
     }
 
-    setSettings(pageResource.data.settings);
     setTabletCodeStatus(pageResource.data.tabletCodeStatus);
     setTabletCodeInput(pageResource.data.tabletCodeStatus.code ?? "");
   }, [pageResource.data]);
@@ -168,6 +171,7 @@ export function SettingsMenuPage() {
       }
       const response = await api.updateSettings(companySession.token, settings);
       setSettings(response.settings);
+      setCompanySettings(response.settings);
       await refreshTabletCodeStatus();
       toast({ title: t("settings.saved") });
     } catch (error) {

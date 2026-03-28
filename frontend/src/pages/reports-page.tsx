@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCompanySettings } from "@/lib/company-settings";
 import { getCustomFieldOptionLabel, normalizeReportDraftFields } from "@/lib/report-fields";
 import { createReportDraftId, loadReportDraft, saveReportDraft } from "@/lib/report-draft-storage";
 import { toast } from "@/lib/toast";
@@ -149,6 +150,7 @@ export function ReportsPage() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const { companySession } = useAuth();
+  const { settings: companySettings } = useCompanySettings();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
   const draftId = searchParams.get("draft");
@@ -164,13 +166,10 @@ export function ReportsPage() {
       }
 
       try {
-        const [settingsResponse, usersResponse] = await Promise.all([
-          api.getSettings(companySession.token),
-          api.listUsers(companySession.token),
-        ]);
+        const usersResponse = await api.listUsers(companySession.token, true);
         return {
-          settings: settingsResponse.settings,
-          users: usersResponse.users,
+          settings: companySettings ?? defaultSettings,
+          users: usersResponse.users.filter((user) => user.isActive),
         };
       } catch (error) {
         toast({
@@ -186,6 +185,12 @@ export function ReportsPage() {
     initializedDraftRef.current = false;
     setDraft(savedDraft ?? createDefaultReportDraft());
   }, [savedDraft]);
+  useEffect(() => {
+    if (companySettings) {
+      setSettings(companySettings);
+    }
+  }, [companySettings]);
+  const activeUsers = useMemo(() => users.filter((user) => user.isActive), [users]);
 
   const periodOptions = useMemo<ReportOption[]>(() => [
     { value: "custom", label: t("reports.customDates") },
@@ -258,7 +263,7 @@ export function ReportsPage() {
   }, [customFieldOptions, settings.projectsEnabled, settings.tasksEnabled, t]);
 
   const selectedGroups = draft.groupBy.length > 0 ? draft.groupBy : [""];
-  const userOptions = useMemo(() => users.map((user) => ({ value: String(user.id), label: user.fullName })), [users]);
+  const userOptions = useMemo(() => activeUsers.map((user) => ({ value: String(user.id), label: user.fullName })), [activeUsers]);
 
   useEffect(() => {
     if (!pageResource.data) {
@@ -293,7 +298,9 @@ export function ReportsPage() {
         const normalized = normalizeReportDraftFields(current, nextSettings);
         return {
           ...current,
-          userIds: current.userIds.length > 0 ? current.userIds : pageResource.data!.users.map((user) => user.id),
+          userIds: current.userIds.length > 0
+            ? current.userIds.filter((userId) => pageResource.data!.users.some((user) => user.id === userId && user.isActive))
+            : pageResource.data!.users.filter((user) => user.isActive).map((user) => user.id),
           columns: savedDraft ? normalized.columns : allFieldValues,
           groupBy: normalized.groupBy,
         };
@@ -308,7 +315,7 @@ export function ReportsPage() {
         ...current,
         groupBy: normalized.groupBy,
         columns: current.columns.filter((column) => allFieldValues.includes(column)),
-        userIds: current.userIds.filter((userId) => pageResource.data!.users.some((user) => user.id === userId)),
+        userIds: current.userIds.filter((userId) => pageResource.data!.users.some((user) => user.id === userId && user.isActive)),
       };
     });
   }, [baseFieldOptions, pageResource.data, savedDraft]);
@@ -402,6 +409,8 @@ export function ReportsPage() {
               <DateInput
                 value={draft.startDate}
                 locale={settings.locale}
+                firstDayOfWeek={settings.firstDayOfWeek}
+                weekendDays={settings.weekendDays}
                 timeZone={settings.timeZone}
                 onChange={(value) => setDraft((current) => ({ ...current, periodPreset: "custom", startDate: value }))}
               />
@@ -410,6 +419,8 @@ export function ReportsPage() {
               <DateInput
                 value={draft.endDate}
                 locale={settings.locale}
+                firstDayOfWeek={settings.firstDayOfWeek}
+                weekendDays={settings.weekendDays}
                 timeZone={settings.timeZone}
                 onChange={(value) => setDraft((current) => ({ ...current, periodPreset: "custom", endDate: value }))}
               />

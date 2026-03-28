@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Copy, Download, KeyRound, MoreHorizontal, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { CompanyMigrationImportReport } from "@shared/types/api";
 import type { InvitationCodeRecord } from "@shared/types/models";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import { PageActionBar, PageActionBarActions, PageActionButton } from "@/components/page-action-bar";
@@ -17,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { usePageResource } from "@/hooks/use-page-resource";
-import { api } from "@/lib/api";
+import { ApiRequestError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 
@@ -33,6 +34,58 @@ function getInvitationBadge(code: InvitationCodeRecord) {
     return { labelKey: "adminCompanies.usedInvitation", className: "bg-muted text-muted-foreground border-border" };
   }
   return { labelKey: "adminCompanies.activeInvitation", className: "bg-primary text-primary-foreground border-primary" };
+}
+
+function isMigrationImportReport(value: unknown): value is CompanyMigrationImportReport {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      typeof (value as CompanyMigrationImportReport).success === "boolean" &&
+      Array.isArray((value as CompanyMigrationImportReport).errors) &&
+      Array.isArray((value as CompanyMigrationImportReport).warnings)
+  );
+}
+
+function getImportReportFromError(error: unknown) {
+  if (error instanceof ApiRequestError) {
+    const details = error.payload?.details;
+    if (isMigrationImportReport(details)) {
+      return details;
+    }
+  }
+  return null;
+}
+
+function getImportReportJsonFromError(error: unknown) {
+  if (error instanceof ApiRequestError) {
+    return JSON.stringify(
+      error.payload?.details ?? error.payload ?? {
+        error: error.message,
+        status: error.status,
+        method: error.method,
+        path: error.path,
+        requestId: error.requestId,
+        runtime: error.runtime,
+        env: error.env,
+      },
+      null,
+      2,
+    );
+  }
+
+  if (error instanceof Error) {
+    return JSON.stringify({ error: error.message }, null, 2);
+  }
+
+  return JSON.stringify({ error: String(error) }, null, 2);
+}
+
+function formatImportProblemLocation(problem: CompanyMigrationImportReport["errors"][number]) {
+  const parts: string[] = [problem.stage];
+  if (problem.table) parts.push(problem.table);
+  if (problem.rowId != null) parts.push(`row ${problem.rowId}`);
+  if (problem.column) parts.push(problem.column);
+  return parts.join(" · ");
 }
 
 function CompactCard({
@@ -106,6 +159,9 @@ export function AdminCompaniesPage() {
   const [migrationSchemaDialogOpen, setMigrationSchemaDialogOpen] = useState(false);
   const [migrationSchemaJson, setMigrationSchemaJson] = useState("");
   const [migrationSchemaSubmitting, setMigrationSchemaSubmitting] = useState(false);
+  const [importReportOpen, setImportReportOpen] = useState(false);
+  const [importReport, setImportReport] = useState<CompanyMigrationImportReport | null>(null);
+  const [importReportJson, setImportReportJson] = useState("");
 
   const adminResource = usePageResource<{
     companies: Awaited<ReturnType<typeof api.listCompanies>>["companies"];
@@ -159,10 +215,13 @@ export function AdminCompaniesPage() {
         if (!migrationFile) {
           throw new Error(t("adminCompanies.sqliteImportRequired"));
         }
-        await api.createCompanyFromMigrationFile(adminSession.token, {
+        const response = await api.createCompanyFromMigrationFile(adminSession.token, {
           name: companyName.trim(),
           file: migrationFile,
         });
+        setImportReport(response.importReport);
+        setImportReportJson(JSON.stringify(response.importReport, null, 2));
+        setImportReportOpen(true);
       } else {
         await api.createCompany(adminSession.token, { name: companyName.trim() });
       }
@@ -173,6 +232,16 @@ export function AdminCompaniesPage() {
       toast({ title: t("adminCompanies.companyCreated") });
       await reloadAdminData();
     } catch (error) {
+      const report = getImportReportFromError(error);
+      if (report) {
+        setImportReport(report);
+        setImportReportJson(JSON.stringify(report, null, 2));
+        setImportReportOpen(true);
+      } else {
+        setImportReport(null);
+        setImportReportJson(getImportReportJsonFromError(error));
+        setImportReportOpen(true);
+      }
       toast({
         title: t("adminCompanies.companyCreateFailed"),
         description: error instanceof Error ? error.message : t("common.requestFailed"),
@@ -341,11 +410,24 @@ export function AdminCompaniesPage() {
       if (!migrationFile) {
         throw new Error(t("adminCompanies.sqliteImportRequired"));
       }
-      await api.importCompanyMigrationFile(adminSession.token, companyId, migrationFile);
+      const response = await api.importCompanyMigrationFile(adminSession.token, companyId, migrationFile);
+      setImportReport(response.importReport);
+      setImportReportJson(JSON.stringify(response.importReport, null, 2));
+      setImportReportOpen(true);
       setImportFiles([]);
       toast({ title: t("adminCompanies.companySqliteImported", { companyName }) });
       await reloadAdminData();
     } catch (error) {
+      const report = getImportReportFromError(error);
+      if (report) {
+        setImportReport(report);
+        setImportReportJson(JSON.stringify(report, null, 2));
+        setImportReportOpen(true);
+      } else {
+        setImportReport(null);
+        setImportReportJson(getImportReportJsonFromError(error));
+        setImportReportOpen(true);
+      }
       toast({
         title: t("adminCompanies.companySqliteImportFailed"),
         description: error instanceof Error ? error.message : t("common.requestFailed"),
@@ -789,6 +871,92 @@ export function AdminCompaniesPage() {
                 {t("adminCompanies.copyJson")}
               </Button>
               <Button type="button" className="gap-2" onClick={handleDownloadMigrationSchemaJson} disabled={!migrationSchemaJson}>
+                <Download className="h-4 w-4" />
+                {t("adminCompanies.downloadJson")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={importReportOpen}
+          onOpenChange={(open) => {
+            setImportReportOpen(open);
+            if (!open) {
+              setImportReport(null);
+              setImportReportJson("");
+            }
+          }}
+        >
+          <DialogContent className="w-[min(96vw,56rem)] max-w-none">
+            <DialogHeader>
+              <DialogTitle>
+                {importReport?.success
+                  ? t("adminCompanies.companySqliteImported", { companyName: importReport.companyName || "company" })
+                  : t("adminCompanies.companySqliteImportFailed")}
+              </DialogTitle>
+              <DialogDescription>
+                {importReport?.success
+                  ? "Import completed. The full validation result is shown as JSON below."
+                  : "Import failed. The full report is shown as JSON below."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap gap-2">
+                <Badge variant={importReport?.success ? "outline" : "destructive"}>{importReport?.success ? "success" : "failed"}</Badge>
+                <Badge variant="outline">{`tables: ${importReport?.tableCount ?? 0}`}</Badge>
+                <Badge variant="outline">{`rows: ${importReport?.rowCount ?? 0}`}</Badge>
+                <Badge variant="outline">{`warnings: ${importReport?.warnings.length ?? 0}`}</Badge>
+                <Badge variant="outline">{`errors: ${importReport?.errors.length ?? 0}`}</Badge>
+              </div>
+
+              <Textarea
+                readOnly
+                value={importReportJson || (importReport ? JSON.stringify(importReport, null, 2) : "")}
+                className="min-h-[30rem] font-mono text-xs leading-5"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                onClick={async () => {
+                  try {
+                    if (!importReportJson) return;
+                    if (!navigator.clipboard?.writeText) {
+                      throw new Error(t("common.clipboardUnavailable"));
+                    }
+                    await navigator.clipboard.writeText(importReportJson);
+                    toast({ title: t("adminCompanies.migrationSchemaCopied") });
+                  } catch {
+                    toast({ title: t("common.clipboardUnavailableMessage") });
+                  }
+                }}
+                disabled={!importReportJson}
+              >
+                <Copy className="h-4 w-4" />
+                {t("adminCompanies.copyJson")}
+              </Button>
+              <Button
+                type="button"
+                className="gap-2"
+                onClick={() => {
+                  if (!importReportJson) return;
+                  const blob = new Blob([importReportJson], { type: "application/json" });
+                  const url = window.URL.createObjectURL(blob);
+                  const anchor = document.createElement("a");
+                  anchor.href = url;
+                  anchor.download = "company-migration-import-report.json";
+                  document.body.appendChild(anchor);
+                  anchor.click();
+                  document.body.removeChild(anchor);
+                  window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+                }}
+                disabled={!importReportJson}
+              >
                 <Download className="h-4 w-4" />
                 {t("adminCompanies.downloadJson")}
               </Button>

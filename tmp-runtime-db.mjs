@@ -1,4 +1,10 @@
-export const systemSchema = `
+// backend/db/runtime-database.ts
+import Database from "better-sqlite3";
+import fs2 from "node:fs";
+import path2 from "node:path";
+
+// backend/db/schema.ts
+var systemSchema = `
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS companies (
@@ -53,11 +59,11 @@ CREATE TABLE IF NOT EXISTS developer_access_tokens (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_developer_access_tokens_token_hash
 ON developer_access_tokens (token_hash);
 `;
-
-export const companySchema = `
+var companySchema = `
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS company_settings (
+  company_id TEXT PRIMARY KEY,
   currency TEXT NOT NULL DEFAULT 'EUR',
   locale TEXT NOT NULL DEFAULT 'de-AT',
   time_zone TEXT NOT NULL DEFAULT 'Europe/Vienna',
@@ -83,6 +89,7 @@ CREATE TABLE IF NOT EXISTS company_settings (
 
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id TEXT NOT NULL,
   username TEXT NOT NULL,
   full_name TEXT NOT NULL,
   password_hash TEXT NOT NULL,
@@ -98,16 +105,17 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_name
 ON users (full_name);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username
-ON users (username)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_company_username
+ON users (company_id, username)
 WHERE deleted_at IS NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_pin_code
-ON users (pin_code)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_company_pin_code
+ON users (company_id, pin_code)
 WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS user_contracts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id TEXT NOT NULL,
   user_id INTEGER NOT NULL,
   hours_per_week REAL NOT NULL,
   start_date TEXT NOT NULL,
@@ -138,6 +146,7 @@ ON user_contract_schedule_blocks (contract_id, weekday, block_order);
 
 CREATE TABLE IF NOT EXISTS time_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id TEXT NOT NULL,
   user_id INTEGER NOT NULL,
   entry_type TEXT NOT NULL DEFAULT 'work' CHECK(entry_type IN ('work', 'vacation', 'sick_leave', 'time_off_in_lieu')),
   entry_date TEXT NOT NULL,
@@ -162,17 +171,19 @@ ON time_entries (user_id, entry_type, entry_date, end_date);
 
 CREATE TABLE IF NOT EXISTS public_holiday_cache (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id TEXT NOT NULL,
   country_code TEXT NOT NULL,
   year INTEGER NOT NULL,
   payload_json TEXT NOT NULL,
   fetched_at TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_public_holiday_cache_country_year
-ON public_holiday_cache (country_code, year);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_public_holiday_cache_company_country_year
+ON public_holiday_cache (company_id, country_code, year);
 
 CREATE VIEW IF NOT EXISTS holidays AS
   SELECT
+    public_holiday_cache.company_id,
     public_holiday_cache.country_code,
     public_holiday_cache.year,
     CAST(json_extract(json_each.value, '$.date') AS TEXT) AS date,
@@ -181,12 +192,14 @@ CREATE VIEW IF NOT EXISTS holidays AS
     CAST(json_extract(json_each.value, '$.countryCode') AS TEXT) AS country_code_from_payload
   FROM public_holiday_cache
   JOIN company_settings
-    ON UPPER(COALESCE(company_settings.country, '')) = public_holiday_cache.country_code
+    ON company_settings.company_id = public_holiday_cache.company_id
+   AND UPPER(COALESCE(company_settings.country, '')) = public_holiday_cache.country_code
   JOIN json_each(public_holiday_cache.payload_json)
   WHERE json_extract(json_each.value, '$.date') IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
   budget REAL NOT NULL DEFAULT 0,
@@ -202,6 +215,7 @@ ON projects (is_active, created_at);
 
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id TEXT NOT NULL,
   title TEXT NOT NULL,
   is_active INTEGER NOT NULL DEFAULT 1,
   custom_field_values_json TEXT NOT NULL DEFAULT '{}',
@@ -237,6 +251,7 @@ ON project_tasks (task_id, project_id);
 
 CREATE VIEW IF NOT EXISTS custom_field_values AS
   SELECT
+    company_id,
     'user' AS entity_type,
     id AS entity_id,
     NULL AS entry_type,
@@ -255,6 +270,7 @@ CREATE VIEW IF NOT EXISTS custom_field_values AS
   FROM users, json_each(users.custom_field_values_json)
   UNION ALL
   SELECT
+    company_id,
     'project' AS entity_type,
     id AS entity_id,
     NULL AS entry_type,
@@ -273,6 +289,7 @@ CREATE VIEW IF NOT EXISTS custom_field_values AS
   FROM projects, json_each(projects.custom_field_values_json)
   UNION ALL
   SELECT
+    company_id,
     'task' AS entity_type,
     id AS entity_id,
     NULL AS entry_type,
@@ -291,6 +308,7 @@ CREATE VIEW IF NOT EXISTS custom_field_values AS
   FROM tasks, json_each(tasks.custom_field_values_json)
   UNION ALL
   SELECT
+    company_id,
     'time_entry' AS entity_type,
     id AS entity_id,
     entry_type,
@@ -310,6 +328,7 @@ CREATE VIEW IF NOT EXISTS custom_field_values AS
 
 CREATE TABLE IF NOT EXISTS calculations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
   sql_text TEXT NOT NULL,
@@ -348,3 +367,195 @@ CREATE TABLE IF NOT EXISTS calculation_versions (
 CREATE INDEX IF NOT EXISTS idx_calculation_versions_calculation
 ON calculation_versions (calculation_id, version_number DESC);
 `;
+
+// backend/db/app-database.ts
+function hardenCompanySchema(exec) {
+  exec(`
+    DROP INDEX IF EXISTS idx_users_company_username;
+    DROP INDEX IF EXISTS idx_users_company_pin_code;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_company_username
+    ON users (company_id, username)
+    WHERE deleted_at IS NULL;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_company_pin_code
+    ON users (company_id, pin_code)
+    WHERE deleted_at IS NULL;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_public_holiday_cache_company_country_year
+    ON public_holiday_cache (company_id, country_code, year);
+  `);
+}
+function hardenSchemaForDatabase(database, kind) {
+  if (kind !== "company") {
+    return;
+  }
+  hardenCompanySchema((sql) => {
+    database.exec(sql);
+  });
+}
+
+// backend/db/sqlite-migrations.ts
+import { Umzug } from "umzug";
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+function getMigrationFolder(kind) {
+  return kind === "system" ? "system-migrations" : "company-migrations";
+}
+function getMigrationTable(kind) {
+  return kind === "system" ? "jtzt_system_migrations" : "jtzt_company_migrations";
+}
+var SqliteMigrationStorage = class {
+  constructor(db, migrationTable) {
+    this.db = db;
+    this.migrationTable = migrationTable;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ${this.migrationTable} (
+        name TEXT PRIMARY KEY,
+        executed_at TEXT NOT NULL
+      )
+    `);
+  }
+  async logMigration({ name }) {
+    this.db.prepare(`INSERT OR REPLACE INTO ${this.migrationTable} (name, executed_at) VALUES (?, ?)`).run(name, (/* @__PURE__ */ new Date()).toISOString());
+  }
+  async unlogMigration({ name }) {
+    this.db.prepare(`DELETE FROM ${this.migrationTable} WHERE name = ?`).run(name);
+  }
+  async executed() {
+    const rows = this.db.prepare(`SELECT name FROM ${this.migrationTable} ORDER BY executed_at ASC, name ASC`).all();
+    return rows.map((row) => row.name);
+  }
+};
+async function loadFileBasedMigrations(db, kind) {
+  const migrationsDir = path.join(process.cwd(), "backend", "db", getMigrationFolder(kind));
+  if (!fs.existsSync(migrationsDir)) {
+    return [];
+  }
+  const files = fs.readdirSync(migrationsDir).filter((file) => file.endsWith(".js")).sort((a, b) => a.localeCompare(b));
+  const migrations = [];
+  for (const file of files) {
+    const moduleUrl = pathToFileURL(path.join(migrationsDir, file)).href;
+    const migrationModule = await import(moduleUrl);
+    migrations.push({
+      name: file.replace(/\.js$/, ""),
+      up: async () => {
+        await migrationModule.up({ context: db });
+      },
+      down: async () => {
+        if (migrationModule.down) {
+          await migrationModule.down({ context: db });
+          return;
+        }
+        throw new Error("Down migrations are not supported for the runtime SQLite migration layer");
+      }
+    });
+  }
+  return migrations;
+}
+async function runSqliteMigrations(db, kind) {
+  const umzug = new Umzug({
+    migrations: await loadFileBasedMigrations(db, kind),
+    storage: new SqliteMigrationStorage(db, getMigrationTable(kind)),
+    context: db,
+    logger: void 0
+  });
+  await umzug.up();
+}
+
+// backend/db/runtime-database.ts
+var nodeConnections = /* @__PURE__ */ new Map();
+function normalizeParams(params) {
+  return params ?? [];
+}
+function initializeSqliteConnection(databasePath, schema, kind) {
+  const existing = nodeConnections.get(databasePath);
+  if (existing) {
+    return existing;
+  }
+  fs2.mkdirSync(path2.dirname(databasePath), { recursive: true });
+  const db = new Database(databasePath);
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  db.pragma("synchronous = NORMAL");
+  db.pragma("temp_store = MEMORY");
+  db.pragma("cache_size = -20000");
+  db.exec(schema);
+  nodeConnections.set(databasePath, db);
+  return db;
+}
+function closeNodeDatabaseConnection(databasePath) {
+  const connection = nodeConnections.get(databasePath);
+  if (!connection) {
+    return;
+  }
+  nodeConnections.delete(databasePath);
+  connection.close();
+}
+async function createNodeDatabase(databasePath, schema, kind) {
+  const connection = initializeSqliteConnection(databasePath, schema, kind);
+  async function ensureSchemaReady() {
+    await runSqliteMigrations(connection, kind);
+    hardenSchemaForDatabase(connection, kind);
+  }
+  return {
+    async all(sql, params) {
+      await ensureSchemaReady();
+      return connection.prepare(sql).all(...normalizeParams(params));
+    },
+    async first(sql, params) {
+      await ensureSchemaReady();
+      return connection.prepare(sql).get(...normalizeParams(params)) ?? null;
+    },
+    async run(sql, params) {
+      await ensureSchemaReady();
+      const result = connection.prepare(sql).run(...normalizeParams(params));
+      return {
+        changes: result.changes,
+        lastRowId: typeof result.lastInsertRowid === "bigint" ? Number(result.lastInsertRowid) : Number(result.lastInsertRowid ?? 0) || null
+      };
+    },
+    async batch(statements) {
+      await ensureSchemaReady();
+      const results = [];
+      const transaction = connection.transaction(() => {
+        for (const statement of statements) {
+          const result = connection.prepare(statement.sql).run(...normalizeParams(statement.params));
+          results.push({
+            changes: result.changes,
+            lastRowId: typeof result.lastInsertRowid === "bigint" ? Number(result.lastInsertRowid) : Number(result.lastInsertRowid ?? 0) || null
+          });
+        }
+      });
+      transaction();
+      return results;
+    },
+    async exec(sql) {
+      await ensureSchemaReady();
+      connection.exec(sql);
+    }
+  };
+}
+async function createSystemDatabase(config) {
+  return createNodeDatabase(config.nodeSystemSqlitePath, systemSchema, "system");
+}
+async function createCompanyDatabase(config, companyId) {
+  const databasePath = path2.join(config.nodeCompanySqliteDir, `${companyId}.sqlite`);
+  return createNodeDatabase(databasePath, companySchema, "company");
+}
+async function destroyCompanyDatabase(config, companyId) {
+  const databasePath = path2.join(config.nodeCompanySqliteDir, `${companyId}.sqlite`);
+  closeNodeDatabaseConnection(databasePath);
+  if (fs2.existsSync(databasePath)) {
+    fs2.unlinkSync(databasePath);
+  }
+}
+export {
+  closeNodeDatabaseConnection,
+  createCompanyDatabase,
+  createNodeDatabase,
+  createSystemDatabase,
+  destroyCompanyDatabase,
+  initializeSqliteConnection
+};

@@ -15,6 +15,11 @@ year_bounds AS (
     date(datetime('now', 'localtime'), 'start of year') AS year_start,
     date(datetime('now', 'localtime'), 'start of year', '+1 year', '-1 day') AS year_end
 ),
+active_users AS (
+  SELECT id AS user_id, full_name
+  FROM users
+  WHERE deleted_at IS NULL AND is_active = 1
+),
 contract_coverage AS (
   SELECT
     uc.user_id,
@@ -24,6 +29,7 @@ contract_coverage AS (
     julianday(MIN(COALESCE(uc.end_date, y.year_end), y.year_end)) - julianday(MAX(uc.start_date, y.year_start)) + 1 AS overlap_days,
     julianday(y.year_end) - julianday(y.year_start) + 1 AS year_days
   FROM user_contracts uc
+  INNER JOIN active_users au ON au.user_id = uc.user_id
   CROSS JOIN year_bounds y
   WHERE uc.start_date <= y.year_end
     AND (uc.end_date IS NULL OR uc.end_date >= y.year_start)
@@ -42,6 +48,7 @@ vacation_days(user_id, day, end_day) AS (
     te.entry_date,
     COALESCE(te.end_date, te.entry_date)
   FROM time_entries te
+  INNER JOIN active_users au ON au.user_id = te.user_id
   CROSS JOIN year_bounds y
   WHERE te.entry_type = 'vacation'
     AND te.entry_date <= y.year_end
@@ -114,12 +121,11 @@ SELECT
   CAST(ROUND(COALESCE(used.taken_days, 0), 0) AS INTEGER) AS "Vacation taken",
   CAST(ROUND(MAX(COALESCE(ent.entitled_days, 0) - COALESCE(used.taken_days, 0), 0), 0) AS INTEGER) AS "Vacation available",
   CAST(ROUND(COALESCE(ent.entitled_days, 0) - COALESCE(used.taken_days, 0), 0) AS INTEGER) AS "Remaining vacation"
-FROM users u
+FROM active_users u
 CROSS JOIN year_bounds y
 CROSS JOIN settings_ctx s
-LEFT JOIN yearly_entitlement ent ON ent.user_id = u.id
-LEFT JOIN yearly_used used ON used.user_id = u.id
-WHERE u.deleted_at IS NULL
+LEFT JOIN yearly_entitlement ent ON ent.user_id = u.user_id
+LEFT JOIN yearly_used used ON used.user_id = u.user_id
 ORDER BY "Vacation available" DESC, u.full_name ASC
 `.trim(),
   outputMode: "table",

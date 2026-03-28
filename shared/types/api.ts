@@ -482,6 +482,36 @@ export interface CompanyMigrationFileResponse {
   fileBase64: string;
 }
 
+export interface CompanyMigrationImportProblem {
+  severity: "error" | "warning";
+  stage: "file" | "metadata" | "schema" | "layout" | "validation" | "import" | "company";
+  table: string | null;
+  rowId: number | string | null;
+  column: string | null;
+  message: string;
+  details: unknown;
+}
+
+export interface CompanyMigrationImportReport {
+  success: boolean;
+  packageKey: string | null;
+  packageVersion: number | null;
+  packageName: string | null;
+  originalCompanyId: string | null;
+  expectedSchemaHash: string;
+  packageSchemaHash: string | null;
+  companyName: string | null;
+  tableCount: number;
+  rowCount: number;
+  warnings: CompanyMigrationImportProblem[];
+  errors: CompanyMigrationImportProblem[];
+}
+
+export interface CompanyMigrationImportResponse {
+  company: unknown;
+  importReport: CompanyMigrationImportReport;
+}
+
 export interface SettingsResponse {
   settings: CompanySettings;
 }

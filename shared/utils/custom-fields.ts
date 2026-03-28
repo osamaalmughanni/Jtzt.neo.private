@@ -406,6 +406,45 @@ export function normalizeCustomFieldValue(
   return match ? match.id : rawValue;
 }
 
+export function sanitizeCustomFieldValuesForTarget(
+  customFields: CompanySettings["customFields"],
+  target: { scope: CustomFieldTargetScope; entryType?: TimeEntryType },
+  values: Record<string, string | number | boolean>,
+) {
+  const applicableFields = getCustomFieldsForTarget(customFields, target);
+  const fieldMap = new Map(applicableFields.map((field) => [field.id, field] as const));
+  const sanitizedValues: Record<string, string | number | boolean> = {};
+
+  for (const [fieldId, rawValue] of Object.entries(values)) {
+    const field = fieldMap.get(fieldId);
+    if (!field) {
+      continue;
+    }
+
+    if (field.type === "select") {
+      if (typeof rawValue !== "string") {
+        continue;
+      }
+
+      const normalized = normalizeLookupValue(rawValue);
+      const match = field.options.find((option) => normalizeLookupValue(option.id) === normalized);
+      if (!match) {
+        continue;
+      }
+
+      sanitizedValues[field.id] = match.id;
+      continue;
+    }
+
+    const normalizedValue = normalizeCustomFieldValue(field, rawValue);
+    if (normalizedValue !== undefined) {
+      sanitizedValues[field.id] = normalizedValue;
+    }
+  }
+
+  return sanitizedValues;
+}
+
 export function normalizeReportDraftFields(
   draft: Pick<ReportRequestInput, "columns" | "groupBy">,
   settings: Pick<CompanySettings, "customFields">,

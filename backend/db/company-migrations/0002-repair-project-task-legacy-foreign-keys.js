@@ -21,7 +21,6 @@ function readTasks(db, tableName) {
   return db.prepare(
     `SELECT
        id,
-       company_id,
        title,
        is_active,
        created_at,
@@ -53,7 +52,6 @@ function mergeTaskRows(primaryRows, secondaryRows) {
     }
     merged.set(row.id, {
       id: row.id,
-      company_id: row.company_id || existing.company_id,
       title: row.title || existing.title,
       is_active: row.is_active,
       created_at: row.created_at || existing.created_at,
@@ -120,7 +118,6 @@ export async function up({ context: db }) {
     db.exec(`
       CREATE TABLE tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id TEXT NOT NULL,
         title TEXT NOT NULL,
         is_active INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL
@@ -138,9 +135,8 @@ export async function up({ context: db }) {
     `);
 
     for (const row of taskRows) {
-      db.prepare("INSERT INTO tasks (id, company_id, title, is_active, created_at) VALUES (?, ?, ?, ?, ?)").run(
+      db.prepare("INSERT INTO tasks (id, title, is_active, created_at) VALUES (?, ?, ?, ?)").run(
         row.id,
-        row.company_id,
         row.title,
         row.is_active,
         row.created_at

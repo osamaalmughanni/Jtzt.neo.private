@@ -14,6 +14,12 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
 
+function getRoleSortRank(role: CompanyUserListItem["role"]) {
+  if (role === "admin") return 0;
+  if (role === "manager") return 1;
+  return 2;
+}
+
 function getRoleIcon(role: CompanyUserListItem["role"]) {
   if (role === "admin") return CrownSimple;
   if (role === "manager") return UserGear;
@@ -50,7 +56,20 @@ export function UsersPage() {
       }
     }
   });
-  const users = usersResource.data ?? [];
+  const users = [...(usersResource.data ?? [])].sort((left, right) => {
+    const leftInactive = left.isActive ? 0 : 1;
+    const rightInactive = right.isActive ? 0 : 1;
+    if (leftInactive !== rightInactive) {
+      return leftInactive - rightInactive;
+    }
+
+    const roleDelta = getRoleSortRank(left.role) - getRoleSortRank(right.role);
+    if (roleDelta !== 0) {
+      return roleDelta;
+    }
+
+    return left.fullName.localeCompare(right.fullName, undefined, { sensitivity: "base" });
+  });
 
   return (
     <FormPage>

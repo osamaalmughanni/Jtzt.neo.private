@@ -31,6 +31,8 @@ pnpm-debug.log*
 
 # Databases and runtime data
 data/
+migrate-mysql/output/
+migrate-mysql/__pycache__/
 *.db
 *.db-journal
 *.db-shm

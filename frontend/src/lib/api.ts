@@ -2,6 +2,7 @@ import type {
   AdminLoginInput,
   CompanyApiDocsResponse,
   CompanyMigrationFileResponse,
+  CompanyMigrationImportResponse,
   CompanyMigrationSchemaResponse,
   CompanyApiKeyStatusResponse,
   CompanyListResponse,
@@ -62,6 +63,7 @@ import type {
   ProjectTaskManagementResponse
 } from "@shared/types/api";
 import type { TimeEntryView } from "@shared/types/models";
+import { emitAuthInvalid } from "./auth-events";
 
 export interface ApiErrorPayload {
   error?: string;
@@ -111,11 +113,31 @@ export class ApiRequestError extends Error {
   }
 }
 
-function buildDefaultHeaders(init?: HeadersInit): HeadersInit {
-  return {
-    "Content-Type": "application/json",
-    ...(init ?? {}),
-  };
+function getHeaderValue(headers: HeadersInit | undefined, name: string): string | null {
+  if (!headers) {
+    return null;
+  }
+
+  if (headers instanceof Headers) {
+    return headers.get(name);
+  }
+
+  if (Array.isArray(headers)) {
+    for (const [key, value] of headers) {
+      if (key.toLowerCase() === name.toLowerCase()) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === name.toLowerCase()) {
+      return String(value);
+    }
+  }
+
+  return null;
 }
 
 function parseJsonSafely<T>(value: string): T | null {
@@ -211,12 +233,25 @@ export function describeApiError(error: unknown, fallback = "Request failed") {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = getRequestMethod(init);
+  const authorization = getHeaderValue(init?.headers, "Authorization");
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Content-Type") && init?.body != null && typeof init.body === "string") {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(path, {
-    headers: buildDefaultHeaders(init?.headers ?? {}),
-    ...init
+    ...init,
+    headers
   });
 
   if (!response.ok) {
+    if (response.status === 401 && authorization?.startsWith("Bearer ")) {
+      emitAuthInvalid({
+        token: authorization.slice("Bearer ".length),
+        status: response.status,
+        path,
+        method,
+      });
+    }
     throw await buildApiRequestError(response, path, method);
   }
 
@@ -641,7 +676,7 @@ export const api = {
       throw await buildApiRequestError(response, "/api/admin/companies/create/import", "POST");
     }
 
-    return parseJsonResponse<{ company: unknown }>(response, "/api/admin/companies/create/import", "POST");
+    return parseJsonResponse<CompanyMigrationImportResponse>(response, "/api/admin/companies/create/import", "POST");
   },
 
   deleteCompany(token: string, input: DeleteCompanyInput) {
@@ -729,7 +764,7 @@ export const api = {
       throw await buildApiRequestError(response, path, "POST");
     }
 
-    return parseJsonResponse<{ company: unknown }>(response, path, "POST");
+    return parseJsonResponse<CompanyMigrationImportResponse>(response, path, "POST");
   },
 
   getCompanyMigrationSchema(token: string) {

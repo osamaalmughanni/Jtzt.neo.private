@@ -1,6 +1,8 @@
-import { CalendarPlus } from "phosphor-react";
+import { CalendarBlank } from "phosphor-react";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { formatLocalDay, getLocalNowSnapshot } from "@shared/utils/time";
+import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Input, inputBaseClassName } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -55,6 +57,25 @@ function formatDisplayValue(value: string, order: SegmentType[], separator: stri
   }
 
   return order.map((part) => parts[part]).join(separator);
+}
+
+function parseIsoDateToDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+  const candidate = new Date(year, month - 1, day);
+  if (
+    Number.isNaN(candidate.getTime()) ||
+    candidate.getFullYear() !== year ||
+    candidate.getMonth() + 1 !== month ||
+    candidate.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return candidate;
 }
 
 function isValidDate(year: string, month: string, day: string) {
@@ -152,11 +173,22 @@ export const DateInput = forwardRef<
     todayDisabled?: boolean;
     showHelperButton?: boolean;
     timeZone?: string;
+    firstDayOfWeek?: number;
+    weekendDays?: number[];
     className?: string;
   }
->(({ value, locale, onChange, todayDisabled, showHelperButton = true, timeZone, className }, forwardedRef) => {
+>(({ value, locale, onChange, todayDisabled, showHelperButton = true, timeZone, firstDayOfWeek = 1, weekendDays = [6, 7], className }, forwardedRef) => {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
   const [focused, setFocused] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const selectedDate = useMemo(() => parseIsoDateToDate(value), [value]);
+  const [viewMonth, setViewMonth] = useState<Date>(() => {
+    const todayIso = getLocalNowSnapshot(new Date(), timeZone).localDay;
+    return selectedDate ?? parseIsoDateToDate(todayIso) ?? new Date();
+  });
   const { order, separator } = useMemo(() => getDateFormat(locale), [locale]);
   const placeholder = useMemo(() => buildPlaceholder(order, separator), [order, separator]);
   const [draft, setDraft] = useState(() => formatDisplayValue(value, order, separator));
@@ -169,6 +201,50 @@ export const DateInput = forwardRef<
     }
   }, [focused, order, separator, value]);
 
+  useEffect(() => {
+    if (!calendarOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      const wrapper = wrapperRef.current;
+      const popup = popupRef.current;
+      if (wrapper?.contains(target) || popup?.contains(target)) {
+        return;
+      }
+
+      setCalendarOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setCalendarOpen(false);
+      }
+    }
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("touchstart", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("touchstart", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [calendarOpen]);
+
+  useEffect(() => {
+    if (calendarOpen) {
+      const todayIso = getLocalNowSnapshot(new Date(), timeZone).localDay;
+      setViewMonth(selectedDate ?? parseIsoDateToDate(todayIso) ?? new Date());
+    }
+  }, [calendarOpen, selectedDate, timeZone]);
+
   function commit(rawValue: string) {
     const nextValue = parseSmartDateInput(rawValue, order, value || getLocalNowSnapshot(new Date(), timeZone).localDay);
     if (nextValue === null) {
@@ -180,8 +256,16 @@ export const DateInput = forwardRef<
     setDraft(nextValue ? formatDisplayValue(nextValue, order, separator) : "");
   }
 
+  function pickDate(date: Date) {
+    const nextValue = formatLocalDay(date);
+    onChange(nextValue);
+    setDraft(formatDisplayValue(nextValue, order, separator));
+    setCalendarOpen(false);
+    setFocused(false);
+  }
+
   return (
-    <div className={cn("flex w-full min-w-0 items-center gap-2", className)}>
+    <div ref={wrapperRef} className={cn("relative flex w-full min-w-0 items-center gap-2", className)}>
       <Input
         ref={inputRef}
         inputMode="numeric"
@@ -210,19 +294,40 @@ export const DateInput = forwardRef<
       {showHelperButton ? (
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           size="icon"
           className="h-10 w-10 shrink-0 text-muted-foreground"
-          aria-label="Use today"
+          aria-label={t("calendar.openDatePicker")}
+          aria-haspopup="dialog"
+          aria-expanded={calendarOpen}
           disabled={todayDisabled}
-          onClick={() => {
-            const todayValue = getLocalNowSnapshot(new Date(), timeZone).localDay;
-            onChange(todayValue);
-            setDraft(formatDisplayValue(todayValue, order, separator));
-          }}
+          onClick={() => setCalendarOpen((current) => !current)}
         >
-          <CalendarPlus size={16} weight="regular" />
+          <CalendarBlank size={16} weight="regular" />
         </Button>
+      ) : null}
+      {calendarOpen ? (
+        <div
+          ref={popupRef}
+          role="dialog"
+          aria-label={t("calendar.selectDate")}
+          className="absolute left-0 top-full z-50 mt-2 w-full min-w-0 overflow-hidden rounded-2xl border border-border bg-card shadow-soft"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="max-h-[min(30rem,calc(100vh-12rem))] overflow-auto p-2 sm:p-3">
+            <Calendar
+              selected={selectedDate}
+              month={viewMonth}
+              locale={locale}
+              firstDayOfWeek={firstDayOfWeek}
+              weekendDays={weekendDays}
+              compact
+              bare
+              onMonthChange={setViewMonth}
+              onSelect={pickDate}
+            />
+          </div>
+        </div>
       ) : null}
     </div>
   );

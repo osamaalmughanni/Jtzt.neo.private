@@ -25,7 +25,7 @@ calendar_days(day) AS (
 active_users AS (
   SELECT id AS user_id, full_name
   FROM users
-  WHERE deleted_at IS NULL
+  WHERE deleted_at IS NULL AND is_active = 1
 ),
 user_days AS (
   SELECT

@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { createDefaultCompanySettings, useCompanySettings } from "@/lib/company-settings";
 import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { formatCompanyDate, formatCompanyDateTime } from "@/lib/locale-format";
 import { normalizeReportDraftFields } from "@/lib/report-fields";
@@ -422,6 +423,7 @@ export function ReportsPreviewPage() {
   const entryStateUi = useMemo(() => getEntryStateUi(t), [t]);
   const [searchParams] = useSearchParams();
   const { companySession } = useAuth();
+  const { settings: companySettings } = useCompanySettings();
   const draftId = searchParams.get("draft");
   const draft = useMemo(() => loadReportDraft(draftId), [draftId]);
   const [viewMode, setViewMode] = useState<"table" | "gantt" | "overtime" | "vacation">("table");
@@ -434,14 +436,13 @@ export function ReportsPreviewPage() {
       }
 
       try {
-        const settingsResponse = await api.getSettings(companySession.token);
         const normalizedDraft = {
           ...draft,
-          ...normalizeReportDraftFields(draft, settingsResponse.settings),
+          ...normalizeReportDraftFields(draft, companySettings ?? createDefaultCompanySettings()),
         };
         const reportResponse = await api.previewReport(companySession.token, normalizedDraft);
         return {
-          settings: settingsResponse.settings,
+          settings: companySettings ?? createDefaultCompanySettings(),
           report: reportResponse.report,
         };
       } catch (error) {

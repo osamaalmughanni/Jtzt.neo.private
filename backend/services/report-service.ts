@@ -280,15 +280,15 @@ export const reportService = {
         te.notes,
         te.custom_field_values_json
        FROM time_entries te
-       INNER JOIN users u ON u.id = te.user_id
+       INNER JOIN users u ON u.id = te.user_id AND u.deleted_at IS NULL AND u.is_active = 1
        LEFT JOIN projects p ON p.id = te.project_id
        LEFT JOIN tasks t ON t.id = te.task_id
-       WHERE te.company_id = ?
+       WHERE 1=1
          AND te.user_id IN (${placeholders})
          AND te.entry_date <= ?
          AND COALESCE(te.end_date, te.entry_date) >= ?
        ORDER BY u.full_name COLLATE NOCASE ASC, te.entry_date ASC, te.start_time ASC, te.id ASC`
-    , [companyId, ...input.userIds, input.endDate, input.startDate]) as ReportRow[];
+    , [...input.userIds, input.endDate, input.startDate]) as ReportRow[];
 
     const contractRows = await db.all(
       `SELECT
@@ -301,10 +301,10 @@ export const reportService = {
         annual_vacation_days,
         created_at
        FROM user_contracts
-       WHERE company_id = ?
+       WHERE 1=1
          AND user_id IN (${placeholders})
        ORDER BY start_date ASC`
-    , [companyId, ...input.userIds]) as Array<{
+    , [...input.userIds]) as Array<{
       id: number;
       user_id: number;
       hours_per_week: number;

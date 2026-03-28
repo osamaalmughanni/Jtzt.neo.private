@@ -90,9 +90,9 @@ async function getOpenEntry(db: AppDatabase, companyId: string, userId: number) 
   return await db.first(
     `SELECT te.*
      FROM time_entries te
-     WHERE te.company_id = ? AND te.user_id = ? AND te.entry_type = 'work' AND te.end_time IS NULL
+     WHERE te.user_id = ? AND te.entry_type = 'work' AND te.end_time IS NULL
      ORDER BY te.start_time DESC LIMIT 1`,
-    [companyId, userId]
+    [userId]
   ) as
     | {
         id: number;
@@ -136,7 +136,6 @@ export const timeService = {
     const createdAt = new Date().toISOString();
     const result = await db.run(
       `INSERT INTO time_entries (
-          company_id,
           user_id,
           entry_type,
           entry_date,
@@ -150,7 +149,6 @@ export const timeService = {
           created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        companyId,
         userId,
         normalized.entryType,
         normalized.entryDate,
@@ -172,13 +170,12 @@ export const timeService = {
     const row = await db.first(
       `SELECT id
          FROM time_entries
-         WHERE company_id = ?
-           AND user_id = ?
+         WHERE user_id = ?
            AND (? IS NULL OR id != ?)
            AND entry_date <= ?
            AND COALESCE(end_date, entry_date) >= ?
          LIMIT 1`,
-      [companyId, userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
+      [userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
     );
 
     return Boolean(row);
@@ -200,13 +197,12 @@ export const timeService = {
     const rows = await db.all(
       `SELECT id, entry_type, entry_date, end_date, start_time, end_time
          FROM time_entries
-         WHERE company_id = ?
-           AND user_id = ?
+         WHERE user_id = ?
            AND (? IS NULL OR id != ?)
            AND entry_date <= ?
            AND COALESCE(end_date, entry_date) >= ?
          ORDER BY entry_date ASC, start_time ASC`,
-      [companyId, userId, excludeEntryId ?? null, excludeEntryId ?? null, candidate.endDate ?? candidate.entryDate, candidate.entryDate]
+      [userId, excludeEntryId ?? null, excludeEntryId ?? null, candidate.endDate ?? candidate.entryDate, candidate.entryDate]
     ) as Array<{ id: number; entry_type: TimeEntryType; entry_date: string; end_date: string | null; start_time: string | null; end_time: string | null }>;
 
     const candidateEndDay = candidate.endDate ?? candidate.entryDate;
@@ -235,14 +231,13 @@ export const timeService = {
     const row = await db.first(
       `SELECT id
          FROM time_entries
-         WHERE company_id = ?
-           AND user_id = ?
+         WHERE user_id = ?
            AND entry_type = 'work'
            AND (? IS NULL OR id != ?)
            AND entry_date <= ?
            AND COALESCE(end_date, entry_date) >= ?
          LIMIT 1`,
-      [companyId, userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
+      [userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
     );
 
     return Boolean(row);
@@ -259,14 +254,13 @@ export const timeService = {
     const row = await db.first(
       `SELECT id
          FROM time_entries
-         WHERE company_id = ?
-           AND user_id = ?
+         WHERE user_id = ?
            AND entry_type != 'work'
            AND (? IS NULL OR id != ?)
            AND entry_date <= ?
            AND COALESCE(end_date, entry_date) >= ?
          LIMIT 1`,
-      [companyId, userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
+      [userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
     );
 
     return Boolean(row);
@@ -280,7 +274,6 @@ export const timeService = {
 
     const result = await db.run(
       `INSERT INTO time_entries (
-          company_id,
           user_id,
           entry_type,
           entry_date,
@@ -293,7 +286,6 @@ export const timeService = {
           created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        companyId,
         userId,
         "work",
         snapshot.localDay,
@@ -313,7 +305,7 @@ export const timeService = {
   async stopTimer(db: AppDatabase, companyId: string, userId: number, input: StopTimerInput) {
     const target = (
       input.entryId
-        ? await db.first("SELECT id, user_id, entry_date, end_time, entry_type FROM time_entries WHERE company_id = ? AND id = ?", [companyId, input.entryId])
+        ? await db.first("SELECT id, user_id, entry_date, end_time, entry_type FROM time_entries WHERE id = ?", [input.entryId])
         : await getOpenEntry(db, companyId, userId)
     ) as { id: number; user_id: number; entry_date: string; end_time: string | null; entry_type: TimeEntryType } | undefined;
 
@@ -326,15 +318,15 @@ export const timeService = {
     const resolvedEndDate = snapshot.localDay > target.entry_date ? snapshot.localDay : null;
 
     await db.run(
-      "UPDATE time_entries SET end_time = ?, end_date = ?, notes = COALESCE(?, notes) WHERE company_id = ? AND id = ?",
-      [stoppedAt.toISOString(), resolvedEndDate, input.notes?.trim() || null, companyId, target.id]
+      "UPDATE time_entries SET end_time = ?, end_date = ?, notes = COALESCE(?, notes) WHERE id = ?",
+      [stoppedAt.toISOString(), resolvedEndDate, input.notes?.trim() || null, target.id]
     );
 
     return this.getEntryById(db, companyId, target.id);
   },
 
   async updateEntry(db: AppDatabase, companyId: string, userId: number, input: UpdateTimeEntryInput) {
-    const existing = await db.first("SELECT id, user_id FROM time_entries WHERE company_id = ? AND id = ?", [companyId, input.entryId]) as
+    const existing = await db.first("SELECT id, user_id FROM time_entries WHERE id = ?", [input.entryId]) as
       | { id: number; user_id: number }
       | undefined;
 
@@ -356,7 +348,7 @@ export const timeService = {
         project_id = ?,
         task_id = ?,
         custom_field_values_json = ?
-      WHERE company_id = ? AND id = ?`,
+      WHERE id = ?`,
       [
         userId,
         normalized.entryType,
@@ -368,7 +360,6 @@ export const timeService = {
         input.projectId ?? null,
         input.taskId ?? null,
         JSON.stringify(normalized.customFieldValues),
-        companyId,
         input.entryId
       ]
     );
@@ -377,7 +368,7 @@ export const timeService = {
   },
 
   async deleteEntry(db: AppDatabase, companyId: string, userId: number, entryId: number) {
-    const existing = await db.first("SELECT id, user_id FROM time_entries WHERE company_id = ? AND id = ?", [companyId, entryId]) as
+    const existing = await db.first("SELECT id, user_id FROM time_entries WHERE id = ?", [entryId]) as
       | { id: number; user_id: number }
       | undefined;
 
@@ -385,7 +376,7 @@ export const timeService = {
       throw new HTTPException(404, { message: "Time entry not found" });
     }
 
-    await db.run("DELETE FROM time_entries WHERE company_id = ? AND id = ?", [companyId, entryId]);
+    await db.run("DELETE FROM time_entries WHERE id = ?", [entryId]);
   },
 
   async listEntries(db: AppDatabase, companyId: string, userId: number, filters: { from?: string; to?: string }) {
@@ -394,12 +385,11 @@ export const timeService = {
     const rows = await db.all(
       `SELECT te.*
          FROM time_entries te
-         WHERE te.company_id = ?
-           AND te.user_id = ?
+         WHERE te.user_id = ?
            AND (? IS NULL OR COALESCE(te.end_date, te.entry_date) >= ?)
            AND (? IS NULL OR te.entry_date <= ?)
          ORDER BY te.entry_date DESC, te.start_time DESC, te.id DESC`,
-      [companyId, userId, fromDay, fromDay, toDay, toDay]
+      [userId, fromDay, fromDay, toDay, toDay]
     );
 
     return rows.map(mapTimeEntryView);
@@ -424,7 +414,7 @@ export const timeService = {
   },
 
   async getEntryById(db: AppDatabase, companyId: string, entryId: number) {
-    const row = await db.first("SELECT te.* FROM time_entries te WHERE te.company_id = ? AND te.id = ?", [companyId, entryId]);
+    const row = await db.first("SELECT te.* FROM time_entries te WHERE te.id = ?", [entryId]);
 
     if (!row) {
       throw new HTTPException(404, { message: "Time entry not found" });

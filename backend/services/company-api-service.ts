@@ -53,7 +53,7 @@ function inferExampleValue(column: CompanyApiSchemaColumn): string | number | nu
   const type = column.type.toLowerCase();
 
   if (name.endsWith("_id")) {
-    return column.name === "company_id" ? "company_guid" : 1;
+    return 1;
   }
   if (name.includes("date")) {
     return "2026-01-01";
@@ -97,10 +97,6 @@ async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTable
 
     const columns = parseColumnsFromCreateTableSql(table.sql);
 
-    if (!columns.some((column) => column.name === "company_id")) {
-      continue;
-    }
-
     const normalizedColumns: CompanyApiSchemaColumn[] = columns.map((column) => ({
       name: column.name,
       type: column.type || "TEXT",
@@ -117,7 +113,6 @@ async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTable
     const preferredOrderColumn =
       normalizedColumns.find((column) => column.name === "created_at")?.name ??
       normalizedColumns.find((column) => column.primaryKey)?.name ??
-      normalizedColumns.find((column) => column.name !== "company_id")?.name ??
       normalizedColumns[0]?.name;
 
     result.push({
@@ -281,12 +276,11 @@ function buildSelectColumns(requested: string[] | undefined, table: CompanyApiTa
 }
 
 function buildWhereClause(
-  companyId: string,
   filters: CompanyApiQueryInput["filters"],
   table: CompanyApiTableSchema,
 ) {
-  const clauses = [`${quoteIdentifier("company_id")} = ?`];
-  const params: SqlValue[] = [companyId];
+  const clauses: string[] = [];
+  const params: SqlValue[] = [];
   const allowedColumns = new Set(table.columns.map((column) => column.name));
 
   for (const filter of filters ?? []) {
@@ -371,7 +365,7 @@ function validateWritableColumns(values: Record<string, string | number | boolea
   const writableColumns = new Set(
     table.columns
       .map((column) => column.name)
-      .filter((column) => column !== "company_id" && column !== "id"),
+      .filter((column) => column !== "id"),
   );
 
   const entries = Object.entries(values);
@@ -394,7 +388,7 @@ function buildExampleQuery(tables: CompanyApiTableSchema[]): CompanyApiQueryInpu
     return null;
   }
 
-  const visibleColumns = table.columns.filter((column) => column.name !== "company_id");
+  const visibleColumns = table.columns;
   const selectedColumns = visibleColumns.slice(0, 5).map((column) => column.name);
   const firstFilterColumn =
     visibleColumns.find((column) => column.name.includes("date")) ??
@@ -428,10 +422,10 @@ function buildExampleMutation(
     return null;
   }
 
-  const writableColumns = table.columns.filter((column) => column.name !== "company_id" && column.name !== "id");
+  const writableColumns = table.columns.filter((column) => column.name !== "id");
   const firstWritableColumn = writableColumns[0];
   const filterColumn =
-    table.columns.find((column) => column.primaryKey && column.name !== "company_id") ??
+    table.columns.find((column) => column.primaryKey) ??
     writableColumns.find((column) => column.name.includes("date")) ??
     writableColumns[0];
 
@@ -629,7 +623,7 @@ export const companyApiService = {
 
     const selectColumns = buildSelectColumns(input.columns, table);
     const selectedColumnNames = selectColumns.map((column) => column.slice(1, -1));
-    const where = buildWhereClause(companyId, input.filters, table);
+    const where = buildWhereClause(input.filters, table);
     const orderBy = buildOrderBy(input.orderBy, table);
     const limit = input.limit ?? 250;
     const offset = input.offset ?? 0;
@@ -660,8 +654,8 @@ export const companyApiService = {
 
     if (input.action === "insert") {
       const values = validateWritableColumns(input.values ?? {}, table);
-      const columns = [`${quoteIdentifier("company_id")}`, ...values.map(([column]) => quoteIdentifier(column))];
-      const params: SqlValue[] = [companyId, ...values.map(([, value]) => normalizeSqlValue(value))];
+      const columns = values.map(([column]) => quoteIdentifier(column));
+      const params: SqlValue[] = values.map(([, value]) => normalizeSqlValue(value));
       const placeholders = columns.map(() => "?").join(", ");
       const result = await db.run(
         `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${placeholders})`,
@@ -676,10 +670,10 @@ export const companyApiService = {
       };
     }
 
-    const where = buildWhereClause(companyId, input.filters, table);
+    const where = buildWhereClause(input.filters, table);
     const hasAdditionalFilter = (input.filters?.length ?? 0) > 0;
     if (!hasAdditionalFilter) {
-      throw new HTTPException(400, { message: `${input.action} requires at least one non-company filter` });
+      throw new HTTPException(400, { message: `${input.action} requires at least one filter` });
     }
 
     if (input.action === "update") {
@@ -771,7 +765,6 @@ export const companyApiService = {
           actions: [...mutationActions],
           notes: [
             "Mutations are validated against the live schema before SQL is built.",
-            "company_id is injected automatically and cannot be overridden by clients.",
             "Update and delete operations require filters to reduce accidental broad writes.",
           ],
           examples: mutationExamples,

@@ -42,6 +42,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useCompanySettings } from "@/lib/company-settings";
 import { getEntryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
 import { formatCompanyDate, formatCompanyDateRange } from "@/lib/locale-format";
 import { toast } from "@/lib/toast";
@@ -269,6 +270,7 @@ function RecordStatusIcon({
 export function DashboardPage() {
   const navigate = useNavigate();
   const { companySession, companyIdentity, isTabletMode } = useAuth();
+  const { settings: companySettings } = useCompanySettings();
   const { t } = useTranslation();
   const entryStateUi = useMemo(() => getEntryStateUi(t), [t]);
   const getEntryLabel = (entryType: TimeEntryView["entryType"]) => getEntryTypeLabel(entryType, t);
@@ -306,6 +308,12 @@ export function DashboardPage() {
     const parsed = Number(rawValue);
     return Number.isNaN(parsed) ? (isWorkspaceMode ? null : companyIdentity?.user.id ?? null) : parsed;
   }, [companyIdentity?.user.id, isTabletMode, isWorkspaceMode, searchParams]);
+
+  useEffect(() => {
+    if (companySettings) {
+      setSettings(companySettings);
+    }
+  }, [companySettings]);
 
   const availableUsers = useMemo<CompanyUserListItem[]>(
     () =>
@@ -521,7 +529,6 @@ export function DashboardPage() {
       }
 
       try {
-        const settingsResponse = await api.getSettings(companySession.token);
         const usersResponse = canSwitchUser ? await api.listActiveUsers(companySession.token) : { users: [] };
         const resolvedUserId =
           canSwitchUser
@@ -538,7 +545,7 @@ export function DashboardPage() {
         ]);
 
         return {
-          settings: settingsResponse.settings,
+          settings: companySettings ?? defaultSettings,
           users: usersResponse.users,
           entries: entriesResponse.entries,
           summary: dashboardResponse.summary,
@@ -567,9 +574,8 @@ export function DashboardPage() {
         };
       }
 
-      const settingsResponse = await api.getSettings(companySession.token);
       const [holidayResponse, entriesResponse] = await Promise.all([
-        api.getPublicHolidays(companySession.token, settingsResponse.settings.country, visibleMonth.getFullYear()),
+        api.getPublicHolidays(companySession.token, settings.country, visibleMonth.getFullYear()),
         api.listTimeEntries(companySession.token, {
           from: formatLocalDay(startOfMonth(visibleMonth)),
           to: formatLocalDay(endOfDay(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0))),
@@ -612,7 +618,6 @@ export function DashboardPage() {
       return;
     }
 
-    setSettings(dashboardResource.data.settings);
     setUsers(dashboardResource.data.users);
     setEntries(dashboardResource.data.entries);
     setSummary(dashboardResource.data.summary);
@@ -1060,6 +1065,7 @@ export function DashboardPage() {
               onSelect={(date) => updateContext({ day: date })}
               locale={settings.locale}
               firstDayOfWeek={settings.firstDayOfWeek}
+              weekendDays={settings.weekendDays}
               holidayDates={calendarHolidays.map((holiday) => holiday.date)}
               dayStates={calendarDayStates}
               onMonthChange={setVisibleMonth}

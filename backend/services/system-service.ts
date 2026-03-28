@@ -54,6 +54,24 @@ export const systemService = {
     return rows.map(mapCompanyRecord);
   },
 
+  async getCompanyAuthState(db: AppDatabase, companyId: string) {
+    const row = await db.first<{
+      id: string;
+      name: string;
+      auth_version: number;
+    }>(
+      "SELECT id, name, auth_version FROM companies WHERE id = ?",
+      [companyId]
+    );
+    return row
+      ? {
+          id: row.id,
+          name: row.name,
+          authVersion: row.auth_version ?? 0,
+        }
+      : null;
+  },
+
   async getCompanyById(db: AppDatabase, companyId: string) {
     const row = await db.first("SELECT id, name, tablet_code_updated_at, created_at FROM companies WHERE id = ?", [companyId]);
     return row ? mapCompanyRecord(row) : null;
@@ -191,6 +209,11 @@ export const systemService = {
         token_hint = excluded.token_hint,
         rotated_at = excluded.rotated_at`,
       [companyId, tokenHash, tokenHint, now, now]
+    );
+
+    await db.run(
+      "UPDATE companies SET auth_version = auth_version + 1 WHERE id = ?",
+      [companyId]
     );
 
     return {

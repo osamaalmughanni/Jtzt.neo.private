@@ -10,6 +10,10 @@ function isLocalDayValue(value: string) {
 }
 
 export function getReportColumnLabel(column: ReportResponse["report"]["columns"][number], t: TranslateFn) {
+  if (column.key.includes(":")) {
+    return column.label;
+  }
+
   const nativeKey = `reports.columns.${column.key}`;
   const translated = t(nativeKey);
   return translated === nativeKey ? column.label : translated;

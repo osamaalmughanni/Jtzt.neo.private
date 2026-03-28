@@ -17,7 +17,6 @@ export async function up({ context: db }) {
     db.exec(`
       CREATE TABLE calculations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id TEXT NOT NULL,
         name TEXT NOT NULL,
         description TEXT,
         sql_text TEXT NOT NULL,
@@ -33,7 +32,7 @@ export async function up({ context: db }) {
         updated_at TEXT NOT NULL
       )
     `);
-    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_calculations_company_name ON calculations (company_id, lower(name))");
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_calculations_name ON calculations (lower(name))");
   } else {
     if (!hasColumn(db, "calculations", "chart_series_column")) {
       db.exec("ALTER TABLE calculations ADD COLUMN chart_series_column TEXT");

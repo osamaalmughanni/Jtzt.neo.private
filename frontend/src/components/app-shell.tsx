@@ -7,8 +7,9 @@ import { AppHeader } from "@/components/app-header";
 import { AppHeaderLoadingBar } from "@/components/app-header-loading-bar";
 import { AppHeaderStateProvider, useAppHeaderState } from "@/components/app-header-state";
 import { AppFrame } from "@/components/app-frame";
+import { AppRouteLoadingState } from "@/components/page-load-state";
 import { useFullscreenFooterActions } from "@/hooks/use-fullscreen-footer-actions";
-import { api } from "@/lib/api";
+import { useCompanySettings } from "@/lib/company-settings";
 import { useAuth } from "@/lib/auth";
 import { LockSimple, SignOut } from "phosphor-react";
 
@@ -20,6 +21,7 @@ export function AppShell({ mode }: AppShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { companyIdentity, companySession, lockTablet, logoutAdmin } = useAuth();
+  const { settings, loading: settingsLoading } = useCompanySettings();
   const [tabletIdleTimeoutSeconds, setTabletIdleTimeoutSeconds] = useState(10);
   const idleTimerRef = useRef<number | null>(null);
   const firstRouteRef = useRef(true);
@@ -33,6 +35,10 @@ export function AppShell({ mode }: AppShellProps) {
         ? "/menu"
         : "/menu";
   const scope = mode === "company" && companySession?.accessMode === "tablet" ? "tablet" : mode;
+
+  if (mode === "company" && companySession && settingsLoading && !settings) {
+    return <AppRouteLoadingState />;
+  }
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
@@ -75,14 +81,12 @@ export function AppShell({ mode }: AppShellProps) {
 
   useEffect(() => {
     if (companySession?.accessMode !== "tablet") {
+      setTabletIdleTimeoutSeconds(10);
       return;
     }
 
-    void api
-      .getSettings(companySession.token)
-      .then((response) => setTabletIdleTimeoutSeconds(response.settings.tabletIdleTimeoutSeconds))
-      .catch(() => setTabletIdleTimeoutSeconds(10));
-  }, [companySession]);
+    setTabletIdleTimeoutSeconds(settings?.tabletIdleTimeoutSeconds ?? 10);
+  }, [companySession, settings?.tabletIdleTimeoutSeconds]);
 
   useEffect(() => {
     if (companySession?.accessMode !== "tablet") {

@@ -30,6 +30,59 @@ function normalizeInvitationCode(value: string) {
   return value.trim().toUpperCase();
 }
 
+function hashAdminAccessToken(value: string) {
+  return crypto.createHash("sha256").update(value.trim()).digest("hex");
+}
+
+type CompanySessionInput =
+  {
+    accessMode: "full" | "tablet";
+    userId: number;
+    role: "employee" | "manager" | "admin";
+  };
+
+async function createCompanySession(
+  systemDb: AppDatabase,
+  config: RuntimeConfig,
+  companyId: string,
+  session: CompanySessionInput,
+) {
+  const company = await systemService.getCompanyAuthState(systemDb, companyId);
+  if (!company) {
+    throw new HTTPException(401, { message: "Invalid or expired bearer token" });
+  }
+
+  return signSessionToken(config, {
+    actorType: "company_user",
+    accessMode: session.accessMode,
+    companyId: company.id,
+    companyName: company.name,
+    userId: session.userId,
+    role: session.role,
+  });
+}
+
+async function createWorkspaceSession(
+  systemDb: AppDatabase,
+  config: RuntimeConfig,
+  companyId: string,
+) {
+  const company = await systemService.getCompanyAuthState(systemDb, companyId);
+  if (!company) {
+    throw new HTTPException(401, { message: "Invalid or expired bearer token" });
+  }
+
+  return signSessionToken(config, {
+    actorType: "workspace",
+    accessMode: "full",
+    companyId: company.id,
+    companyName: company.name,
+    workspaceAuthVersion: company.authVersion,
+    userId: 0,
+    role: "admin",
+  });
+}
+
 export const authService = {
   async loginAdmin(config: RuntimeConfig, input: AdminLoginInput) {
     const expectedToken = config.adminAccessToken.trim();
@@ -41,7 +94,8 @@ export const authService = {
     return await signSessionToken(config, {
       actorType: "admin",
       adminId: 1,
-      username: "admin"
+      username: "admin",
+      adminAuthFingerprint: hashAdminAccessToken(config.adminAccessToken),
     });
   },
 
@@ -75,8 +129,8 @@ export const authService = {
     );
 
     const userRow = await companyDb.first(
-      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE company_id = ? AND username = ? AND deleted_at IS NULL",
-      [company.id, input.adminUsername]
+      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE username = ? AND deleted_at IS NULL",
+      [input.adminUsername]
     );
 
     const user = userRow ? mapCompanyUser(userRow) : null;
@@ -84,13 +138,10 @@ export const authService = {
       throw new HTTPException(500, { message: "Company admin could not be provisioned" });
     }
 
-    return await signSessionToken(config, {
-      actorType: "company_user",
+    return await createCompanySession(systemDb, config, company.id, {
       accessMode: "full",
-      companyId: company.id,
-      companyName: company.name,
       userId: user.id,
-      role: user.role
+      role: user.role,
     });
   },
 
@@ -101,8 +152,8 @@ export const authService = {
     }
 
     const userRow = await companyDb.first(
-      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE company_id = ? AND username = ? AND deleted_at IS NULL",
-      [company.id, input.username]
+      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE username = ? AND deleted_at IS NULL",
+      [input.username]
     );
 
     const user = userRow ? mapCompanyUser(userRow) : null;
@@ -113,13 +164,10 @@ export const authService = {
       throw new HTTPException(403, { message: "User is inactive" });
     }
 
-    return await signSessionToken(config, {
-      actorType: "company_user",
+    return await createCompanySession(systemDb, config, company.id, {
       accessMode: "full",
-      companyId: company.id,
-      companyName: company.name,
       userId: user.id,
-      role: user.role
+      role: user.role,
     });
   },
 
@@ -144,14 +192,7 @@ export const authService = {
       throw new HTTPException(401, { message: "Invalid workspace key" });
     }
 
-    return await signSessionToken(config, {
-      actorType: "workspace",
-      accessMode: "full",
-      companyId: company.id,
-      companyName: company.name,
-      userId: 0,
-      role: "admin",
-    });
+    return await createWorkspaceSession(systemDb, config, company.id);
   },
 
   async getTabletAccess(systemDb: AppDatabase, input: TabletAccessInput) {
@@ -172,8 +213,8 @@ export const authService = {
     }
 
     const userRow = await companyDb.first(
-      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE company_id = ? AND pin_code = ? AND deleted_at IS NULL",
-      [company.id, input.pinCode.trim()]
+      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE pin_code = ? AND deleted_at IS NULL",
+      [input.pinCode.trim()]
     ) as Record<string, unknown> | null;
 
     const user = userRow ? mapCompanyUser(userRow) : null;
@@ -184,13 +225,10 @@ export const authService = {
       throw new HTTPException(403, { message: "User is inactive" });
     }
 
-    return await signSessionToken(config, {
-      actorType: "company_user",
+    return await createCompanySession(systemDb, config, company.id, {
       accessMode: "tablet",
-      companyId: company.id,
-      companyName: company.name,
       userId: user.id,
-      role: user.role
+      role: user.role,
     });
   },
 
@@ -200,8 +238,7 @@ export const authService = {
       throw new HTTPException(404, { message: "Company not found" });
     }
 
-    const row = await companyDb.first("SELECT id, username, full_name, role FROM users WHERE company_id = ? AND id = ? AND deleted_at IS NULL", [
-      payload.companyId,
+    const row = await companyDb.first("SELECT id, username, full_name, role FROM users WHERE id = ? AND deleted_at IS NULL", [
       payload.userId
     ]);
 

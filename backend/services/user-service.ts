@@ -16,7 +16,7 @@ async function ensureAdminRoleWillRemainAsync(
   userId: number,
   nextRole?: "employee" | "manager" | "admin"
 ) {
-  const target = await db.first("SELECT role FROM users WHERE company_id = ? AND id = ? AND deleted_at IS NULL", [companyId, userId]) as
+  const target = await db.first("SELECT role FROM users WHERE id = ? AND deleted_at IS NULL", [userId]) as
     | { role: "employee" | "manager" | "admin" }
     | null;
   if (!target) {
@@ -28,7 +28,7 @@ async function ensureAdminRoleWillRemainAsync(
     return;
   }
 
-  const adminCountRow = await db.first("SELECT COUNT(*) AS count FROM users WHERE company_id = ? AND role = 'admin' AND deleted_at IS NULL", [companyId]) as { count: number } | null;
+  const adminCountRow = await db.first("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL") as { count: number } | null;
   if ((adminCountRow?.count ?? 0) <= 1) {
     throw new HTTPException(400, { message: "At least one admin is required" });
   }
@@ -36,8 +36,8 @@ async function ensureAdminRoleWillRemainAsync(
 
 async function ensureUniquePin(db: AppDatabase, companyId: string, pinCode: string, userId?: number) {
   const existing = userId
-    ? await db.first("SELECT id FROM users WHERE company_id = ? AND pin_code = ? AND id != ? AND deleted_at IS NULL", [companyId, pinCode, userId])
-    : await db.first("SELECT id FROM users WHERE company_id = ? AND pin_code = ? AND deleted_at IS NULL", [companyId, pinCode]);
+    ? await db.first("SELECT id FROM users WHERE pin_code = ? AND id != ? AND deleted_at IS NULL", [pinCode, userId])
+    : await db.first("SELECT id FROM users WHERE pin_code = ? AND deleted_at IS NULL", [pinCode]);
 
   if (existing) {
     throw new HTTPException(409, { message: "PIN code already exists" });
@@ -93,13 +93,13 @@ function validateContracts(contracts: UserContractInput[], todayDay: string) {
 
 async function saveContracts(db: AppDatabase, companyId: string, userId: number, contracts: UserContractInput[], todayDay: string) {
   const normalizedContracts = validateContracts(contracts, todayDay);
-  const contractIds = await db.all<{ id: number }>("SELECT id FROM user_contracts WHERE company_id = ? AND user_id = ?", [companyId, userId]);
+  const contractIds = await db.all<{ id: number }>("SELECT id FROM user_contracts WHERE user_id = ?", [userId]);
   const statements = [
     ...contractIds.map((row) => ({
       sql: "DELETE FROM user_contract_schedule_blocks WHERE contract_id = ?",
       params: [row.id] as const
     })),
-    { sql: "DELETE FROM user_contracts WHERE company_id = ? AND user_id = ?", params: [companyId, userId] as const },
+    { sql: "DELETE FROM user_contracts WHERE user_id = ?", params: [userId] as const },
   ];
   await db.batch(statements.map((statement) => ({ sql: statement.sql, params: [...statement.params] })));
 
@@ -107,7 +107,6 @@ async function saveContracts(db: AppDatabase, companyId: string, userId: number,
     const createdAt = new Date().toISOString();
     const result = await db.run(
       `INSERT INTO user_contracts (
-        company_id,
         user_id,
         hours_per_week,
         start_date,
@@ -115,8 +114,8 @@ async function saveContracts(db: AppDatabase, companyId: string, userId: number,
         payment_per_hour,
         annual_vacation_days,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [companyId, userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, contract.annualVacationDays, createdAt]
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, contract.annualVacationDays, createdAt]
     );
     const contractId = Number(result.lastRowId);
     for (const day of contract.schedule) {
@@ -142,9 +141,9 @@ export const userService = {
     const rows = await db.all(
       `SELECT id, full_name, is_active, role
        FROM users
-       WHERE company_id = ? AND deleted_at IS NULL ${options?.activeOnly ? "AND is_active = 1" : ""}
+       WHERE deleted_at IS NULL ${options?.activeOnly ? "AND is_active = 1" : ""}
        ORDER BY full_name COLLATE NOCASE ASC`,
-      [companyId]
+      []
     );
     return rows.map(mapCompanyUserListItem);
   },
@@ -162,8 +161,8 @@ export const userService = {
         custom_field_values_json,
         created_at
       FROM users
-      WHERE company_id = ? AND id = ? AND deleted_at IS NULL`,
-      [companyId, userId]
+      WHERE id = ? AND deleted_at IS NULL`,
+      [userId]
     );
 
     if (!row) {
@@ -187,9 +186,9 @@ export const userService = {
         annual_vacation_days,
         created_at
       FROM user_contracts
-      WHERE company_id = ? AND user_id = ?
+      WHERE user_id = ?
       ORDER BY start_date ASC`,
-      [companyId, userId]
+      [userId]
     ) as Array<{
       id: number;
       user_id: number;
@@ -238,7 +237,7 @@ export const userService = {
   },
 
   async createUser(db: AppDatabase, companyId: string, input: CreateUserInput, todayDay: string) {
-    const existing = await db.first("SELECT id FROM users WHERE company_id = ? AND username = ? AND deleted_at IS NULL", [companyId, input.username.trim()]);
+    const existing = await db.first("SELECT id FROM users WHERE username = ? AND deleted_at IS NULL", [input.username.trim()]);
     if (existing) {
       throw new HTTPException(409, { message: "Username already exists" });
     }
@@ -247,7 +246,6 @@ export const userService = {
     validateContracts(input.contracts, todayDay);
     const result = await db.run(
       `INSERT INTO users (
-        company_id,
         username,
         full_name,
         password_hash,
@@ -257,9 +255,8 @@ export const userService = {
         email,
         custom_field_values_json,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        companyId,
         input.username.trim(),
         input.fullName.trim(),
         bcrypt.hashSync(input.password, 10),
@@ -278,13 +275,12 @@ export const userService = {
   },
 
   async updateUser(db: AppDatabase, companyId: string, input: UpdateUserInput, todayDay: string) {
-    const existing = await db.first("SELECT id FROM users WHERE company_id = ? AND id = ? AND deleted_at IS NULL", [companyId, input.userId]);
+    const existing = await db.first("SELECT id FROM users WHERE id = ? AND deleted_at IS NULL", [input.userId]);
     if (!existing) {
       throw new HTTPException(404, { message: "User not found" });
     }
 
-    const duplicateUsername = await db.first("SELECT id FROM users WHERE company_id = ? AND username = ? AND id != ? AND deleted_at IS NULL", [
-      companyId,
+    const duplicateUsername = await db.first("SELECT id FROM users WHERE username = ? AND id != ? AND deleted_at IS NULL", [
       input.username.trim(),
       input.userId
     ]);
@@ -296,10 +292,10 @@ export const userService = {
     await ensureUniquePin(db, companyId, input.pinCode, input.userId);
     validateContracts(input.contracts, todayDay);
     const passwordHash =
-      input.password && input.password.trim().length > 0
+        input.password && input.password.trim().length > 0
         ? bcrypt.hashSync(input.password, 10)
         : (
-            await db.first("SELECT password_hash FROM users WHERE company_id = ? AND id = ? AND deleted_at IS NULL", [companyId, input.userId]) as { password_hash: string }
+            await db.first("SELECT password_hash FROM users WHERE id = ? AND deleted_at IS NULL", [input.userId]) as { password_hash: string }
           ).password_hash;
 
     await db.run(
@@ -313,7 +309,7 @@ export const userService = {
          pin_code = ?,
          email = ?,
          custom_field_values_json = ?
-       WHERE company_id = ? AND id = ? AND deleted_at IS NULL`,
+       WHERE id = ? AND deleted_at IS NULL`,
       [
         input.username.trim(),
         input.fullName.trim(),
@@ -323,7 +319,6 @@ export const userService = {
         input.pinCode,
         normalizeOptionalText(input.email),
         JSON.stringify(input.customFieldValues ?? {}),
-        companyId,
         input.userId
       ]
     );
@@ -338,8 +333,8 @@ export const userService = {
        SET
          is_active = 0,
          deleted_at = ?
-       WHERE company_id = ? AND id = ? AND deleted_at IS NULL`,
-      [new Date().toISOString(), companyId, userId]
+       WHERE id = ? AND deleted_at IS NULL`,
+      [new Date().toISOString(), userId]
     );
     if (result.changes === 0) {
       throw new HTTPException(404, { message: "User not found" });

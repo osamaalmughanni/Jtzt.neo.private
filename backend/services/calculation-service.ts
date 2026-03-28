@@ -112,7 +112,6 @@ export const calculationService = {
     const calculations = (await db.all(
       `SELECT
          id,
-         company_id,
          name,
          description,
          sql_text,
@@ -128,9 +127,8 @@ export const calculationService = {
          created_at,
          updated_at
        FROM calculations
-       WHERE company_id = ?
        ORDER BY is_builtin DESC, name COLLATE NOCASE ASC, created_at DESC`,
-      [companyId]
+      []
     )).map(normalizeCalculationRow).map((calculation) => hydrateBuiltinCalculation(calculation, presetsByKey));
 
     return {
@@ -143,7 +141,6 @@ export const calculationService = {
     const calculation = await db.first(
       `SELECT
          id,
-         company_id,
          name,
          description,
          sql_text,
@@ -159,8 +156,8 @@ export const calculationService = {
          created_at,
          updated_at
        FROM calculations
-       WHERE company_id = ? AND id = ?`,
-      [companyId, calculationId]
+       WHERE id = ?`,
+      [calculationId]
     );
 
     if (!calculation) {
@@ -219,7 +216,6 @@ export const calculationService = {
     try {
       const result = await db.run(
         `INSERT INTO calculations (
-           company_id,
            name,
            description,
            sql_text,
@@ -233,9 +229,8 @@ export const calculationService = {
            is_builtin,
            created_at,
            updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
         [
-          companyId,
           input.name.trim(),
           normalizeText(input.description),
           normalizeSql(input.sqlText),
@@ -310,9 +305,9 @@ export const calculationService = {
     await db.exec("BEGIN IMMEDIATE TRANSACTION");
     try {
       await db.run(
-        `UPDATE calculations
+       `UPDATE calculations
          SET name = ?, description = ?, sql_text = ?, output_mode = ?, chart_type = ?, chart_category_column = ?, chart_value_column = ?, chart_series_column = ?, chart_config_json = ?, chart_stacked = ?, updated_at = ?
-         WHERE company_id = ? AND id = ?`,
+         WHERE id = ?`,
         [
           input.name.trim(),
           normalizeText(input.description),
@@ -325,7 +320,6 @@ export const calculationService = {
           JSON.stringify(normalizedChartConfig),
           normalizedChartConfig.stacked ? 1 : 0,
           updatedAt,
-          companyId,
           input.calculationId,
         ]
       );
@@ -381,7 +375,7 @@ export const calculationService = {
       throw new HTTPException(400, { message: "Built-in calculations cannot be deleted" });
     }
 
-    await db.run("DELETE FROM calculations WHERE company_id = ? AND id = ?", [companyId, calculationId]);
+    await db.run("DELETE FROM calculations WHERE id = ?", [calculationId]);
   },
 
   async createFromPreset(db: AppDatabase, companyId: string, input: CreateCalculationFromPresetInput) {

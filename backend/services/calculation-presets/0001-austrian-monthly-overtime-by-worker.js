@@ -69,12 +69,18 @@ month_bounds AS (
     date(datetime('now', 'localtime'), 'start of month') AS month_start,
     date(datetime('now', 'localtime'), 'start of month', '+1 month', '-1 day') AS month_end
 ),
+active_users AS (
+  SELECT id AS user_id
+  FROM users
+  WHERE deleted_at IS NULL AND is_active = 1
+),
 active_contracts AS (
   SELECT * FROM (
     SELECT
       uc.*,
       ROW_NUMBER() OVER (PARTITION BY uc.user_id ORDER BY uc.start_date DESC, uc.id DESC) AS rn
     FROM user_contracts uc
+    INNER JOIN active_users au ON au.user_id = uc.user_id
     CROSS JOIN month_bounds mb
     WHERE uc.start_date <= mb.month_end
       AND (uc.end_date IS NULL OR uc.end_date >= mb.month_start)
@@ -283,7 +289,7 @@ SELECT
     (ct.holiday_hours * ct.hourly_rate)
   ), ',', '__GROUP__'), '.', f.decimal_mark), '__GROUP__', f.group_mark) || ' ' || f.currency AS "Gross total"
 FROM contract_totals ct
-JOIN users u ON u.id = ct.user_id
+JOIN users u ON u.id = ct.user_id AND u.deleted_at IS NULL AND u.is_active = 1
 CROSS JOIN month_bounds mb
 CROSS JOIN format_ctx f
 ORDER BY ct.total_hours * ct.hourly_rate DESC, u.full_name ASC

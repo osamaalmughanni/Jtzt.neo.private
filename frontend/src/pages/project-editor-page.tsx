@@ -15,6 +15,7 @@ import { CustomFieldInput } from "@/components/custom-field-input";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { createDefaultCompanySettings, useCompanySettings } from "@/lib/company-settings";
 import { toast } from "@/lib/toast";
 import { MultiSelectFilter } from "@/components/multi-select-filter";
 import type { CompanyCustomField, CompanySettings } from "@shared/types/models";
@@ -52,6 +53,7 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
   const { t } = useTranslation();
   const { projectId } = useParams();
   const { companySession } = useAuth();
+  const { settings: companySettings } = useCompanySettings();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -63,15 +65,12 @@ export function ProjectEditorPage({ mode }: { mode: "create" | "edit" }) {
     deps: [companySession?.token, mode, projectId, t],
     load: async () => {
       if (!companySession) {
-        return { users: [], projects: [], tasks: [], projectUsers: [], projectTasks: [], settings: { customFields: [] } as unknown as CompanySettings };
+        return { users: [], projects: [], tasks: [], projectUsers: [], projectTasks: [], settings: companySettings ?? createDefaultCompanySettings() };
       }
 
       try {
-        const [projectData, settingsResponse] = await Promise.all([
-          api.listProjectData(companySession.token),
-          api.getSettings(companySession.token),
-        ]);
-        return { ...projectData, settings: settingsResponse.settings };
+        const projectData = await api.listProjectData(companySession.token);
+        return { ...projectData, settings: companySettings ?? createDefaultCompanySettings() };
       } catch (error) {
         toast({
           title: t("projects.loadFailed"),

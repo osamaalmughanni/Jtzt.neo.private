@@ -1,6 +1,6 @@
-const COMPANY_SESSION_KEY = "jtzt.company.session";
-const ADMIN_SESSION_KEY = "jtzt.admin.session";
-const TABLET_ACCESS_KEY = "jtzt.tablet.access";
+export const COMPANY_SESSION_KEY = "jtzt.company.session";
+export const ADMIN_SESSION_KEY = "jtzt.admin.session";
+export const TABLET_ACCESS_KEY = "jtzt.tablet.access";
 
 export interface StoredSession {
   token: string;

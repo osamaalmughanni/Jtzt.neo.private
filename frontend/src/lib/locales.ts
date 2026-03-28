@@ -448,7 +448,11 @@ export const resources = {
         prev: "Prev",
         next: "Next",
         publicHoliday: "Public holiday",
-        mixed: "Mixed"
+        mixed: "Mixed",
+        selectDate: "Select date",
+        selectDateHint: "Choose a day from the calendar",
+        noDateSelected: "No date selected",
+        openDatePicker: "Open date picker"
       },
       dayPicker: {
         backToOverview: "Back to overview",
@@ -1326,7 +1330,11 @@ export const resources = {
         prev: "Zurück",
         next: "Weiter",
         publicHoliday: "Feiertag",
-        mixed: "Gemischt"
+        mixed: "Gemischt",
+        selectDate: "Datum auswählen",
+        selectDateHint: "Wählen Sie einen Tag im Kalender aus",
+        noDateSelected: "Kein Datum gewählt",
+        openDatePicker: "Datumsauswahl öffnen"
       },
       dayPicker: {
         backToOverview: "Zurück zur Übersicht",

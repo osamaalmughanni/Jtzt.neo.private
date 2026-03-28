@@ -4,6 +4,7 @@ export interface AdminTokenPayload {
   actorType: "admin";
   adminId: number;
   username: string;
+  adminAuthFingerprint: string;
 }
 
 export interface CompanyTokenPayload {
@@ -20,6 +21,7 @@ export interface WorkspaceSessionPayload {
   accessMode: "full";
   companyId: string;
   companyName: string;
+  workspaceAuthVersion: number;
   userId: number;
   role: "admin";
 }
