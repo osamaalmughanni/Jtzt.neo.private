@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { diffClockTimeMinutes, getLocalNowSnapshot } from "@shared/utils/time";
@@ -14,6 +14,7 @@ import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { DateInput } from "@/components/ui/date-input";
 import { Input } from "@/components/ui/input";
 import { TimeInput } from "@/components/ui/time-input";
@@ -22,6 +23,7 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHe
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { getCustomFieldsForTarget } from "@shared/utils/custom-fields";
+import { formatCompanyDateRange } from "@/lib/locale-format";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { toast } from "@/lib/toast";
 
@@ -148,9 +150,17 @@ function validateContracts(contracts: UserContractInput[], t: (key: string) => s
 function getContractStatus(contract: UserContractInput, t: (key: string) => string, timeZone: string) {
   const today = getLocalNowSnapshot(new Date(), timeZone).localDay;
   if (!contract.startDate) return t("userEditor.draft");
-  if (contract.startDate > today) return t("userEditor.upcoming");
-  if (contract.endDate === null || contract.endDate >= today) return t("userEditor.current");
-  return t("userEditor.past");
+  if (contract.startDate > today) return t("userEditor.scheduled");
+  if (contract.endDate === null || contract.endDate >= today) return t("userEditor.ongoing");
+  return t("userEditor.ended");
+}
+
+function getContractStatusKey(contract: UserContractInput, timeZone: string) {
+  const today = getLocalNowSnapshot(new Date(), timeZone).localDay;
+  if (!contract.startDate) return "draft";
+  if (contract.startDate > today) return "scheduled";
+  if (contract.endDate === null || contract.endDate >= today) return "ongoing";
+  return "ended";
 }
 
 function formatHours(hours: number) {
@@ -195,79 +205,72 @@ function CompactTimeInput({
 function ContractSummaryCard({
   contract,
   index,
+  settingsLocale,
   settingsTimeZone,
-  weekdayLabels,
   onEdit,
   onRemove,
   t
 }: {
   contract: UserContractInput;
   index: number;
+  settingsLocale: string;
   settingsTimeZone: string;
-  weekdayLabels: Record<ContractWeekday, string>;
   onEdit: (index: number) => void;
   onRemove: (index: number) => void;
   t: (key: string, options?: Record<string, string | number>) => string;
 }) {
-  const isOpenEnded = contract.endDate === null;
-  const workingDays = contract.schedule.filter((day) => day.blocks.length > 0).length;
+  const statusKey = getContractStatusKey(contract, settingsTimeZone);
+  const periodLabel = contract.startDate
+    ? formatCompanyDateRange(contract.startDate, contract.endDate, settingsLocale)
+    : t("userEditor.noStartDate");
+  const statusLabel = getContractStatus(contract, t, settingsTimeZone);
 
   return (
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-col gap-2">
-            <p className="text-sm font-medium text-foreground">{t("userEditor.contract", { index: index + 1 })}</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-border bg-muted px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-              {getContractStatus(contract, t, settingsTimeZone)}
-            </span>
-            <span className="rounded-full border border-border bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
-              {isOpenEnded ? t("userEditor.currentContractShort") : t("userEditor.currentContractClosedShort")}
-            </span>
-            <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-700">
-              {t("userEditor.hoursPerWeekValue", { value: formatHours(contract.hoursPerWeek) })}
-            </span>
-            <span className="rounded-full bg-sky-500/10 px-2 py-1 text-[10px] font-medium text-sky-700">
-              {t("userEditor.vacationDaysValue", { value: formatHours(contract.annualVacationDays) })}
-            </span>
-          </div>
+    <div className="flex flex-col gap-2 border border-border bg-background px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">{t("userEditor.contract", { index: index + 1 })}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-medium text-muted-foreground">{t("userEditor.currentContract")}</span>
-          <Switch
-            checked={contract.endDate === null}
-            onCheckedChange={() => {
-              // Summary cards stay read-only; toggling happens in the editor sheet.
-            }}
-            disabled
-          />
-        </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onEdit(index)} type="button" aria-label={t("userEditor.editContract")}>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(index)} type="button" aria-label={t("userEditor.editContract")}>
             <PencilSimple size={16} />
           </Button>
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onRemove(index)} type="button" aria-label={t("userEditor.remove")}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onRemove(index)} type="button" aria-label={t("userEditor.remove")}>
             <Trash size={16} />
           </Button>
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 text-xs text-muted-foreground">
-        <div>{t("userEditor.startDate")}: {contract.startDate || "-"}</div>
-        <div>{t("userEditor.endDate")}: {contract.endDate ?? t("userEditor.openEnd")}</div>
-        <div>{t("userEditor.paymentPerHour")}: {contract.paymentPerHour.toFixed(2)}</div>
-        <div>{t("userEditor.workingDaysCount", { value: workingDays })}</div>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {contract.schedule.map((day) => (
-          <span
-            key={`${contract.id ?? "new"}-${day.weekday}`}
-            className="rounded-full border border-border bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground"
-          >
-            {weekdayLabels[day.weekday]}: {day.blocks.length > 0 ? day.blocks.map(formatBlockRange).join(", ") : t("userEditor.dayOff")}
-          </span>
-        ))}
+      <div className="flex min-w-0 flex-wrap gap-1.5">
+        <Badge
+          variant="outline"
+          title={statusLabel}
+          className={`max-w-[6.5rem] shrink-0 overflow-hidden rounded-none px-2.5 py-0.5 text-[11px] font-medium whitespace-nowrap ${
+            statusKey === "ongoing"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+              : statusKey === "scheduled"
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
+                : statusKey === "draft"
+                  ? "border-sky-500/30 bg-sky-500/10 text-sky-700"
+                  : "border-border bg-muted/40 text-muted-foreground"
+          }`}
+        >
+          <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{statusLabel}</span>
+        </Badge>
+        <Badge
+          variant="outline"
+          title={periodLabel}
+          className="max-w-[10rem] min-w-0 flex-1 shrink-0 overflow-hidden rounded-none border-border bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground whitespace-nowrap"
+        >
+          <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{periodLabel}</span>
+        </Badge>
+        <Badge
+          variant="outline"
+          title={t("userEditor.hoursPerWeekValue", { value: formatHours(contract.hoursPerWeek) })}
+          className="max-w-[5.5rem] shrink-0 overflow-hidden rounded-none border-border bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground whitespace-nowrap"
+        >
+          <span className="block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{t("userEditor.hoursPerWeekValue", { value: formatHours(contract.hoursPerWeek) })}</span>
+        </Badge>
       </div>
     </div>
   );
@@ -277,6 +280,7 @@ function ContractEditorSheet({
   open,
   contract,
   contractIndex,
+  title,
   settingsLocale,
   settingsTimeZone,
   weekdayLabels,
@@ -286,11 +290,14 @@ function ContractEditorSheet({
   onAddBlock,
   onRemoveBlock,
   onUpdateBlockTime,
+  showSaveButton = false,
+  onSave,
   t
 }: {
   open: boolean;
   contract: UserContractInput | null;
   contractIndex: number | null;
+  title: string;
   settingsLocale: string;
   settingsTimeZone: string;
   weekdayLabels: Record<ContractWeekday, string>;
@@ -300,6 +307,8 @@ function ContractEditorSheet({
   onAddBlock: (index: number, weekday: ContractWeekday) => void;
   onRemoveBlock: (index: number, weekday: ContractWeekday, blockIndex: number) => void;
   onUpdateBlockTime: (index: number, weekday: ContractWeekday, blockIndex: number, key: "startTime" | "endTime", value: string) => void;
+  showSaveButton?: boolean;
+  onSave?: () => void;
   t: (key: string, options?: Record<string, string | number>) => string;
 }) {
   if (!contract || contractIndex === null) {
@@ -312,7 +321,7 @@ function ContractEditorSheet({
         <div className="flex h-full min-h-0 flex-col">
           <div className="border-b border-border px-6 py-5 pr-14">
             <SheetHeader>
-              <SheetTitle>{t("userEditor.contractEditor", { index: contractIndex + 1 })}</SheetTitle>
+              <SheetTitle>{title}</SheetTitle>
               <SheetDescription>{t("userEditor.contractEditorDescription")}</SheetDescription>
             </SheetHeader>
           </div>
@@ -451,6 +460,11 @@ function ContractEditorSheet({
                   {t("common.cancel")}
                 </Button>
               </SheetClose>
+              {showSaveButton && onSave ? (
+                <Button type="button" onClick={onSave}>
+                  {t("userEditor.save")}
+                </Button>
+              ) : null}
             </SheetFooter>
           </div>
         </div>
@@ -461,6 +475,7 @@ function ContractEditorSheet({
 
 function UserContractsSection({
   contracts,
+  settingsLocale,
   settingsTimeZone,
   weekdayLabels,
   onAdd,
@@ -469,6 +484,7 @@ function UserContractsSection({
   t
 }: {
   contracts: UserContractInput[];
+  settingsLocale: string;
   settingsTimeZone: string;
   weekdayLabels: Record<ContractWeekday, string>;
   onAdd: () => void;
@@ -496,18 +512,14 @@ function UserContractsSection({
             key={`${contract.id ?? "new"}-${index}`}
             contract={contract}
             index={index}
+            settingsLocale={settingsLocale}
             settingsTimeZone={settingsTimeZone}
-            weekdayLabels={weekdayLabels}
             onEdit={onEdit}
             onRemove={onRemove}
             t={t}
           />
         ))}
       </div>
-
-      {contracts.length > 0 ? (
-        <p className="text-xs text-muted-foreground">{t("userEditor.contractsSheetHint")}</p>
-      ) : null}
     </FormSection>
   );
 }
@@ -597,8 +609,12 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmContractDeleteIndex, setConfirmContractDeleteIndex] = useState<number | null>(null);
-  const [contractSheetOpen, setContractSheetOpen] = useState(false);
+  const [contractEditorMode, setContractEditorMode] = useState<"create" | "edit" | null>(null);
+  const [contractEditorOpen, setContractEditorOpen] = useState(false);
   const [selectedContractIndex, setSelectedContractIndex] = useState<number | null>(null);
+  const [contractDraft, setContractDraft] = useState<UserContractInput | null>(null);
+  const contractEditorCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contractEditorOpenedOnceRef = useRef(false);
   const statusOptions = [
     { value: "active", label: t("userEditor.active") },
     { value: "inactive", label: t("userEditor.inactive") }
@@ -695,6 +711,36 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     setForm(pageResource.data.form);
   }, [pageResource.data]);
 
+  useEffect(() => {
+    if (contractEditorCleanupRef.current) {
+      clearTimeout(contractEditorCleanupRef.current);
+      contractEditorCleanupRef.current = null;
+    }
+
+    if (contractEditorOpen) {
+      contractEditorOpenedOnceRef.current = true;
+      return;
+    }
+
+    if (!contractEditorOpenedOnceRef.current) {
+      return;
+    }
+
+    contractEditorCleanupRef.current = setTimeout(() => {
+      setContractEditorMode(null);
+      setSelectedContractIndex(null);
+      setContractDraft(null);
+      contractEditorCleanupRef.current = null;
+    }, 220);
+
+    return () => {
+      if (contractEditorCleanupRef.current) {
+        clearTimeout(contractEditorCleanupRef.current);
+        contractEditorCleanupRef.current = null;
+      }
+    };
+  }, [contractEditorOpen]);
+
   const userCustomFields = useMemo(
     () => getCustomFieldsForTarget(settingsCustomFields, { scope: "user" }),
     [settingsCustomFields],
@@ -719,6 +765,10 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
       ...current,
       contracts: current.contracts.map((contract, contractIndex) => (contractIndex === index ? normalizeContract(updater(contract)) : contract))
     }));
+  }
+
+  function updateContractDraft(updater: (contract: UserContractInput) => UserContractInput) {
+    setContractDraft((current) => (current ? normalizeContract(updater(current)) : current));
   }
 
   function setContractField(index: number, key: "startDate" | "endDate" | "paymentPerHour" | "annualVacationDays", value: string | number | null) {
@@ -782,15 +832,72 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     }));
   }
 
+  function setDraftContractField(key: "startDate" | "endDate" | "paymentPerHour" | "annualVacationDays", value: string | number | null) {
+    updateContractDraft((contract) => ({ ...contract, [key]: value }));
+  }
+
+  function toggleDraftContractDay(weekday: ContractWeekday, checked: boolean) {
+    updateContractDraft((contract) => {
+      const suggestion = getSuggestedBlocks(contract, weekday);
+      return {
+        ...contract,
+        schedule: contract.schedule.map((day) =>
+          day.weekday !== weekday
+            ? day
+            : buildScheduleDay(weekday, checked ? suggestion : [])
+        )
+      };
+    });
+  }
+
+  function addDraftContractBlock(weekday: ContractWeekday) {
+    updateContractDraft((contract) => ({
+      ...contract,
+      schedule: contract.schedule.map((day) =>
+        day.weekday === weekday
+          ? buildScheduleDay(weekday, [...day.blocks, createBlankBlock()])
+          : day
+      )
+    }));
+  }
+
+  function removeDraftContractBlock(weekday: ContractWeekday, blockIndex: number) {
+    updateContractDraft((contract) => ({
+      ...contract,
+      schedule: contract.schedule.map((day) =>
+        day.weekday === weekday
+          ? buildScheduleDay(weekday, day.blocks.filter((_, currentIndex) => currentIndex !== blockIndex))
+          : day
+      )
+    }));
+  }
+
+  function updateDraftContractBlockTime(weekday: ContractWeekday, blockIndex: number, key: "startTime" | "endTime", value: string) {
+    updateContractDraft((contract) => ({
+      ...contract,
+      schedule: contract.schedule.map((day) => {
+        if (day.weekday !== weekday) {
+          return day;
+        }
+        const nextBlocks = day.blocks.map((block, currentIndex) =>
+          currentIndex === blockIndex
+            ? buildScheduleBlock(key === "startTime" ? value : block.startTime, key === "endTime" ? value : block.endTime)
+            : block
+        );
+        return buildScheduleDay(weekday, nextBlocks);
+      })
+    }));
+  }
+
   function addContract() {
     if (form.contracts.length >= 100) {
       toast({ title: t("userEditor.contractLimitReached"), description: t("userEditor.contractLimitDescription") });
       return;
     }
-    const nextIndex = form.contracts.length;
-    setSelectedContractIndex(nextIndex);
-    setContractSheetOpen(true);
-    setForm((current) => ({ ...current, contracts: [...current.contracts, createEmptyContract()] }));
+    setSelectedContractIndex(null);
+    setContractEditorMode("create");
+    setContractDraft(createEmptyContract());
+    setContractEditorOpen(true);
   }
 
   function removeContract(index: number) {
@@ -800,7 +907,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
     }));
     if (selectedContractIndex === index) {
       setSelectedContractIndex(null);
-      setContractSheetOpen(false);
+      setContractEditorOpen(false);
     } else if (selectedContractIndex !== null && selectedContractIndex > index) {
       setSelectedContractIndex(selectedContractIndex - 1);
     }
@@ -811,15 +918,51 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
   }
 
   function openContractEditor(index: number) {
+    const contract = form.contracts[index];
+    if (!contract) {
+      return;
+    }
+    setContractEditorMode("edit");
     setSelectedContractIndex(index);
-    setContractSheetOpen(true);
+    setContractDraft(normalizeContract({
+      ...contract,
+      schedule: contract.schedule.map((day) => ({
+        ...day,
+        blocks: day.blocks.map((block) => ({ ...block }))
+      }))
+    }));
+    setContractEditorOpen(true);
   }
 
-  function closeContractEditor(open: boolean) {
-    setContractSheetOpen(open);
+  function saveDraftContract() {
+    if (!contractDraft) {
+      return;
+    }
+
+    try {
+      const normalizedDraft = normalizeContract(contractDraft);
+      if (contractEditorMode === "create") {
+        validateContracts([...form.contracts, normalizedDraft], t, settingsTimeZone);
+        setForm((current) => ({ ...current, contracts: [...current.contracts, normalizedDraft] }));
+        setContractEditorOpen(false);
+      } else if (selectedContractIndex !== null) {
+        const nextContracts = form.contracts.map((contract, index) => (index === selectedContractIndex ? normalizedDraft : contract));
+        validateContracts(nextContracts, t, settingsTimeZone);
+        setForm((current) => ({
+          ...current,
+          contracts: current.contracts.map((contract, index) => (index === selectedContractIndex ? normalizedDraft : contract))
+        }));
+        setContractEditorOpen(false);
+      }
+    } catch (error) {
+      toast({
+        title: t("userEditor.saveFailed"),
+        description: error instanceof Error ? error.message : "Request failed"
+      });
+    }
   }
 
-  const selectedContract = selectedContractIndex !== null ? form.contracts[selectedContractIndex] ?? null : null;
+  const draftContract = contractDraft;
 
   async function handleSave() {
     if (!companySession) return;
@@ -946,6 +1089,7 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
 
             <UserContractsSection
               contracts={form.contracts}
+              settingsLocale={settingsLocale}
               settingsTimeZone={settingsTimeZone}
               weekdayLabels={weekdayLabels}
               onAdd={addContract}
@@ -955,18 +1099,23 @@ export function UserEditorPage({ mode }: UserEditorPageProps) {
             />
 
             <ContractEditorSheet
-              open={contractSheetOpen}
-              contract={selectedContract}
-              contractIndex={selectedContractIndex}
+              open={contractEditorOpen}
+              contract={draftContract}
+              contractIndex={selectedContractIndex ?? 0}
+              title={contractEditorMode === "create" ? t("userEditor.addContract") : t("userEditor.editContract")}
               settingsLocale={settingsLocale}
               settingsTimeZone={settingsTimeZone}
               weekdayLabels={weekdayLabels}
-              onOpenChange={closeContractEditor}
-              onSetField={setContractField}
-              onToggleDay={toggleContractDay}
-              onAddBlock={addContractBlock}
-              onRemoveBlock={removeContractBlock}
-              onUpdateBlockTime={updateContractBlockTime}
+              onOpenChange={(open) => {
+                setContractEditorOpen(open);
+              }}
+              onSetField={(_index, key, value) => setDraftContractField(key, value)}
+              onToggleDay={(_index, weekday, checked) => toggleDraftContractDay(weekday, checked)}
+              onAddBlock={(_index, weekday) => addDraftContractBlock(weekday)}
+              onRemoveBlock={(_index, weekday, blockIndex) => removeDraftContractBlock(weekday, blockIndex)}
+              onUpdateBlockTime={(_index, weekday, blockIndex, key, value) => updateDraftContractBlockTime(weekday, blockIndex, key, value)}
+              showSaveButton
+              onSave={saveDraftContract}
               t={t}
             />
 

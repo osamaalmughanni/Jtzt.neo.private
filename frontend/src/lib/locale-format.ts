@@ -105,7 +105,21 @@ export function formatCompanyDateRange(startDay: string, endDay: string | null, 
     return formatCompanyDate(startDay, locale);
   }
 
-  return `${formatCompanyDate(startDay, locale)} to ${formatCompanyDate(endDay, locale)}`;
+  const start = parseLocalDay(startDay);
+  const end = parseLocalDay(endDay);
+  if (!start || !end) {
+    return `${formatCompanyDate(startDay, locale)} – ${formatCompanyDate(endDay, locale)}`;
+  }
+
+  try {
+    return new Intl.DateTimeFormat(normalizeLocale(locale), {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }).formatRange(start, end);
+  } catch {
+    return `${formatCompanyDate(startDay, locale)} – ${formatCompanyDate(endDay, locale)}`;
+  }
 }
 
 export function formatCompanyMonthYear(date: Date, locale: string) {
