@@ -127,7 +127,9 @@ export function CalculationPreviewPage() {
           skeleton={<PageLoadingState label={t("common.loading")} />}
         >
           <FormPanel>
-            <p className="text-sm text-muted-foreground">{t("calculations.validating")}</p>
+            <div className="sr-only" aria-live="polite">
+              {t("common.loading")}
+            </div>
           </FormPanel>
         </PageLoadBoundary>
       </FormPage>

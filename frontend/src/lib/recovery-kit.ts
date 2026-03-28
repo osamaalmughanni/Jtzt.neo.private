@@ -58,46 +58,36 @@ export async function downloadSecureRecoveryKit(options: SecureRecoveryDownloadO
     options.encryptionKey,
     options.kdfIterations
   );
-  const recoveryCard = {
-    version: 1,
-    exportedAt,
-    type: "jtzt-secure-recovery-card",
-    company: {
-      name: options.companyName,
-      loginPath: "/login",
-      mode: "secure"
-    },
-    adminCredentials: {
-      username: options.adminUsername,
-      password: options.adminPassword
-    },
-    encryption: {
-      key: options.encryptionKey,
-      companyKdfAlgorithm: options.kdfAlgorithm,
-      companyKdfIterations: options.kdfIterations,
-      companyKdfSalt: options.companyKdfSalt
-    },
-    guidance: [
-      "Jtzt does not store this encryption key on the server.",
-      "Without this encryption key, secure-mode access cannot be recovered.",
-      "Store this file offline in a password manager or encrypted vault."
-    ]
-  };
 
   triggerDownload(
-    `${safeName}-jtzt-recovery-card.json`,
-    JSON.stringify(recoveryCard, null, 2),
-    "application/json;charset=utf-8"
-  );
-  triggerDownload(
-    `${safeName}-jtzt-secure-backup.json`,
+    `${safeName}-jtzt-secure-recovery.json`,
     JSON.stringify(
       {
         version: 1,
         exportedAt,
-        type: "jtzt-secure-backup",
+        type: "jtzt-secure-recovery-package",
+        company: {
+          name: options.companyName,
+          loginPath: "/login",
+          mode: "secure"
+        },
+        adminCredentials: {
+          username: options.adminUsername,
+          password: options.adminPassword
+        },
+        encryption: {
+          key: options.encryptionKey,
+          companyKdfAlgorithm: options.kdfAlgorithm,
+          companyKdfIterations: options.kdfIterations,
+          companyKdfSalt: options.companyKdfSalt
+        },
         companyName: options.companyName,
-        encryptedBackup
+        encryptedBackup,
+        guidance: [
+          "Jtzt does not store this encryption key on the server.",
+          "Without this encryption key, secure-mode access cannot be recovered.",
+          "Store this file offline in a password manager or encrypted vault."
+        ]
       },
       null,
       2

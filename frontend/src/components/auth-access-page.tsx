@@ -112,8 +112,6 @@ export function AuthAccessPage() {
 
   const copy = useMemo(
     () => ({
-      landingTitle: t("app.mottoTitle"),
-      landingDescription: t("app.mottoDescription"),
       workspaceButton: t("auth.workspaceKeyButton"),
       workspaceSubmitButton: t("auth.workspaceSubmitButton"),
       workspaceTokenLabel: t("auth.workspaceTokenLabel"),
@@ -300,8 +298,8 @@ export function AuthAccessPage() {
           });
         } catch {
           toast({
-            title: "Recovery package skipped",
-            description: "The company was created, but this browser could not generate the local recovery files.",
+            title: t("auth.recoveryPackageSkippedTitle"),
+            description: t("auth.recoveryPackageSkippedDescription"),
           });
         }
       }
@@ -425,12 +423,10 @@ export function AuthAccessPage() {
                           <div className="flex items-start justify-between gap-4">
                             <div className="space-y-1">
                               <p className="text-sm font-semibold text-foreground">
-                                {field.value ? "Sicherer Modus an" : "Sicherer Modus aus"}
+                                {field.value ? t("auth.secureModeOn") : t("auth.secureModeOff")}
                               </p>
                               <p className="text-xs leading-5 text-muted-foreground">
-                                {field.value
-                                  ? "Für diese Firma ist bei der Anmeldung ein Verschlüsselungsschlüssel erforderlich. Jtzt speichert ihn nie. Geht er verloren, ist der Zugriff verloren. Danach lädt dieser Browser Recovery-JSON-Dateien mit Admin-Zugangsdaten, Schlüssel und verschlüsseltem Backup herunter."
-                                  : "Diese Firma verwendet den Standardmodus. Für die Anmeldung sind nur Firmenname, Benutzername und Passwort nötig."}
+                                {field.value ? t("auth.secureModeOnDescription") : t("auth.secureModeOffDescription")}
                               </p>
                             </div>
                             <Switch checked={field.value} onCheckedChange={field.onChange} />

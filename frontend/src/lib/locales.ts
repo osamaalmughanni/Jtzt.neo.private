@@ -160,7 +160,6 @@ export const resources = {
         savedTitle: "Saved calculations",
         empty: "No calculations yet.",
         builtin: "Built-in",
-        validating: "Validating...",
         saving: "Saving...",
         save: "Save calculation",
         delete: "Delete calculation",
@@ -223,8 +222,6 @@ export const resources = {
         deleteConfirm: "Delete"
       },
       auth: {
-        landingTitle: "Workspace access",
-        landingDescription: "Use one entry point for company sign in, company creation, tablet access, and system administration.",
         workspaceKeyButton: "Workspace",
         workspaceSubmitButton: "Open workspace",
         workspaceTokenLabel: "Workspace key",
@@ -256,12 +253,14 @@ export const resources = {
         secureModeOn: "Secure mode on",
         secureModeOff: "Secure mode off",
         secureModeOnDescription:
-          "This company will require an encryption key at sign in. Jtzt never stores it. Lose it, and access is gone. This browser will then download recovery JSON files with the admin credentials, key, and encrypted backup.",
+          "This company will require an encryption key at sign in. Jtzt never stores it. Lose it, and access is gone. This browser will then download one recovery JSON file with the admin credentials, key, and encrypted backup.",
         secureModeOffDescription:
           "This company will use standard mode. Sign in will require only the company name, username, and password.",
         secureModePlaceholder: "Choose a strong passphrase",
         secureModeConfirmPlaceholder: "Repeat the passphrase",
         secureModeLoginPlaceholder: "Secure mode passphrase",
+        recoveryPackageSkippedTitle: "Recovery package skipped",
+        recoveryPackageSkippedDescription: "The company was created, but this browser could not generate the local recovery file.",
         signInFailed: "Sign in failed",
         signInAsAdmin: "Sign in as admin",
         tabletChecking: "Checking access...",
@@ -1043,7 +1042,6 @@ export const resources = {
         savedTitle: "Gespeicherte Berechnungen",
         empty: "Noch keine Berechnungen.",
         builtin: "Eingebaut",
-        validating: "Wird validiert...",
         saving: "Wird gespeichert...",
         save: "Berechnung speichern",
         delete: "Berechnung löschen",
@@ -1110,8 +1108,6 @@ export const resources = {
         mottoDescription: "Anmelden, erstellen, Tablet-Zugriff und Admin-Aufgaben an einem Ort."
       },
       auth: {
-        landingTitle: "Arbeitsbereich-Zugriff",
-        landingDescription: "Ein klarer Einstieg für Anmeldung, Registrierung, Tablet-Zugang und Systemverwaltung.",
         workspaceKeyButton: "Arbeitsbereich",
         workspaceSubmitButton: "Arbeitsbereich öffnen",
         workspaceTokenLabel: "Arbeitsbereich-Schlüssel",
@@ -1139,12 +1135,14 @@ export const resources = {
         secureModeOn: "Sicherer Modus an",
         secureModeOff: "Sicherer Modus aus",
         secureModeOnDescription:
-          "Für diese Firma ist bei der Anmeldung ein Verschlüsselungsschlüssel erforderlich. Jtzt speichert ihn nie. Geht er verloren, ist der Zugriff verloren. Danach lädt dieser Browser Recovery-JSON-Dateien mit Admin-Zugangsdaten, Schlüssel und verschlüsseltem Backup herunter.",
+          "Für diese Firma ist bei der Anmeldung ein Verschlüsselungsschlüssel erforderlich. Jtzt speichert ihn nie. Geht er verloren, ist der Zugriff verloren. Danach lädt dieser Browser eine Recovery-JSON-Datei mit Admin-Zugangsdaten, Schlüssel und verschlüsseltem Backup herunter.",
         secureModeOffDescription:
           "Diese Firma verwendet den Standardmodus. Für die Anmeldung sind nur Firmenname, Benutzername und Passwort nötig.",
         secureModePlaceholder: "Starke Passphrase wählen",
         secureModeConfirmPlaceholder: "Passphrase wiederholen",
         secureModeLoginPlaceholder: "Passphrase für den sicheren Modus",
+        recoveryPackageSkippedTitle: "Recovery-Paket übersprungen",
+        recoveryPackageSkippedDescription: "Die Firma wurde erstellt, aber dieser Browser konnte die lokale Recovery-Datei nicht erzeugen.",
         signInFailed: "Anmeldung fehlgeschlagen",
         signInAsAdmin: "Als Admin anmelden",
         companyRegistrationFailed: "Firmenregistrierung fehlgeschlagen",

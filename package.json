@@ -15,6 +15,7 @@
     "demo:seed:build": "esbuild tools/seed-demo.ts --bundle --platform=node --format=esm --outfile=dist/tools/seed-demo.js --packages=external --sourcemap",
     "demo:seed": "npm run demo:seed:build && node dist/tools/seed-demo.js",
     "typecheck": "tsc -p tsconfig.backend.json --noEmit && tsc -p frontend/tsconfig.json --noEmit",
+    "clean:translations": "node tools/clean-unused-translations.mjs --write",
     "deploy:doctor": "python .deploy.py doctor",
     "deploy:bootstrap": "python .deploy.py bootstrap",
     "deploy:build": "python .deploy.py build",
