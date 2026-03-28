@@ -245,6 +245,11 @@ export interface DashboardSummary {
       recordedMinutes: number;
       balanceMinutes: number;
     };
+    year: {
+      expectedMinutes: number;
+      recordedMinutes: number;
+      balanceMinutes: number;
+    };
     vacation: {
       entitledDays: number;
       usedDays: number;

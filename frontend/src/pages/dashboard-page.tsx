@@ -104,6 +104,7 @@ const defaultSummary: DashboardSummary = {
     totalBalanceMinutes: 0,
     week: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     month: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+    year: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     vacation: { entitledDays: 0, usedDays: 0, availableDays: 0 },
     timeOffInLieu: { earnedMinutes: 0, bookedMinutes: 0, availableMinutes: 0 },
   },
@@ -317,6 +318,7 @@ export function DashboardPage() {
   const [tabletPunchProjectId, setTabletPunchProjectId] = useState("");
   const [tabletPunchTaskId, setTabletPunchTaskId] = useState("");
   const [tabletPunchSubmitting, setTabletPunchSubmitting] = useState(false);
+  const [summaryPeriod, setSummaryPeriod] = useState<"week" | "month" | "year">("week");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [draftDate, setDraftDate] = useState(() => parseDayParam(searchParams.get("day")));
   const [now, setNow] = useState(() => new Date());
@@ -376,6 +378,21 @@ export function DashboardPage() {
   );
   const selectedUserName =
     selectedUser?.fullName ?? companyIdentity?.user.fullName ?? "User";
+  const summaryPeriodStats =
+    summaryPeriod === "week"
+      ? summary.contractStats.week
+      : summaryPeriod === "month"
+        ? summary.contractStats.month
+        : summary.contractStats.year;
+  const summaryPeriodLabel =
+    summaryPeriod === "week"
+      ? t("dashboard.periodWeek")
+      : summaryPeriod === "month"
+        ? t("dashboard.periodMonth")
+        : t("dashboard.periodYear");
+  const cycleSummaryPeriod = useCallback(() => {
+    setSummaryPeriod((current) => (current === "week" ? "month" : current === "month" ? "year" : "week"));
+  }, []);
   const previousSelectedDayKeyRef = useRef(selectedDayKey);
   const todayDay = getLocalNowSnapshot(new Date(), settings.timeZone).localDay;
   const selectedDayPastDistance = getPastDayDistance(selectedDayKey, todayDay);
@@ -1178,7 +1195,7 @@ export function DashboardPage() {
           </FormSection>
           <PageDock cacheKey={`calendar-picker|${formatLocalDay(draftDate)}|${visibleMonth.getFullYear()}|${visibleMonth.getMonth()}`}>
             <DockActionStack
-              message={(
+              primary={(
                 <p className="text-center text-xs leading-5 text-muted-foreground">
                   {formatCompanyDate(formatLocalDay(draftDate), settings.locale)}
                 </p>
@@ -1253,18 +1270,24 @@ export function DashboardPage() {
                 onClick={() => openDatePicker()}
                 aria-label={t("calendar.openDatePicker")}
               >
-                <p className="min-w-0 text-3xl font-semibold leading-none tracking-[-0.05em] text-foreground sm:text-4xl">
-                  {selectedDate.toLocaleDateString(settings.locale, {
-                    weekday: "long",
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </p>
+                <div className="flex flex-col gap-1">
+                  <p className="min-w-0 text-3xl font-semibold leading-none tracking-[-0.05em] text-foreground sm:text-4xl">
+                    {formatCompanyDate(formatLocalDay(selectedDate), settings.locale, {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </p>
+                  <p className="min-w-0 text-xs font-medium leading-none tracking-[-0.01em] text-muted-foreground sm:text-sm">
+                    {selectedDate.toLocaleDateString(settings.locale, {
+                      weekday: "long",
+                    })}
+                  </p>
+                </div>
               </button>
             </div>
-            <div className="flex items-end justify-start gap-2">
-              <div className="flex items-end justify-start">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div className="flex items-end gap-2">
                 <Button
                   variant="outline"
                   size="icon"
@@ -1275,8 +1298,6 @@ export function DashboardPage() {
                 >
                   <CalendarBlank size={16} weight="bold" />
                 </Button>
-              </div>
-              <div className="flex items-end justify-end">
                 <Button
                   variant={isNowContext ? "secondary" : "default"}
                   size="icon"
@@ -1284,18 +1305,37 @@ export function DashboardPage() {
                   onClick={goToToday}
                   type="button"
                   aria-label={t("dashboard.today")}
+                  >
+                    <ClockCounterClockwise size={16} weight="bold" />
+                  </Button>
+                </div>
+              <div className="flex items-end gap-2">
+                <Button
+                  variant="outline"
+                  className="h-9 max-w-[6.5rem] rounded-full px-3 text-xs font-medium"
+                  onClick={cycleSummaryPeriod}
+                  type="button"
+                  aria-label={summaryPeriodLabel}
+                  title={summaryPeriodLabel}
                 >
-                  <ClockCounterClockwise size={16} weight="bold" />
+                  <span className="truncate">{summaryPeriodLabel}</span>
                 </Button>
+                <Badge
+                  variant="outline"
+                  className="flex h-9 items-center rounded-full px-3 text-xs font-medium whitespace-nowrap text-muted-foreground"
+                >
+                  <span className="truncate">
+                    {t("dashboard.actualLabel")} {formatMinutes(summaryPeriodStats.recordedMinutes)} / {t("dashboard.targetLabel")} {formatMinutes(summaryPeriodStats.expectedMinutes)}
+                  </span>
+                </Badge>
               </div>
             </div>
           </div>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-4">
-          <div className="flex flex-col gap-3">
-            <p className="text-sm font-medium text-foreground">{t("dashboard.records")}</p>
-            <div className="divide-y divide-border/60">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
               {entries.map((entry) => {
                 const canEdit = evaluateTimeEntryPolicy({
                   mode: "edit",
@@ -1332,7 +1372,7 @@ export function DashboardPage() {
                 return (
                   <div
                     key={entry.id}
-                    className="grid min-h-12 grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 px-0 py-2"
+                    className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 px-0"
                   >
                     <div>
                       <RecordStatusIcon
@@ -1388,14 +1428,13 @@ export function DashboardPage() {
               })}
 
               {entries.length === 0 ? (
-                <div className="grid min-h-12 grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 px-0 py-2 text-muted-foreground transition-colors">
+                <div className="grid grid-cols-[auto,minmax(0,1fr)] items-center gap-2 px-0 text-muted-foreground transition-colors">
                   <EmptyRecordIcon />
                   <div className="min-w-0 flex items-center overflow-hidden">
                     <p className="truncate text-sm font-medium leading-4 text-foreground/80">
                       {t("dashboard.noRecords")}
                     </p>
                   </div>
-                  <div className="h-7 w-[4rem]" aria-hidden="true" />
                 </div>
               ) : null}
             </div>

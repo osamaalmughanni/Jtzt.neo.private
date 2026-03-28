@@ -82,6 +82,7 @@ const defaultSummary: DashboardSummary = {
     totalBalanceMinutes: 0,
     week: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     month: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+    year: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     vacation: { entitledDays: 0, usedDays: 0, availableDays: 0 },
     timeOffInLieu: { earnedMinutes: 0, bookedMinutes: 0, availableMinutes: 0 },
   },

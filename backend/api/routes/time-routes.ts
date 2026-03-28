@@ -491,6 +491,7 @@ async function buildDashboardSummary(db: AppDatabase, companyId: string, userId:
   const focusDay = targetDay && /^\d{4}-\d{2}-\d{2}$/.test(targetDay) ? targetDay : businessToday;
   const fullWeekRange = getWeekRange(focusDay, settings.firstDayOfWeek);
   const fullMonthRange = getMonthRange(focusDay);
+  const yearRange = { startDay: `${focusDay.slice(0, 4)}-01-01`, endDay: focusDay };
   const weekRange = { startDay: fullWeekRange.startDay, endDay: focusDay };
   const monthRange = { startDay: fullMonthRange.startDay, endDay: focusDay };
   const contracts = await userService.listUserContracts(db, companyId, userId);
@@ -505,13 +506,16 @@ async function buildDashboardSummary(db: AppDatabase, companyId: string, userId:
   const todayEntries = await timeService.listEntries(db, companyId, userId, { from: focusDay, to: focusDay });
   const weekEntries = await timeService.listEntries(db, companyId, userId, { from: weekRange.startDay, to: weekRange.endDay });
   const monthEntries = await timeService.listEntries(db, companyId, userId, { from: monthRange.startDay, to: monthRange.endDay });
+  const yearEntries = await timeService.listEntries(db, companyId, userId, { from: yearRange.startDay, to: yearRange.endDay });
   const activeEntry = await timeService.getActiveEntry(db, companyId, userId);
   const contractsByUser = new Map([[userId, contracts]]);
   const todayRecordedMinutes = calculateRecordedMinutesForRange(todayEntries, focusDay, focusDay, settings, holidaySet, contracts);
   const weekRecordedMinutes = calculateRecordedMinutesForRange(weekEntries, weekRange.startDay, weekRange.endDay, settings, holidaySet, contracts);
   const monthRecordedMinutes = calculateRecordedMinutesForRange(monthEntries, monthRange.startDay, monthRange.endDay, settings, holidaySet, contracts);
+  const yearRecordedMinutes = calculateRecordedMinutesForRange(yearEntries, yearRange.startDay, yearRange.endDay, settings, holidaySet, contracts);
   const weekExpectedMinutes = calculateExpectedContractMinutesForRange(weekRange.startDay, weekRange.endDay, holidaySet, contracts);
   const monthExpectedMinutes = calculateExpectedContractMinutesForRange(monthRange.startDay, monthRange.endDay, holidaySet, contracts);
+  const yearExpectedMinutes = calculateExpectedContractMinutesForRange(yearRange.startDay, yearRange.endDay, holidaySet, contracts);
   const totalRecordedMinutes = calculateRecordedMinutesForRange(allEntries, historyStartDay, focusDay, settings, holidaySet, contracts);
   const totalExpectedMinutes = calculateExpectedContractMinutesForRange(historyStartDay, focusDay, holidaySet, contracts);
   const timeOffInLieuBalance = await timeOffInLieuService.getBalance(db, companyId, userId);
@@ -542,6 +546,11 @@ async function buildDashboardSummary(db: AppDatabase, companyId: string, userId:
         expectedMinutes: monthExpectedMinutes,
         recordedMinutes: monthRecordedMinutes,
         balanceMinutes: monthRecordedMinutes - monthExpectedMinutes
+      },
+      year: {
+        expectedMinutes: yearExpectedMinutes,
+        recordedMinutes: yearRecordedMinutes,
+        balanceMinutes: yearRecordedMinutes - yearExpectedMinutes
       },
       vacation: vacationBalance,
       timeOffInLieu: timeOffInLieuBalance
