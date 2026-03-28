@@ -15,7 +15,23 @@ export interface CompanyTokenPayload {
   role: "employee" | "manager" | "admin";
 }
 
-export type SessionTokenPayload = AdminTokenPayload | CompanyTokenPayload;
+export interface WorkspaceSessionPayload {
+  actorType: "workspace";
+  accessMode: "full";
+  companyId: string;
+  companyName: string;
+  userId: number;
+  role: "admin";
+}
+
+export interface WorkspaceKeyPayload {
+  tokenType: "workspace_key";
+  companyId: string;
+  companyName: string;
+  issuedAt: string;
+}
+
+export type SessionTokenPayload = AdminTokenPayload | CompanyTokenPayload | WorkspaceSessionPayload;
 
 type JwtPayload = SessionTokenPayload & {
   exp: number;
@@ -89,7 +105,11 @@ function decodePayload(token: string) {
 export async function signSessionToken(
   config: RuntimeConfig,
   payload: SessionTokenPayload,
-): Promise<({ token: string; expiresAt: string } & Pick<AdminTokenPayload, "actorType">) | ({ token: string; expiresAt: string } & Pick<CompanyTokenPayload, "actorType" | "accessMode">)> {
+): Promise<
+  | ({ token: string; expiresAt: string } & Pick<AdminTokenPayload, "actorType">)
+  | ({ token: string; expiresAt: string } & Pick<CompanyTokenPayload, "actorType" | "accessMode">)
+  | ({ token: string; expiresAt: string } & Pick<WorkspaceSessionPayload, "actorType" | "accessMode">)
+> {
   const expiresInHours = Math.max(config.sessionTtlHours, LONG_LIVED_SESSION_HOURS);
   const expiresInSeconds = expiresInHours * 60 * 60;
   const iat = Math.floor(Date.now() / 1000);
@@ -104,6 +124,10 @@ export async function signSessionToken(
 
   if (payload.actorType === "admin") {
     return { token, expiresAt, actorType: "admin" };
+  }
+
+  if (payload.actorType === "workspace") {
+    return { token, expiresAt, actorType: "workspace", accessMode: payload.accessMode };
   }
 
   return { token, expiresAt, actorType: "company_user", accessMode: payload.accessMode };
@@ -123,4 +147,27 @@ export async function verifySessionToken(config: RuntimeConfig, token: string): 
 
   const { exp: _exp, iat: _iat, ...sessionPayload } = payload;
   return sessionPayload;
+}
+
+export async function signWorkspaceKeyToken(config: RuntimeConfig, payload: WorkspaceKeyPayload): Promise<string> {
+  const encodedHeader = toBase64Url(textEncoder.encode(JSON.stringify({ alg: "HS256", typ: "JWT" })));
+  const encodedPayload = toBase64Url(textEncoder.encode(JSON.stringify(payload)));
+  const signedValue = `${encodedHeader}.${encodedPayload}`;
+  const signature = await signHs256(config.jwtSecret, signedValue);
+  return `${signedValue}.${signature}`;
+}
+
+export async function verifyWorkspaceKeyToken(config: RuntimeConfig, token: string): Promise<WorkspaceKeyPayload> {
+  const { payload, signedValue, signature } = decodePayload(token);
+  const valid = await verifyHs256(config.jwtSecret, signedValue, signature);
+  if (!valid) {
+    throw new Error("Invalid JWT signature");
+  }
+
+  const workspacePayload = payload as unknown as WorkspaceKeyPayload;
+  if (workspacePayload.tokenType !== "workspace_key") {
+    throw new Error("Unsupported workspace key");
+  }
+
+  return workspacePayload;
 }

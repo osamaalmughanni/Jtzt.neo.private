@@ -371,11 +371,13 @@ export const adminService = {
     );
 
     try {
-      await seedCompanyAdmin(companyDb, companyId, {
-        username: input.adminUsername.trim(),
-        password: input.adminPassword,
-        fullName: input.adminFullName.trim()
-      });
+      if (input.adminUsername && input.adminPassword && input.adminFullName) {
+        await seedCompanyAdmin(companyDb, companyId, {
+          username: input.adminUsername.trim(),
+          password: input.adminPassword,
+          fullName: input.adminFullName.trim()
+        });
+      }
       await seedDefaultProjects(companyDb, companyId);
     } catch (error) {
       await systemDb.run("DELETE FROM companies WHERE id = ?", [companyId]);

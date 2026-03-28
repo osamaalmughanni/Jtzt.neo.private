@@ -15,9 +15,9 @@ const adminLoginSchema = z.object({
 
 const createCompanySchema = z.object({
   name: z.string().min(2),
-  adminUsername: z.string().min(2),
-  adminPassword: z.string().min(6),
-  adminFullName: z.string().min(2)
+  adminUsername: z.string().min(2).optional(),
+  adminPassword: z.string().min(6).optional(),
+  adminFullName: z.string().min(2).optional()
 });
 
 const deleteCompanySchema = z.object({
@@ -33,6 +33,10 @@ const createCompanyAdminSchema = z.object({
 
 const createInvitationCodeSchema = z.object({
   note: z.string().trim().max(120).optional()
+});
+
+const rotateDeveloperAccessTokenSchema = z.object({
+  companyId: z.string().uuid()
 });
 
 const deleteInvitationCodeSchema = z.object({
@@ -68,6 +72,10 @@ adminRoutes.get("/invitation-codes", async (c) => {
   return c.json({ invitationCodes: await adminService.listInvitationCodes(c.get("systemDb")) });
 });
 
+adminRoutes.get("/developer-access-tokens", async (c) => {
+  return c.json({ developerAccessTokens: await systemService.listDeveloperAccessTokens(c.get("systemDb")) });
+});
+
 adminRoutes.post("/invitation-codes/create", async (c) => {
   const body = createInvitationCodeSchema.parse(await c.req.json());
   return c.json({ invitationCode: await adminService.createInvitationCode(c.get("systemDb"), body) });
@@ -77,6 +85,11 @@ adminRoutes.post("/invitation-codes/delete", async (c) => {
   const body = deleteInvitationCodeSchema.parse(await c.req.json());
   await adminService.deleteInvitationCode(c.get("systemDb"), body);
   return c.json({ success: true });
+});
+
+adminRoutes.post("/developer-access-tokens/rotate", async (c) => {
+  const body = rotateDeveloperAccessTokenSchema.parse(await c.req.json());
+  return c.json(await systemService.rotateDeveloperAccessToken(c.get("systemDb"), c.get("config"), body.companyId));
 });
 
 adminRoutes.post("/companies/create", async (c) => {

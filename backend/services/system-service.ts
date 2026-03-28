@@ -1,7 +1,9 @@
 import crypto from "node:crypto";
 import { HTTPException } from "hono/http-exception";
 import { mapCompanyRecord } from "../db/mappers";
-import type { AppDatabase } from "../runtime/types";
+import type { AppDatabase, RuntimeConfig } from "../runtime/types";
+import type { DeveloperAccessTokenRecord } from "../../shared/types/models";
+import { signWorkspaceKeyToken, verifyWorkspaceKeyToken } from "../auth/jwt";
 
 function normalizeTabletCode(code: string) {
   return code.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
@@ -24,6 +26,26 @@ function generateTabletCodeValue() {
     value += alphabet[crypto.randomInt(0, alphabet.length)];
   }
   return formatTabletCode(value);
+}
+
+function hashDeveloperAccessToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function formatDeveloperAccessTokenRecord(row: {
+  company_id: string;
+  company_name: string;
+  token_hint: string;
+  created_at: string;
+  rotated_at: string;
+}): DeveloperAccessTokenRecord {
+  return {
+    companyId: row.company_id,
+    companyName: row.company_name,
+    tokenHint: row.token_hint,
+    createdAt: row.created_at,
+    rotatedAt: row.rotated_at
+  };
 }
 
 export const systemService = {
@@ -131,5 +153,96 @@ export const systemService = {
 
   async regenerateTabletCode(db: AppDatabase, companyId: string) {
     return systemService.setTabletCode(db, companyId, generateTabletCodeValue());
+  }
+  ,
+
+  async listDeveloperAccessTokens(db: AppDatabase) {
+    const rows = await db.all<{
+      company_id: string;
+      company_name: string;
+      token_hint: string;
+      created_at: string;
+      rotated_at: string;
+    }>(
+      `SELECT developer_access_tokens.company_id, companies.name AS company_name, developer_access_tokens.token_hint, developer_access_tokens.created_at, developer_access_tokens.rotated_at
+       FROM developer_access_tokens
+       JOIN companies ON companies.id = developer_access_tokens.company_id
+       ORDER BY companies.created_at DESC`
+    );
+    return rows.map(formatDeveloperAccessTokenRecord);
+  },
+
+  async getDeveloperAccessTokenStatus(db: AppDatabase, companyId: string) {
+    const row = await db.first<{
+      company_id: string;
+      company_name: string;
+      token_hint: string;
+      created_at: string;
+      rotated_at: string;
+    }>(
+      `SELECT developer_access_tokens.company_id, companies.name AS company_name, developer_access_tokens.token_hint, developer_access_tokens.created_at, developer_access_tokens.rotated_at
+       FROM developer_access_tokens
+       JOIN companies ON companies.id = developer_access_tokens.company_id
+       WHERE developer_access_tokens.company_id = ?`,
+      [companyId]
+    );
+    return row ? formatDeveloperAccessTokenRecord(row) : null;
+  },
+
+  async rotateDeveloperAccessToken(db: AppDatabase, config: RuntimeConfig, companyId: string) {
+    const company = await systemService.getCompanyById(db, companyId);
+    if (!company) {
+      throw new HTTPException(404, { message: "Company not found" });
+    }
+
+    const token = await signWorkspaceKeyToken(config, {
+      tokenType: "workspace_key",
+      companyId: company.id,
+      companyName: company.name,
+      issuedAt: new Date().toISOString()
+    });
+    const tokenHash = hashDeveloperAccessToken(token);
+    const now = new Date().toISOString();
+    const tokenHint = token.slice(-6);
+
+    await db.run(
+      `INSERT INTO developer_access_tokens (
+        company_id,
+        token_hash,
+        token_hint,
+        created_at,
+        rotated_at
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(company_id) DO UPDATE SET
+        token_hash = excluded.token_hash,
+        token_hint = excluded.token_hint,
+        rotated_at = excluded.rotated_at`,
+      [companyId, tokenHash, tokenHint, now, now]
+    );
+
+    return {
+      token,
+      developerAccessToken: {
+        companyId: company.id,
+        companyName: company.name,
+        tokenHint,
+        createdAt: now,
+        rotatedAt: now
+      }
+    };
+  },
+
+  async verifyDeveloperAccessToken(db: AppDatabase, config: RuntimeConfig, companyId: string, token: string) {
+    const row = await db.first<{ token_hash: string }>("SELECT token_hash FROM developer_access_tokens WHERE company_id = ?", [companyId]);
+    if (!row) {
+      return false;
+    }
+
+    try {
+      const payload = await verifyWorkspaceKeyToken(config, token);
+      return payload.companyId === companyId && row.token_hash === hashDeveloperAccessToken(token);
+    } catch {
+      return false;
+    }
   }
 };

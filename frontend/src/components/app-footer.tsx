@@ -42,13 +42,6 @@ export function AppFooter({ context, publicMode, authMode, actions = [] }: AppFo
             <p className="min-w-0 truncate whitespace-nowrap">Jtzt</p>
           </div>
           <div className="ml-auto flex items-center gap-2 overflow-x-auto">
-            <Button asChild variant={isLearn ? "ghost" : "outline"} size="sm" className="h-9 shrink-0 gap-1 px-3 text-xs">
-              <Link to={isLearn ? "/login" : "/learn"}>
-                {isLearn ? null : <Info className="h-3.5 w-3.5" />}
-                {isLearn ? t("common.signIn") : t("common.learnMore")}
-              </Link>
-            </Button>
-            <LanguageSwitcher compact className="min-w-[3.5rem] justify-center border-0 bg-transparent shadow-none" />
             <ThemeToggle compact className="w-9 border-0 bg-transparent px-0 shadow-none" />
             <Button asChild variant="ghost" size="sm" className="h-9 shrink-0 gap-1 px-3 text-xs">
               <Link to="/?mode=tablet">
@@ -62,6 +55,13 @@ export function AppFooter({ context, publicMode, authMode, actions = [] }: AppFo
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
+            <Button asChild variant={isLearn ? "ghost" : "outline"} size="sm" className="h-9 shrink-0 gap-1 px-3 text-xs">
+              <Link to={isLearn ? "/login" : "/learn"}>
+                {isLearn ? null : <Info className="h-3.5 w-3.5" />}
+                {isLearn ? t("common.signIn") : t("common.learnMore")}
+              </Link>
+            </Button>
+            <LanguageSwitcher compact className="min-w-[3.5rem] justify-center border-0 bg-transparent shadow-none" />
           </div>
         </div>
       </Card>
@@ -76,6 +76,7 @@ export function AppFooter({ context, publicMode, authMode, actions = [] }: AppFo
           <p className="min-w-0 truncate whitespace-nowrap">Jtzt</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle compact className="w-9 border-0 bg-transparent px-0 shadow-none" />
           {actions.map((action) => {
             const ActionIcon = action.icon;
 
@@ -94,7 +95,6 @@ export function AppFooter({ context, publicMode, authMode, actions = [] }: AppFo
             );
           })}
           <LanguageSwitcher compact className="min-w-[3.5rem] justify-center border-0 bg-transparent shadow-none" />
-          <ThemeToggle compact className="w-9 border-0 bg-transparent px-0 shadow-none" />
         </div>
       </div>
     </Card>

@@ -27,6 +27,7 @@ import type {
   DeleteInvitationCodeInput,
   DeleteCompanyInput,
   HolidayResponse,
+  DeveloperAccessTokenListResponse,
   InvitationCodeListResponse,
   LoginResponse,
   OvertimeSettingsResponse,
@@ -56,6 +57,8 @@ import type {
   TabletCodeStatusResponse,
   TabletLoginInput,
   RotateCompanyApiKeyResponse,
+  RotateDeveloperAccessTokenInput,
+  RotateDeveloperAccessTokenResponse,
   ProjectTaskManagementResponse
 } from "@shared/types/api";
 import type { TimeEntryView } from "@shared/types/models";
@@ -256,6 +259,13 @@ export const api = {
 
   adminLogin(input: AdminLoginInput) {
     return request<LoginResponse>("/api/admin/auth/login", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+
+  workspaceLogin(input: { token: string }) {
+    return request<LoginResponse>("/api/auth/workspace-login", {
       method: "POST",
       body: JSON.stringify(input)
     });
@@ -658,6 +668,12 @@ export const api = {
     });
   },
 
+  listDeveloperAccessTokens(token: string) {
+    return request<DeveloperAccessTokenListResponse>("/api/admin/developer-access-tokens", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
   createInvitationCode(token: string, input: CreateInvitationCodeInput) {
     return request<{ invitationCode: InvitationCodeListResponse["invitationCodes"][number] }>("/api/admin/invitation-codes/create", {
       method: "POST",
@@ -668,6 +684,14 @@ export const api = {
 
   deleteInvitationCode(token: string, input: DeleteInvitationCodeInput) {
     return request<{ success: boolean }>("/api/admin/invitation-codes/delete", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  rotateDeveloperAccessToken(token: string, input: RotateDeveloperAccessTokenInput) {
+    return request<RotateDeveloperAccessTokenResponse>("/api/admin/developer-access-tokens/rotate", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify(input)

@@ -83,6 +83,14 @@ export interface InvitationCodeRecord {
   usedByCompanyName: string | null;
 }
 
+export interface DeveloperAccessTokenRecord {
+  companyId: string;
+  companyName: string;
+  tokenHint: string;
+  createdAt: string;
+  rotatedAt: string;
+}
+
 export interface AdminRecord {
   id: number;
   username: string;
@@ -180,7 +188,7 @@ export interface TimeEntryRecord {
 
 export interface AuthSession {
   token: string;
-  actorType: "admin" | "company_user";
+  actorType: "admin" | "company_user" | "workspace";
   accessMode?: "full" | "tablet";
   expiresAt: string;
 }

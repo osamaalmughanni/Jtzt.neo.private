@@ -49,7 +49,7 @@ export function PageActionButton({
     <Button
       variant="outline"
       size="sm"
-      className={cn("h-8 rounded-none border-border/80 bg-background px-3 text-xs hover:bg-muted", className)}
+      className={cn("h-8 rounded-md px-2.5 text-xs", className)}
       {...props}
     />
   );

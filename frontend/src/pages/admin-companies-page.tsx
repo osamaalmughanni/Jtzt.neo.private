@@ -1,18 +1,20 @@
 import { useMemo, useState } from "react";
-import { Copy, Download, KeyRound, ShieldPlus, Trash2, Upload } from "lucide-react";
+import { Copy, Download, KeyRound, MoreHorizontal, Trash2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { InvitationCodeRecord, SystemStats } from "@shared/types/models";
+import type { InvitationCodeRecord } from "@shared/types/models";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
-import { AppFullBleed } from "@/components/app-content-lane";
-import { FormPage, FormPanel } from "@/components/form-layout";
+import { PageActionBar, PageActionBarActions, PageActionButton } from "@/components/page-action-bar";
+import { FormPage, FormSection } from "@/components/form-layout";
 import { PageIntro } from "@/components/page-intro";
 import { PageLabel } from "@/components/page-label";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { FileInput } from "@/components/ui/file-input";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FilePicker } from "@/components/ui/file-picker";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
@@ -28,80 +30,107 @@ function formatAdminDate(value: string) {
 
 function getInvitationBadge(code: InvitationCodeRecord) {
   if (code.usedAt) {
-    return { label: "Used", className: "bg-muted text-muted-foreground border-border" };
+    return { labelKey: "adminCompanies.usedInvitation", className: "bg-muted text-muted-foreground border-border" };
   }
-  return { label: "Active", className: "bg-primary text-primary-foreground border-primary" };
+  return { labelKey: "adminCompanies.activeInvitation", className: "bg-primary text-primary-foreground border-primary" };
 }
 
-function ImportSelectionSummary({ files }: { files: File[] }) {
-  if (files.length === 0) {
-    return null;
-  }
-
+function CompactCard({
+  title,
+  description,
+  badges,
+  onManage,
+  onCopy,
+  copyLabel,
+  manageLabel,
+}: {
+  title: string;
+  description?: string;
+  badges: Array<{ label: string; className?: string }>;
+  onManage: () => void;
+  onCopy?: () => void;
+  copyLabel?: string;
+  manageLabel: string;
+}) {
   return (
-    <div className="flex max-h-32 min-w-0 flex-col gap-2 overflow-auto rounded-xl border border-border bg-muted/20 p-3">
-      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Selected files</p>
-      <div className="flex flex-col gap-1">
-        {files.map((file) => (
-          <p key={`${file.name}-${file.size}`} className="break-all text-xs text-foreground">
-            {file.name}
-          </p>
-        ))}
-      </div>
-    </div>
+    <Card className="border bg-card shadow-none">
+      <CardContent className="flex flex-col gap-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-foreground">{title}</p>
+            {description ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{description}</p> : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {onCopy ? (
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={onCopy} aria-label={copyLabel}>
+                <Copy className="h-4 w-4" />
+              </Button>
+            ) : null}
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={onManage} aria-label={manageLabel}>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {badges.map((badge) => (
+            <Badge key={`${title}-${badge.label}`} variant="outline" className={badge.className}>
+              {badge.label}
+            </Badge>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 export function AdminCompaniesPage() {
   const { t } = useTranslation();
   const { adminSession } = useAuth();
-  const [newCompany, setNewCompany] = useState({
-    name: "",
-    adminFullName: "",
-    adminUsername: "",
-    adminPassword: "",
-  });
-  const [createMigrationFiles, setCreateMigrationFiles] = useState<File[]>([]);
-  const [createInvitationNote, setCreateInvitationNote] = useState("");
-  const [newAdmin, setNewAdmin] = useState({ companyId: "", username: "", password: "", fullName: "" });
-  const [importingCompanyId, setImportingCompanyId] = useState<string | null>(null);
+  const [createCompanySheetOpen, setCreateCompanySheetOpen] = useState(false);
+  const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
+  const [companySheetOpen, setCompanySheetOpen] = useState(false);
+  const [invitationManageOpen, setInvitationManageOpen] = useState(false);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [selectedInvitation, setSelectedInvitation] = useState<InvitationCodeRecord | null>(null);
+  const [companyName, setCompanyName] = useState("");
+  const [migrationFiles, setMigrationFiles] = useState<File[]>([]);
+  const [invitationNote, setInvitationNote] = useState("");
   const [importFiles, setImportFiles] = useState<File[]>([]);
-  const [pendingDeleteCompany, setPendingDeleteCompany] = useState<{ id: string; name: string } | null>(null);
-  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
-  const [createAdminSubmitting, setCreateAdminSubmitting] = useState(false);
-  const [schemaDialogOpen, setSchemaDialogOpen] = useState(false);
-  const [schemaLoading, setSchemaLoading] = useState(false);
-  const [migrationSchema, setMigrationSchema] = useState<Awaited<ReturnType<typeof api.getCompanyMigrationSchema>>["schema"] | null>(null);
+  const [importSubmitting, setImportSubmitting] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [rotateSubmitting, setRotateSubmitting] = useState(false);
+  const [workspaceKeyValue, setWorkspaceKeyValue] = useState<string | null>(null);
+  const [pendingDeleteCompany, setPendingDeleteCompany] = useState<{ id: string; name: string } | null>(null);
+  const [migrationSchemaDialogOpen, setMigrationSchemaDialogOpen] = useState(false);
+  const [migrationSchemaJson, setMigrationSchemaJson] = useState("");
+  const [migrationSchemaSubmitting, setMigrationSchemaSubmitting] = useState(false);
 
   const adminResource = usePageResource<{
     companies: Awaited<ReturnType<typeof api.listCompanies>>["companies"];
-    stats: SystemStats | null;
     invitationCodes: InvitationCodeRecord[];
   }>({
     enabled: Boolean(adminSession),
     deps: [adminSession?.token, t],
     load: async () => {
       if (!adminSession) {
-        return { companies: [], stats: null, invitationCodes: [] };
+        return { companies: [], invitationCodes: [] };
       }
 
       try {
-        const [companyResponse, statsResponse, invitationCodesResponse] = await Promise.all([
+        const [companyResponse, invitationCodesResponse] = await Promise.all([
           api.listCompanies(adminSession.token),
-          api.getSystemStats(adminSession.token),
           api.listInvitationCodes(adminSession.token),
         ]);
         return {
           companies: companyResponse.companies,
-          stats: statsResponse.stats,
           invitationCodes: invitationCodesResponse.invitationCodes,
         };
       } catch (error) {
         toast({
-          title: "Admin workspace could not load",
-          description: error instanceof Error ? error.message : "Request failed",
+          title: t("adminCompanies.loadFailed"),
+          description: error instanceof Error ? error.message : t("common.requestFailed"),
         });
         throw error;
       }
@@ -109,24 +138,9 @@ export function AdminCompaniesPage() {
   });
 
   const companies = adminResource.data?.companies ?? [];
-  const stats = adminResource.data?.stats;
   const invitationCodes = adminResource.data?.invitationCodes ?? [];
-  const activeInvitationCodes = useMemo(
-    () => invitationCodes.filter((code) => !code.usedAt),
-    [invitationCodes],
-  );
-
-  function downloadTextFile(fileName: string, content: string, contentType: string) {
-    const blob = new Blob([content], { type: contentType });
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = fileName;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
-  }
+  const activeInvitationCodes = useMemo(() => invitationCodes.filter((code) => !code.usedAt), [invitationCodes]);
+  const selectedCompany = useMemo(() => companies.find((company) => company.id === selectedCompanyId) ?? null, [companies, selectedCompanyId]);
 
   async function reloadAdminData() {
     await adminResource.reload();
@@ -136,39 +150,32 @@ export function AdminCompaniesPage() {
     if (!adminSession) return;
     setCreateSubmitting(true);
     try {
-      if (createMigrationFiles.length > 0) {
-        if (newCompany.name.trim().length < 2) {
-          throw new Error("Company name is required");
-        }
-        const migrationFile = createMigrationFiles[0];
+      if (companyName.trim().length < 2) {
+        throw new Error(t("adminCompanies.companyNameRequired"));
+      }
+
+      if (migrationFiles.length > 0) {
+        const migrationFile = migrationFiles[0];
         if (!migrationFile) {
-          throw new Error("SQLite migration file is required");
+          throw new Error(t("adminCompanies.sqliteImportRequired"));
         }
         await api.createCompanyFromMigrationFile(adminSession.token, {
-          name: newCompany.name.trim(),
+          name: companyName.trim(),
           file: migrationFile,
         });
       } else {
-        if (newCompany.name.trim().length < 2) throw new Error("Company name is required");
-        if (newCompany.adminFullName.trim().length < 2) throw new Error("Admin full name is required");
-        if (newCompany.adminUsername.trim().length < 2) throw new Error("Admin username is required");
-        if (newCompany.adminPassword.trim().length < 6) throw new Error("Admin password must be at least 6 characters");
-        await api.createCompany(adminSession.token, {
-          name: newCompany.name.trim(),
-          adminFullName: newCompany.adminFullName.trim(),
-          adminUsername: newCompany.adminUsername.trim(),
-          adminPassword: newCompany.adminPassword,
-        });
+        await api.createCompany(adminSession.token, { name: companyName.trim() });
       }
 
-      setNewCompany({ name: "", adminFullName: "", adminUsername: "", adminPassword: "" });
-      setCreateMigrationFiles([]);
-      toast({ title: "Company created" });
+      setCompanyName("");
+      setMigrationFiles([]);
+      setCreateCompanySheetOpen(false);
+      toast({ title: t("adminCompanies.companyCreated") });
       await reloadAdminData();
     } catch (error) {
       toast({
-        title: "Could not create company",
-        description: error instanceof Error ? error.message : "Request failed",
+        title: t("adminCompanies.companyCreateFailed"),
+        description: error instanceof Error ? error.message : t("common.requestFailed"),
       });
     } finally {
       setCreateSubmitting(false);
@@ -180,18 +187,19 @@ export function AdminCompaniesPage() {
     setInviteSubmitting(true);
     try {
       const response = await api.createInvitationCode(adminSession.token, {
-        note: createInvitationNote.trim() || undefined,
+        note: invitationNote.trim() || undefined,
       });
-      setCreateInvitationNote("");
+      setInvitationNote("");
+      setInviteSheetOpen(false);
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(response.invitationCode.code);
       }
-      toast({ title: "Invitation code created" });
+      toast({ title: t("adminCompanies.invitationCreated") });
       await reloadAdminData();
     } catch (error) {
       toast({
-        title: "Could not create invitation code",
-        description: error instanceof Error ? error.message : "Request failed",
+        title: t("adminCompanies.invitationCreateFailed"),
+        description: error instanceof Error ? error.message : t("common.requestFailed"),
       });
     } finally {
       setInviteSubmitting(false);
@@ -202,12 +210,14 @@ export function AdminCompaniesPage() {
     if (!adminSession) return;
     try {
       await api.deleteInvitationCode(adminSession.token, { invitationCodeId });
-      toast({ title: "Invitation code deleted" });
+      setInvitationManageOpen(false);
+      setSelectedInvitation(null);
+      toast({ title: t("adminCompanies.invitationDeleted") });
       await reloadAdminData();
     } catch (error) {
       toast({
-        title: "Could not delete invitation code",
-        description: error instanceof Error ? error.message : "Request failed",
+        title: t("adminCompanies.invitationDeleteFailed"),
+        description: error instanceof Error ? error.message : t("common.requestFailed"),
       });
     }
   }
@@ -215,12 +225,25 @@ export function AdminCompaniesPage() {
   async function handleCopyInvitationCode(code: string) {
     try {
       if (!navigator.clipboard?.writeText) {
-        throw new Error("Clipboard unavailable");
+        throw new Error(t("common.clipboardUnavailable"));
       }
       await navigator.clipboard.writeText(code);
-      toast({ title: "Invitation code copied" });
+      toast({ title: t("adminCompanies.invitationCopied") });
     } catch {
-      toast({ title: "Clipboard is not available in this browser" });
+      toast({ title: t("common.clipboardUnavailableMessage") });
+    }
+  }
+
+  async function handleCopyWorkspaceKey() {
+    try {
+      if (!workspaceKeyValue) return;
+      if (!navigator.clipboard?.writeText) {
+        throw new Error(t("common.clipboardUnavailable"));
+      }
+      await navigator.clipboard.writeText(workspaceKeyValue);
+      toast({ title: t("adminCompanies.workspaceKeyCopied") });
+    } catch {
+      toast({ title: t("common.clipboardUnavailableMessage") });
     }
   }
 
@@ -230,16 +253,63 @@ export function AdminCompaniesPage() {
     try {
       await api.deleteCompany(adminSession.token, { companyId });
       setPendingDeleteCompany(null);
-      toast({ title: "Company deleted" });
+      setCompanySheetOpen(false);
+      toast({ title: t("adminCompanies.companyDeleted") });
       await reloadAdminData();
     } catch (error) {
       toast({
-        title: "Could not delete company",
-        description: error instanceof Error ? error.message : "Request failed",
+        title: t("adminCompanies.companyDeleteFailed"),
+        description: error instanceof Error ? error.message : t("common.requestFailed"),
       });
     } finally {
       setDeleteSubmitting(false);
     }
+  }
+
+  async function handleOpenMigrationSchemaDialog() {
+    if (!adminSession) return;
+    try {
+      setMigrationSchemaDialogOpen(true);
+      setMigrationSchemaSubmitting(true);
+      const response = await api.getCompanyMigrationSchema(adminSession.token);
+      setMigrationSchemaJson(JSON.stringify(response.schema, null, 2));
+    } catch (error) {
+      toast({
+        title: t("adminCompanies.migrationSchemaExportFailed"),
+        description: error instanceof Error ? error.message : t("common.requestFailed"),
+      });
+      setMigrationSchemaDialogOpen(false);
+      setMigrationSchemaJson("");
+    } finally {
+      setMigrationSchemaSubmitting(false);
+    }
+  }
+
+  async function handleCopyMigrationSchema() {
+    try {
+      if (!migrationSchemaJson) return;
+      if (!navigator.clipboard?.writeText) {
+        throw new Error(t("common.clipboardUnavailable"));
+      }
+      await navigator.clipboard.writeText(migrationSchemaJson);
+      toast({ title: t("adminCompanies.migrationSchemaCopied") });
+    } catch {
+      toast({ title: t("common.clipboardUnavailableMessage") });
+    }
+  }
+
+  function handleDownloadMigrationSchemaJson() {
+    if (!migrationSchemaJson) return;
+    const blob = new Blob([migrationSchemaJson], { type: "application/json" });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "company-migration-schema.json";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+    toast({ title: t("adminCompanies.migrationSchemaExported") });
   }
 
   async function handleDownloadCompanyMigrationFile(companyId: string, companyName: string) {
@@ -254,86 +324,52 @@ export function AdminCompaniesPage() {
       anchor.click();
       document.body.removeChild(anchor);
       window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
-      toast({ title: `SQLite package exported for ${companyName}` });
+      toast({ title: t("adminCompanies.companySqliteExported", { companyName }) });
     } catch (error) {
       toast({
-        title: "Could not export SQLite package",
-        description: error instanceof Error ? error.message : "Request failed",
+        title: t("adminCompanies.companySqliteExportFailed"),
+        description: error instanceof Error ? error.message : t("common.requestFailed"),
       });
     }
   }
 
-  async function handleImportCompanyMigrationFile(companyId: string) {
+  async function handleImportCompanyMigrationFile(companyId: string, companyName: string) {
     if (!adminSession || importFiles.length === 0) return;
-    setImportingCompanyId(companyId);
+    setImportSubmitting(true);
     try {
       const migrationFile = importFiles[0];
       if (!migrationFile) {
-        throw new Error("SQLite migration file is required");
+        throw new Error(t("adminCompanies.sqliteImportRequired"));
       }
       await api.importCompanyMigrationFile(adminSession.token, companyId, migrationFile);
       setImportFiles([]);
-      toast({ title: "SQLite package imported" });
+      toast({ title: t("adminCompanies.companySqliteImported", { companyName }) });
       await reloadAdminData();
     } catch (error) {
       toast({
-        title: "Could not import SQLite package",
-        description: error instanceof Error ? error.message : "Request failed",
+        title: t("adminCompanies.companySqliteImportFailed"),
+        description: error instanceof Error ? error.message : t("common.requestFailed"),
       });
     } finally {
-      setImportingCompanyId(null);
+      setImportSubmitting(false);
     }
   }
 
-  async function handleLoadMigrationSchema() {
+  async function handleRotateWorkspaceKey(companyId: string, companyName: string) {
     if (!adminSession) return;
-    setSchemaLoading(true);
+    setRotateSubmitting(true);
     try {
-      const response = await api.getCompanyMigrationSchema(adminSession.token);
-      setMigrationSchema(response.schema);
-    } catch (error) {
-      toast({
-        title: "Could not load migration schema",
-        description: error instanceof Error ? error.message : "Request failed",
-      });
-    } finally {
-      setSchemaLoading(false);
-    }
-  }
-
-  async function handleCopyMigrationSchema() {
-    if (!migrationSchema) return;
-    try {
-      if (!navigator.clipboard?.writeText) {
-        throw new Error("Clipboard unavailable");
-      }
-      await navigator.clipboard.writeText(JSON.stringify(migrationSchema, null, 2));
-      toast({ title: "Migration schema copied" });
-    } catch {
-      toast({ title: "Clipboard is not available in this browser" });
-    }
-  }
-
-  function handleDownloadMigrationSchema() {
-    if (!migrationSchema) return;
-    downloadTextFile("migration-schema.json", JSON.stringify(migrationSchema, null, 2), "application/json");
-  }
-
-  async function handleCreateCompanyAdmin() {
-    if (!adminSession) return;
-    setCreateAdminSubmitting(true);
-    try {
-      await api.createCompanyAdmin(adminSession.token, newAdmin);
-      setNewAdmin({ companyId: "", username: "", password: "", fullName: "" });
-      toast({ title: "Company admin created" });
+      const response = await api.rotateDeveloperAccessToken(adminSession.token, { companyId });
+      setWorkspaceKeyValue(response.token);
+      toast({ title: t("adminCompanies.workspaceKeyRotated", { companyName }) });
       await reloadAdminData();
     } catch (error) {
       toast({
-        title: "Could not create company admin",
-        description: error instanceof Error ? error.message : "Request failed",
+        title: t("adminCompanies.workspaceKeyRotateFailed"),
+        description: error instanceof Error ? error.message : t("common.requestFailed"),
       });
     } finally {
-      setCreateAdminSubmitting(false);
+      setRotateSubmitting(false);
     }
   }
 
@@ -342,322 +378,421 @@ export function AdminCompaniesPage() {
       <PageLoadBoundary
         intro={
           <PageIntro>
-            <PageLabel title="Admin" description="Manage companies, registration access, and system-level workspace setup." />
+            <PageLabel title={t("adminCompanies.pageTitle")} description={t("adminCompanies.pageDescription")} />
+            <PageActionBar>
+              <PageActionBarActions>
+                <PageActionButton type="button" onClick={() => void handleOpenMigrationSchemaDialog()}>
+                  {t("adminCompanies.migrationSchemaButton")}
+                </PageActionButton>
+                <PageActionButton type="button" onClick={() => setInviteSheetOpen(true)}>
+                  {t("adminCompanies.addInvitation")}
+                </PageActionButton>
+                <PageActionButton
+                  type="button"
+                  variant="default"
+                  onClick={() => setCreateCompanySheetOpen(true)}
+                >
+                  {t("adminCompanies.addCompany")}
+                </PageActionButton>
+              </PageActionBarActions>
+            </PageActionBar>
           </PageIntro>
         }
         loading={adminResource.isLoading}
         refreshing={adminResource.isRefreshing}
         className="min-h-0 flex-1"
-        skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} minHeightClassName="min-h-[28rem]" />}
+        skeleton={<PageLoadingState label={t("common.loading")} minHeightClassName="min-h-[28rem]" />}
       >
-        <AppFullBleed className="flex min-h-0 min-w-0 flex-1 xl:px-12 2xl:px-16">
-          <div className="flex min-h-0 w-full flex-col gap-5">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <FormPanel className="gap-2 bg-background">
-                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Companies</p>
-                <p className="text-2xl font-semibold tracking-[-0.04em] text-foreground">{stats?.companyCount ?? 0}</p>
-              </FormPanel>
-              <FormPanel className="gap-2 bg-background">
-                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Invitation codes</p>
-                <p className="text-2xl font-semibold tracking-[-0.04em] text-foreground">{stats?.activeInvitationCodeCount ?? 0}</p>
-              </FormPanel>
-              <FormPanel className="gap-2 bg-background">
-                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Users</p>
-                <p className="text-2xl font-semibold tracking-[-0.04em] text-foreground">{stats?.totalUsers ?? 0}</p>
-              </FormPanel>
-              <FormPanel className="gap-2 bg-background">
-                <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Active timers</p>
-                <p className="text-2xl font-semibold tracking-[-0.04em] text-foreground">{stats?.activeTimers ?? 0}</p>
-              </FormPanel>
+        <FormSection className="space-y-6">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">{t("adminCompanies.companiesTitle")}</p>
+              <p className="text-sm text-muted-foreground">{t("adminCompanies.companiesDescription")}</p>
             </div>
-
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-              <FormPanel className="gap-4">
-                <div className="flex flex-col gap-1">
-                  <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">Create company</p>
-                  <p className="text-sm text-muted-foreground">Create a fresh workspace or seed one from a single SQLite migration file inside the same admin surface.</p>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Input
-                    value={newCompany.name}
-                    onChange={(event) => setNewCompany((current) => ({ ...current, name: event.target.value }))}
-                    placeholder="Company name"
-                  />
-                  <Input
-                    value={newCompany.adminFullName}
-                    onChange={(event) => setNewCompany((current) => ({ ...current, adminFullName: event.target.value }))}
-                    placeholder="Admin full name"
-                    disabled={createMigrationFiles.length > 0}
-                  />
-                  <Input
-                    value={newCompany.adminUsername}
-                    onChange={(event) => setNewCompany((current) => ({ ...current, adminUsername: event.target.value }))}
-                    placeholder="Admin username"
-                    disabled={createMigrationFiles.length > 0}
-                  />
-                  <Input
-                    type="password"
-                    value={newCompany.adminPassword}
-                    onChange={(event) => setNewCompany((current) => ({ ...current, adminPassword: event.target.value }))}
-                    placeholder="Admin password"
-                    disabled={createMigrationFiles.length > 0}
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <p className="text-sm font-medium text-foreground">Optional SQLite migration import</p>
-                  <FileInput
-                    files={createMigrationFiles}
-                    accept=".sqlite"
-                    placeholder="Upload one SQLite migration file"
-                    buttonLabel="Select"
-                    onFilesChange={setCreateMigrationFiles}
-                  />
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    {createMigrationFiles.length > 0 ? "The uploaded SQLite file will seed the company directly from the exported relational package." : "A standard company with one admin user will be created."}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <Dialog
-                      open={schemaDialogOpen}
-                      onOpenChange={(open) => {
-                        setSchemaDialogOpen(open);
-                        if (open && migrationSchema === null && !schemaLoading) {
-                          void handleLoadMigrationSchema();
-                        }
-                      }}
-                    >
-                      <DialogTrigger asChild>
-                        <Button type="button" variant="outline">
-                          Schema support
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-5xl">
-                        <DialogHeader>
-                          <DialogTitle>Migration schema support</DialogTitle>
-                          <DialogDescription>Live JSON contract for the SQLite migration package, generated from the current company schema.</DialogDescription>
-                        </DialogHeader>
-                        <div className="flex flex-col gap-3">
-                          <div className="flex flex-wrap gap-2">
-                            <Button type="button" variant="outline" onClick={() => void handleLoadMigrationSchema()} disabled={schemaLoading}>
-                              {schemaLoading ? "Refreshing..." : "Refresh schema"}
-                            </Button>
-                            <Button type="button" variant="outline" onClick={() => void handleCopyMigrationSchema()} disabled={!migrationSchema}>
-                              <Copy className="mr-2 h-4 w-4" />
-                              Copy JSON
-                            </Button>
-                            <Button type="button" variant="outline" onClick={handleDownloadMigrationSchema} disabled={!migrationSchema}>
-                              <Download className="mr-2 h-4 w-4" />
-                              Download JSON
-                            </Button>
-                          </div>
-                          <Textarea
-                            value={migrationSchema ? JSON.stringify(migrationSchema, null, 2) : (schemaLoading ? "Loading schema..." : "No schema loaded yet.")}
-                            readOnly
-                            className="min-h-[28rem] font-mono text-xs"
-                          />
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                    <Button type="button" onClick={() => void handleCreateCompany()} disabled={createSubmitting}>
-                      {createSubmitting ? "Creating..." : "Create company"}
-                    </Button>
-                  </div>
-                </div>
-              </FormPanel>
-
-              <FormPanel className="gap-4">
-                <div className="flex flex-col gap-1">
-                  <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">Invitation codes</p>
-                  <p className="text-sm text-muted-foreground">Registration now requires an invitation code. Generate, copy, and delete them here.</p>
-                </div>
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <Input
-                    value={createInvitationNote}
-                    onChange={(event) => setCreateInvitationNote(event.target.value)}
-                    placeholder="Optional note"
-                  />
-                  <Button type="button" onClick={() => void handleCreateInvitationCode()} disabled={inviteSubmitting}>
-                    <KeyRound className="mr-2 h-4 w-4" />
-                    {inviteSubmitting ? "Creating..." : "Generate code"}
-                  </Button>
-                </div>
-                <div className="flex max-h-[26rem] flex-col gap-3 overflow-auto">
-                  {invitationCodes.length === 0 ? (
-                    <div className="border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
-                      No invitation codes created yet.
-                    </div>
-                  ) : (
-                    invitationCodes.map((code) => {
-                      const badge = getInvitationBadge(code);
-                      return (
-                        <div key={code.id} className="border border-border bg-background p-4">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="flex min-w-0 flex-col gap-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="font-mono text-sm font-semibold tracking-[0.18em] text-foreground">{code.code}</p>
-                                <Badge className={badge.className}>{badge.label}</Badge>
-                              </div>
-                              <p className="text-sm text-muted-foreground">{code.note || "No note"}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Created {formatAdminDate(code.createdAt)}
-                                {code.usedByCompanyName ? ` • Used by ${code.usedByCompanyName}` : ""}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button type="button" variant="ghost" size="sm" className="h-9 w-9 p-0" onClick={() => void handleCopyInvitationCode(code.code)} aria-label="Copy invitation code">
-                                <Copy className="h-4 w-4" />
-                              </Button>
-                              {!code.usedAt ? (
-                                <Button type="button" variant="ghost" size="sm" className="h-9 w-9 p-0 text-destructive" onClick={() => void handleDeleteInvitationCode(code.id)} aria-label="Delete invitation code">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">{activeInvitationCodes.length} active codes ready for registration.</p>
-              </FormPanel>
-            </div>
-
-            <FormPanel className="gap-4">
-                <div className="flex flex-col gap-1">
-                  <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">Companies</p>
-                <p className="text-sm text-muted-foreground">Each company stays manageable from one card: SQLite migration control, admin provisioning, and deletion.</p>
+            {companies.length === 0 ? (
+              <div className="border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
+                {t("adminCompanies.noCompanies")}
               </div>
-              {companies.length === 0 ? (
-                <div className="border border-dashed border-border bg-muted/20 px-4 py-10 text-sm text-muted-foreground">
-                  No companies exist yet.
+            ) : (
+              <div className="flex flex-col gap-3">
+                {companies.map((company) => (
+                  <CompactCard
+                    key={company.id}
+                    title={company.name}
+                    badges={[
+                      { label: company.encryptionEnabled ? t("adminCompanies.secureMode") : t("adminCompanies.standardMode") },
+                      { label: t("adminCompanies.createdAt", { value: formatAdminDate(company.createdAt) }) },
+                    ]}
+                    manageLabel={t("common.manage")}
+                    onManage={() => {
+                      setSelectedCompanyId(company.id);
+                      setCompanySheetOpen(true);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">{t("adminCompanies.invitationsTitle")}</p>
+              <p className="text-sm text-muted-foreground">{t("adminCompanies.invitationsDescription")}</p>
+            </div>
+            {invitationCodes.length === 0 ? (
+              <div className="border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
+                {t("adminCompanies.noInvitations")}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {invitationCodes.map((code) => {
+                  const badge = getInvitationBadge(code);
+                  return (
+                    <CompactCard
+                      key={code.id}
+                      title={code.code}
+                      description={code.note || undefined}
+                      badges={[
+                        { label: t(badge.labelKey), className: badge.className },
+                        { label: t("adminCompanies.createdAt", { value: formatAdminDate(code.createdAt) }) },
+                      ]}
+                      copyLabel={t("adminCompanies.copyInvitationCode")}
+                      manageLabel={t("common.manage")}
+                      onCopy={() => void handleCopyInvitationCode(code.code)}
+                      onManage={() => {
+                        setSelectedInvitation(code);
+                        setInvitationManageOpen(true);
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">{t("adminCompanies.activeInvitationCodes", { value: activeInvitationCodes.length })}</p>
+          </div>
+        </FormSection>
+
+        <Sheet open={createCompanySheetOpen} onOpenChange={setCreateCompanySheetOpen}>
+          <SheetContent side="right" className="w-[min(96vw,42rem)] max-w-none p-0">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="border-b border-border px-6 py-5 pr-14">
+                <SheetHeader>
+                  <SheetTitle>{t("adminCompanies.createCompanySheetTitle")}</SheetTitle>
+                  <SheetDescription>{t("adminCompanies.createCompanySheetDescription")}</SheetDescription>
+                </SheetHeader>
+              </div>
+              <div className="flex-1 overflow-y-auto px-6 py-5">
+                <div className="flex flex-col gap-4">
+                  <Input value={companyName} onChange={(event) => setCompanyName(event.target.value)} placeholder={t("adminCompanies.companyNamePlaceholder")} />
+                  <FilePicker
+                    label={t("adminCompanies.optionalSqliteImport")}
+                    noSelectionLabel={t("adminCompanies.noFileSelected")}
+                    multipleSelectionLabel={t("adminCompanies.filesSelected")}
+                    buttonLabel={t("adminCompanies.attachFile")}
+                    accept=".sqlite"
+                    files={migrationFiles}
+                    onFilesChange={setMigrationFiles}
+                  />
                 </div>
-              ) : (
-                <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
-                  {companies.map((company) => (
-                    <div key={company.id} className="flex flex-col gap-4 border border-border bg-background p-5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex flex-col gap-2">
-                          <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">{company.name}</p>
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="outline">{company.encryptionEnabled ? "Secure mode" : "Standard mode"}</Badge>
-                            <Badge variant="outline">Created {formatAdminDate(company.createdAt)}</Badge>
+              </div>
+              <div className="border-t border-border px-6 py-4">
+                <SheetFooter className="flex w-full flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-end">
+                  <SheetClose asChild>
+                    <Button type="button" variant="outline" className="w-auto max-w-full">
+                      {t("common.cancel")}
+                    </Button>
+                  </SheetClose>
+                  <Button type="button" onClick={() => void handleCreateCompany()} disabled={createSubmitting} className="w-auto max-w-full">
+                    {createSubmitting ? t("adminCompanies.creatingCompany") : t("adminCompanies.createCompany")}
+                  </Button>
+                </SheetFooter>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet open={inviteSheetOpen} onOpenChange={setInviteSheetOpen}>
+          <SheetContent side="right" className="w-[min(96vw,40rem)] max-w-none p-0">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="border-b border-border px-6 py-5 pr-14">
+                <SheetHeader>
+                  <SheetTitle>{t("adminCompanies.createInvitationSheetTitle")}</SheetTitle>
+                  <SheetDescription>{t("adminCompanies.createInvitationSheetDescription")}</SheetDescription>
+                </SheetHeader>
+              </div>
+              <div className="flex-1 overflow-y-auto px-6 py-5">
+                <Textarea
+                  value={invitationNote}
+                  onChange={(event) => setInvitationNote(event.target.value)}
+                  placeholder={t("adminCompanies.optionalNotePlaceholder")}
+                  className="min-h-28"
+                />
+              </div>
+              <div className="border-t border-border px-6 py-4">
+                <SheetFooter className="flex w-full flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-end">
+                  <SheetClose asChild>
+                    <Button type="button" variant="outline" className="w-auto max-w-full">
+                      {t("common.cancel")}
+                    </Button>
+                  </SheetClose>
+                  <Button type="button" onClick={() => void handleCreateInvitationCode()} disabled={inviteSubmitting} className="w-auto max-w-full">
+                    {inviteSubmitting ? t("adminCompanies.creatingInvitation") : t("adminCompanies.generateInvitationCode")}
+                  </Button>
+                </SheetFooter>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet
+          open={companySheetOpen}
+          onOpenChange={(open) => {
+            setCompanySheetOpen(open);
+            if (!open) {
+              setSelectedCompanyId(null);
+              setImportFiles([]);
+              setWorkspaceKeyValue(null);
+            }
+          }}
+        >
+          <SheetContent side="right" className="w-[min(96vw,42rem)] max-w-none p-0">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="border-b border-border px-6 py-5 pr-14">
+                <SheetHeader>
+                  <SheetTitle>{selectedCompany?.name || t("adminCompanies.manageCompanySheetFallbackTitle")}</SheetTitle>
+                  <SheetDescription>{t("adminCompanies.manageCompanySheetDescription")}</SheetDescription>
+                </SheetHeader>
+              </div>
+              <div className="flex-1 overflow-y-auto px-6 py-5">
+                {selectedCompany ? (
+                  <div className="flex flex-col gap-4">
+                    <div className="rounded-lg border border-border bg-muted/20 p-4">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                          <p className="text-sm font-medium text-foreground">{t("adminCompanies.companySnapshotTitle")}</p>
+                          <p className="text-xs text-muted-foreground">{t("adminCompanies.companySnapshotDescription")}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline">{selectedCompany.encryptionEnabled ? t("adminCompanies.secureMode") : t("adminCompanies.standardMode")}</Badge>
+                          <Badge variant="outline">{t("adminCompanies.createdAt", { value: formatAdminDate(selectedCompany.createdAt) })}</Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-1">
+                          <p className="text-sm font-medium text-foreground">{t("adminCompanies.workspaceKeyTitle")}</p>
+                          <p className="text-xs text-muted-foreground">{t("adminCompanies.workspaceKeyDescription")}</p>
+                        </div>
+                        <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/20 p-3">
+                          <div className="flex items-end gap-2">
+                            <Input
+                              readOnly
+                              value={workspaceKeyValue ?? ""}
+                              placeholder={t("adminCompanies.workspaceKeyPlaceholder")}
+                              className="min-w-0 flex-1 font-mono text-xs"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="shrink-0 gap-2 px-3"
+                              onClick={() => void handleCopyWorkspaceKey()}
+                              disabled={!workspaceKeyValue}
+                              aria-label={t("adminCompanies.workspaceKeyCopyAriaLabel")}
+                              title={t("adminCompanies.workspaceKeyCopyAriaLabel")}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="text-xs leading-5 text-muted-foreground">
+                            {t("adminCompanies.workspaceKeyHint")}
                           </div>
                         </div>
                         <Button
                           type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-9 w-9 p-0 text-destructive"
-                          onClick={() => setPendingDeleteCompany({ id: company.id, name: company.name })}
-                          aria-label={`Delete ${company.name}`}
+                          variant="outline"
+                          className="justify-start gap-2"
+                          onClick={() => void handleRotateWorkspaceKey(selectedCompany.id, selectedCompany.name)}
+                          disabled={rotateSubmitting}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <KeyRound className="h-4 w-4" />
+                          {rotateSubmitting ? t("adminCompanies.rotatingWorkspaceKey") : t("adminCompanies.rotateWorkspaceKey")}
                         </Button>
                       </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => void handleDownloadCompanyMigrationFile(company.id, company.name)}>
-                          <Download className="mr-2 h-4 w-4" />
-                          Export SQLite
-                        </Button>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button type="button" variant="outline" size="sm">
-                              <Upload className="mr-2 h-4 w-4" />
-                              Import SQLite
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="w-[calc(100%-1rem)] max-w-[38rem] gap-5 overflow-hidden p-5 sm:p-6">
-                            <DialogHeader>
-                              <DialogTitle>Import SQLite package</DialogTitle>
-                              <DialogDescription className="max-w-full break-words pr-8">
-                                Upload one SQLite migration file to fully replace {company.name}.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="flex min-w-0 flex-col gap-4">
-                              <FileInput
-                                files={importFiles}
-                                accept=".sqlite"
-                                placeholder="Upload one SQLite migration file"
-                                buttonLabel="Select"
-                                onFilesChange={setImportFiles}
-                              />
-                              <ImportSelectionSummary files={importFiles} />
-                              <Button type="button" onClick={() => void handleImportCompanyMigrationFile(company.id)} disabled={importFiles.length === 0 || importingCompanyId === company.id}>
-                                {importingCompanyId === company.id ? "Importing..." : "Replace company from SQLite"}
-                              </Button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setNewAdmin((current) => ({ ...current, companyId: company.id }))}
-                            >
-                              <ShieldPlus className="mr-2 h-4 w-4" />
-                              Add admin
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Add company admin</DialogTitle>
-                              <DialogDescription>Create another admin inside {company.name}.</DialogDescription>
-                            </DialogHeader>
-                            <div className="flex flex-col gap-3">
-                              <Input
-                                value={newAdmin.fullName}
-                                onChange={(event) => setNewAdmin((current) => ({ ...current, fullName: event.target.value }))}
-                                placeholder="Full name"
-                              />
-                              <Input
-                                value={newAdmin.username}
-                                onChange={(event) => setNewAdmin((current) => ({ ...current, username: event.target.value }))}
-                                placeholder="Username"
-                              />
-                              <Input
-                                type="password"
-                                value={newAdmin.password}
-                                onChange={(event) => setNewAdmin((current) => ({ ...current, password: event.target.value }))}
-                                placeholder="Password"
-                              />
-                              <Button type="button" onClick={() => void handleCreateCompanyAdmin()} disabled={createAdminSubmitting}>
-                                {createAdminSubmitting ? "Creating..." : "Create company admin"}
-                              </Button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
-
                     </div>
-                  ))}
-                </div>
-              )}
-            </FormPanel>
-            <AppConfirmDialog
-              open={pendingDeleteCompany !== null}
-              onOpenChange={(open) => {
-                if (!open) {
-                  setPendingDeleteCompany(null);
-                }
-              }}
-              title={pendingDeleteCompany ? `Delete ${pendingDeleteCompany.name}?` : "Delete company?"}
-              description="This permanently removes the company record and wipes its company database storage."
-              confirmLabel="Delete company"
-              destructive
-              confirming={deleteSubmitting}
-              onConfirm={() => {
-                if (pendingDeleteCompany) {
-                  void handleDeleteCompany(pendingDeleteCompany.id);
-                }
-              }}
-            />
-          </div>
-        </AppFullBleed>
+
+                    <div className="rounded-lg border border-border bg-background p-4">
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-1">
+                          <p className="text-sm font-medium text-foreground">{t("adminCompanies.sqlitePackageTitle")}</p>
+                          <p className="text-xs text-muted-foreground">{t("adminCompanies.sqlitePackageDescription")}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="justify-start gap-2"
+                          onClick={() => void handleDownloadCompanyMigrationFile(selectedCompany.id, selectedCompany.name)}
+                        >
+                          <Download className="h-4 w-4" />
+                          {t("adminCompanies.exportSqlite")}
+                        </Button>
+                        <FilePicker
+                          label={t("adminCompanies.optionalSqliteImport")}
+                          noSelectionLabel={t("adminCompanies.noFileSelected")}
+                          multipleSelectionLabel={t("adminCompanies.filesSelected")}
+                          buttonLabel={t("adminCompanies.attachFile")}
+                          accept=".sqlite"
+                          files={importFiles}
+                          onFilesChange={setImportFiles}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="justify-start gap-2"
+                          onClick={() => void handleImportCompanyMigrationFile(selectedCompany.id, selectedCompany.name)}
+                          disabled={importFiles.length === 0 || importSubmitting}
+                        >
+                          <Upload className="h-4 w-4" />
+                          {importSubmitting ? t("adminCompanies.importingSqlite") : t("adminCompanies.importSqlite")}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="border-t border-border px-6 py-4">
+                <SheetFooter className="flex w-full flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <SheetClose asChild>
+                    <Button type="button" variant="outline" className="w-auto max-w-full">
+                      {t("common.close")}
+                    </Button>
+                  </SheetClose>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="w-auto max-w-full gap-2"
+                    onClick={() => {
+                      if (selectedCompany) {
+                        setPendingDeleteCompany({ id: selectedCompany.id, name: selectedCompany.name });
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {t("adminCompanies.deleteCompany")}
+                  </Button>
+                </SheetFooter>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet
+          open={invitationManageOpen}
+          onOpenChange={(open) => {
+            setInvitationManageOpen(open);
+            if (!open) {
+              setSelectedInvitation(null);
+            }
+          }}
+        >
+          <SheetContent side="right" className="w-[min(96vw,40rem)] max-w-none p-0">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="border-b border-border px-6 py-5 pr-14">
+                <SheetHeader>
+                  <SheetTitle>{selectedInvitation ? selectedInvitation.code : t("adminCompanies.manageInvitationSheetFallbackTitle")}</SheetTitle>
+                  <SheetDescription>{t("adminCompanies.manageInvitationSheetDescription")}</SheetDescription>
+                </SheetHeader>
+              </div>
+              <div className="flex-1 overflow-y-auto px-6 py-5">
+                {selectedInvitation ? (
+                  <div className="flex flex-col gap-4">
+                  <div className="flex flex-wrap gap-2">
+                      <Badge className={getInvitationBadge(selectedInvitation).className}>{t(getInvitationBadge(selectedInvitation).labelKey)}</Badge>
+                      <Badge variant="outline">{t("adminCompanies.createdAt", { value: formatAdminDate(selectedInvitation.createdAt) })}</Badge>
+                    </div>
+                    <Textarea readOnly value={selectedInvitation.note || t("adminCompanies.noInvitationNote")} className="min-h-28" />
+                  </div>
+                ) : null}
+              </div>
+              <div className="border-t border-border px-6 py-4">
+                <SheetFooter className="flex w-full flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="w-auto max-w-full gap-2"
+                    onClick={() => {
+                      if (selectedInvitation) {
+                        void handleDeleteInvitationCode(selectedInvitation.id);
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {t("adminCompanies.deleteInvitation")}
+                  </Button>
+                  <SheetClose asChild>
+                    <Button type="button" variant="outline" className="w-auto max-w-full">
+                      {t("common.close")}
+                    </Button>
+                  </SheetClose>
+                </SheetFooter>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <AppConfirmDialog
+          open={pendingDeleteCompany !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingDeleteCompany(null);
+            }
+          }}
+          title={pendingDeleteCompany ? t("adminCompanies.deleteCompanyConfirmTitle", { name: pendingDeleteCompany.name }) : t("adminCompanies.deleteCompanyConfirmFallbackTitle")}
+          description={t("adminCompanies.deleteCompanyConfirmDescription")}
+          confirmLabel={t("adminCompanies.deleteCompany")}
+          destructive
+          confirming={deleteSubmitting}
+          onConfirm={() => {
+            if (pendingDeleteCompany) {
+              void handleDeleteCompany(pendingDeleteCompany.id);
+            }
+          }}
+        />
+
+        <Dialog
+          open={migrationSchemaDialogOpen}
+          onOpenChange={(open) => {
+            setMigrationSchemaDialogOpen(open);
+            if (!open) {
+              setMigrationSchemaJson("");
+            }
+          }}
+        >
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>{t("adminCompanies.migrationSchemaTitle")}</DialogTitle>
+              <DialogDescription>{t("adminCompanies.migrationSchemaDescription")}</DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-3">
+              <Textarea
+                readOnly
+                value={migrationSchemaSubmitting ? t("adminCompanies.loadingMigrationSchema") : migrationSchemaJson}
+                className="min-h-[24rem] font-mono text-xs leading-5"
+              />
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" className="gap-2" onClick={() => void handleCopyMigrationSchema()} disabled={!migrationSchemaJson}>
+                <Copy className="h-4 w-4" />
+                {t("adminCompanies.copyJson")}
+              </Button>
+              <Button type="button" className="gap-2" onClick={handleDownloadMigrationSchemaJson} disabled={!migrationSchemaJson}>
+                <Download className="h-4 w-4" />
+                {t("adminCompanies.downloadJson")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </PageLoadBoundary>
     </FormPage>
   );

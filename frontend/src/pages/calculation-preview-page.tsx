@@ -10,7 +10,6 @@ import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { PageActionBar, PageActionBarActions, PageActionButton } from "@/components/page-action-bar";
-import { Badge } from "@/components/ui/badge";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -104,7 +103,7 @@ export function CalculationPreviewPage() {
           }
           loading={false}
           refreshing={false}
-          skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
+          skeleton={<PageLoadingState label={t("common.loading")} />}
         >
           <FormPanel>
             <p className="text-sm text-muted-foreground">{t("calculations.empty")}</p>
@@ -125,7 +124,7 @@ export function CalculationPreviewPage() {
           }
           loading={resource.isLoading}
           refreshing={resource.isRefreshing}
-          skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
+          skeleton={<PageLoadingState label={t("common.loading")} />}
         >
           <FormPanel>
             <p className="text-sm text-muted-foreground">{t("calculations.validating")}</p>
@@ -146,7 +145,7 @@ export function CalculationPreviewPage() {
           }
           loading={false}
           refreshing={false}
-          skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
+          skeleton={<PageLoadingState label={t("common.loading")} />}
         >
           <FormPanel>
             <p className="text-sm text-muted-foreground">{t("calculations.empty")}</p>
@@ -187,18 +186,10 @@ export function CalculationPreviewPage() {
         }
         loading={false}
         refreshing={resource.isRefreshing || validating}
-        skeleton={<PageLoadingState label={t("common.loading", { defaultValue: "Loading..." })} />}
+        skeleton={<PageLoadingState label={t("common.loading")} />}
       >
         <AppFullBleed className="flex min-h-0 flex-1 min-w-0 xl:px-12 2xl:px-16">
           <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col gap-5 overflow-hidden">
-            <div className="flex flex-wrap items-center gap-2">
-              {validating ? (
-                <Badge variant="outline" className="rounded-full border-border bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                  {t("calculations.validating")}
-                </Badge>
-              ) : null}
-            </div>
-
             {validation.issues.length > 0 ? (
               <div className="flex flex-col gap-2 rounded-2xl border border-border bg-muted/20 p-4">
                 {validation.issues.map((issue, index) => (

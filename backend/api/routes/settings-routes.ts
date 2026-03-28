@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { normalizeTimeZone } from "../../../shared/utils/time";
-import { authMiddleware, companyDbMiddleware, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
+import { authMiddleware, companyDbMiddleware, hasCompanyAccess, hasCompanyAdminAccess, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
 import { companyApiService } from "../../services/company-api-service";
 import { settingsService } from "../../services/settings-service";
 import { systemService } from "../../services/system-service";
@@ -99,7 +99,7 @@ settingsRoutes.use("*", authMiddleware, requireCompanyUser, companyDbMiddleware)
 
 settingsRoutes.get("/", async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -108,7 +108,7 @@ settingsRoutes.get("/", async (c) => {
 
 settingsRoutes.put("/", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -133,7 +133,7 @@ settingsRoutes.put("/", requireCompanyAdmin, async (c) => {
 
 settingsRoutes.get("/overtime", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -142,7 +142,7 @@ settingsRoutes.get("/overtime", requireCompanyAdmin, async (c) => {
 
 settingsRoutes.put("/overtime", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -152,7 +152,7 @@ settingsRoutes.put("/overtime", requireCompanyAdmin, async (c) => {
 
 settingsRoutes.get("/holidays", async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -166,7 +166,7 @@ settingsRoutes.get("/holidays", async (c) => {
 
 settingsRoutes.get("/tablet-code", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -180,7 +180,7 @@ settingsRoutes.get("/tablet-code", requireCompanyAdmin, async (c) => {
 
 settingsRoutes.put("/tablet-code", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -191,7 +191,7 @@ settingsRoutes.put("/tablet-code", requireCompanyAdmin, async (c) => {
 
 settingsRoutes.post("/tablet-code/regenerate", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -200,7 +200,7 @@ settingsRoutes.post("/tablet-code/regenerate", requireCompanyAdmin, async (c) =>
 
 settingsRoutes.get("/api-access", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -209,7 +209,7 @@ settingsRoutes.get("/api-access", requireCompanyAdmin, async (c) => {
 
 settingsRoutes.post("/api-access/rotate", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -218,7 +218,7 @@ settingsRoutes.post("/api-access/rotate", requireCompanyAdmin, async (c) => {
 
 settingsRoutes.get("/api-access/docs", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 

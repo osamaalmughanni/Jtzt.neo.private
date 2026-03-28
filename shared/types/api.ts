@@ -12,6 +12,7 @@ import type {
   CompanyOvertimeSettings,
   DashboardSummary,
   InvitationCodeRecord,
+  DeveloperAccessTokenRecord,
   PublicHolidayRecord,
   SystemStats,
   TabletCodeStatus,
@@ -26,6 +27,11 @@ export interface CompanyLoginInput {
   encryptionKeyProof?: string;
 }
 
+export interface DeveloperLoginInput {
+  companyName: string;
+  token: string;
+}
+
 export interface AdminLoginInput {
   token: string;
 }
@@ -33,7 +39,7 @@ export interface AdminLoginInput {
 export interface LoginResponse {
   session: {
     token: string;
-    actorType: "admin" | "company_user";
+    actorType: "admin" | "company_user" | "workspace";
     accessMode?: "full" | "tablet";
     expiresAt: string;
   };
@@ -265,9 +271,9 @@ export interface ProjectTaskManagementResponse {
 
 export interface CreateCompanyInput {
   name: string;
-  adminUsername: string;
-  adminPassword: string;
-  adminFullName: string;
+  adminUsername?: string;
+  adminPassword?: string;
+  adminFullName?: string;
   encryptionEnabled?: boolean;
   encryptionKdfAlgorithm?: "pbkdf2-sha256";
   encryptionKdfIterations?: number;
@@ -403,6 +409,25 @@ export interface SystemStatsResponse {
 
 export interface InvitationCodeListResponse {
   invitationCodes: InvitationCodeRecord[];
+}
+
+export interface DeveloperAccessTokenListResponse {
+  developerAccessTokens: DeveloperAccessTokenRecord[];
+}
+
+export interface RotateDeveloperAccessTokenInput {
+  companyId: string;
+}
+
+export interface RotateDeveloperAccessTokenResponse {
+  developerAccessToken: {
+    companyId: string;
+    companyName: string;
+    tokenHint: string;
+    createdAt: string;
+    rotatedAt: string;
+  };
+  token: string;
 }
 
 export interface CreateInvitationCodeInput {

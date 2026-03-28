@@ -44,6 +44,18 @@ CREATE TABLE IF NOT EXISTS invitation_codes (
 
 CREATE INDEX IF NOT EXISTS idx_invitation_codes_status
 ON invitation_codes (used_at, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS developer_access_tokens (
+  company_id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL UNIQUE,
+  token_hint TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  rotated_at TEXT NOT NULL,
+  FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_developer_access_tokens_token_hash
+ON developer_access_tokens (token_hash);
 `;
 
 export const companySchema = `

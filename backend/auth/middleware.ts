@@ -38,7 +38,7 @@ export const requireAdmin = createMiddleware(async (c: Context, next: Next) => {
 
 export const requireCompanyUser = createMiddleware(async (c: Context, next: Next) => {
   const session = c.get("session") as SessionTokenPayload;
-  if (session.actorType !== "company_user") {
+  if (session.actorType !== "company_user" && session.actorType !== "workspace") {
     throw new HTTPException(403, { message: "Company login required" });
   }
 
@@ -47,7 +47,7 @@ export const requireCompanyUser = createMiddleware(async (c: Context, next: Next
 
 export const requireCompanyAdmin = createMiddleware(async (c: Context, next: Next) => {
   const session = c.get("session") as SessionTokenPayload;
-  if (session.actorType !== "company_user" || session.accessMode !== "full" || session.role !== "admin") {
+  if (session.actorType !== "workspace" && (session.actorType !== "company_user" || session.accessMode !== "full" || session.role !== "admin")) {
     throw new HTTPException(403, { message: "Admin access required" });
   }
 
@@ -56,7 +56,7 @@ export const requireCompanyAdmin = createMiddleware(async (c: Context, next: Nex
 
 export const requireFullCompanyAccess = createMiddleware(async (c: Context, next: Next) => {
   const session = c.get("session") as SessionTokenPayload;
-  if (session.actorType !== "company_user" || session.accessMode !== "full") {
+  if (session.actorType !== "workspace" && (session.actorType !== "company_user" || session.accessMode !== "full")) {
     throw new HTTPException(403, { message: "Full company access required" });
   }
 
@@ -65,10 +65,30 @@ export const requireFullCompanyAccess = createMiddleware(async (c: Context, next
 
 export const companyDbMiddleware = createMiddleware(async (c: Context, next: Next) => {
   const session = c.get("session") as SessionTokenPayload;
-  if (session.actorType !== "company_user") {
+  if (session.actorType !== "company_user" && session.actorType !== "workspace") {
     throw new HTTPException(403, { message: "Company login required" });
   }
 
   c.set("db", await createCompanyDatabase(c.get("config"), session.companyId));
   await next();
 });
+
+export function isWorkspaceSession(session: SessionTokenPayload): session is Extract<SessionTokenPayload, { actorType: "workspace" }> {
+  return session.actorType === "workspace";
+}
+
+export function hasCompanyAccess(session: SessionTokenPayload): session is Extract<SessionTokenPayload, { actorType: "company_user" | "workspace" }> {
+  return session.actorType === "workspace" || session.actorType === "company_user";
+}
+
+export function hasFullCompanyAccess(session: SessionTokenPayload): session is Extract<SessionTokenPayload, { actorType: "company_user" | "workspace" }> {
+  return session.actorType === "workspace" || (session.actorType === "company_user" && session.accessMode === "full");
+}
+
+export function hasCompanyAdminAccess(session: SessionTokenPayload): session is Extract<SessionTokenPayload, { actorType: "company_user" | "workspace" }> {
+  return session.actorType === "workspace" || (session.actorType === "company_user" && session.accessMode === "full" && session.role === "admin");
+}
+
+export function hasManagerOrAdminAccess(session: SessionTokenPayload): session is Extract<SessionTokenPayload, { actorType: "company_user" | "workspace" }> {
+  return session.actorType === "workspace" || (session.actorType === "company_user" && session.accessMode === "full" && (session.role === "admin" || session.role === "manager"));
+}

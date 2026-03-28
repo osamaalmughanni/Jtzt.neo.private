@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import crypto from "node:crypto";
 import { z } from "zod";
-import { authMiddleware, companyDbMiddleware, requireCompanyUser } from "../../auth/middleware";
+import { authMiddleware, companyDbMiddleware } from "../../auth/middleware";
 import { createCompanyDatabase } from "../../db/runtime-database";
+import { verifyWorkspaceKeyToken } from "../../auth/jwt";
 import { authService } from "../../services/auth-service";
 import { systemService } from "../../services/system-service";
 import type { AppRouteConfig } from "../context";
@@ -12,6 +13,10 @@ const companyLoginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
   encryptionKeyProof: z.string().optional()
+});
+
+const developerLoginSchema = z.object({
+  token: z.string().min(1)
 });
 
 const tabletAccessSchema = z.object({
@@ -65,6 +70,22 @@ authRoutes.post("/login", async (c) => {
   return c.json({ session: await authService.loginCompanyUser(systemDb, companyDb, c.get("config"), body) });
 });
 
+authRoutes.post("/workspace-login", async (c) => {
+  const body = developerLoginSchema.parse(await c.req.json());
+  const systemDb = c.get("systemDb");
+  const payload = await verifyWorkspaceKeyToken(c.get("config"), body.token.trim()).catch(() => null);
+  if (!payload) {
+    return c.json({ error: "Invalid workspace key" }, 401);
+  }
+
+  const company = await systemService.getCompanyById(systemDb, payload.companyId);
+  if (!company) {
+    return c.json({ error: "Invalid workspace key" }, 401);
+  }
+
+  return c.json({ session: await authService.loginWorkspaceKey(systemDb, c.get("config"), body) });
+});
+
 authRoutes.post("/register-company", async (c) => {
   const body = companyRegistrationSchema.parse(await c.req.json());
   const systemDb = c.get("systemDb");
@@ -98,16 +119,30 @@ authRoutes.get("/company-security", async (c) => {
   return c.json(await authService.getCompanySecurity(c.get("systemDb"), companyName));
 });
 
-authRoutes.get("/me", authMiddleware, requireCompanyUser, companyDbMiddleware, async (c) => {
+authRoutes.get("/me", authMiddleware, companyDbMiddleware, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
-    return c.json({ error: "Company login required" }, 403);
+  if (session.actorType === "workspace") {
+    const company = await systemService.getCompanyById(c.get("systemDb"), session.companyId);
+    if (!company) {
+      return c.json({ error: "Company not found" }, 404);
+    }
+    return c.json({
+      company,
+      user: {
+        id: 0,
+        username: "workspace",
+        fullName: session.companyName,
+        role: "admin"
+      },
+      accessMode: session.accessMode
+    });
   }
+  const companySession = session as Extract<typeof session, { actorType: "company_user" }>;
   return c.json(
     await authService.getCompanySessionDetails(c.get("systemDb"), c.get("db"), {
-      companyId: session.companyId,
-      userId: session.userId,
-      accessMode: session.accessMode
+      companyId: companySession.companyId,
+      userId: companySession.userId,
+      accessMode: companySession.accessMode
     })
   );
 });

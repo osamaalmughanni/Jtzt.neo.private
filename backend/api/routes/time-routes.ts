@@ -3,8 +3,8 @@ import { z } from "zod";
 import { diffCalendarDays } from "../../../shared/utils/time";
 import { evaluateTimeEntryPolicy, getRangeEndDay } from "../../../shared/utils/time-entry-policy";
 import { validateCustomFieldValuesForTarget } from "../../../shared/utils/custom-fields";
-import { authMiddleware, companyDbMiddleware, requireCompanyUser } from "../../auth/middleware";
-import type { CompanyTokenPayload } from "../../auth/jwt";
+import { authMiddleware, companyDbMiddleware, hasCompanyAccess, requireCompanyUser } from "../../auth/middleware";
+import type { CompanyTokenPayload, SessionTokenPayload } from "../../auth/jwt";
 import { settingsService } from "../../services/settings-service";
 import { timeOffInLieuService } from "../../services/time-off-in-lieu-service";
 import { timeService } from "../../services/time-service";
@@ -81,7 +81,7 @@ async function validateCustomFields(
   return validateCustomFieldValuesForTarget(settings.customFields, { scope: "time_entry", entryType }, values);
 }
 
-function resolveTargetUserId(session: CompanyTokenPayload, requestedUserId?: number) {
+function resolveTargetUserId(session: CompanyTokenPayload | Extract<SessionTokenPayload, { actorType: "workspace" }>, requestedUserId?: number) {
   if (!requestedUserId || requestedUserId === session.userId) {
     return session.userId;
   }
@@ -94,8 +94,8 @@ function resolveTargetUserId(session: CompanyTokenPayload, requestedUserId?: num
   return requestedUserId;
 }
 
-function getCompanySession(session: AppVariables["session"]): CompanyTokenPayload {
-  if (session.actorType !== "company_user") {
+function getCompanySession(session: AppVariables["session"]): CompanyTokenPayload | Extract<SessionTokenPayload, { actorType: "workspace" }> {
+  if (!hasCompanyAccess(session)) {
     throw new Error("Company login required");
   }
   return session;
@@ -836,7 +836,7 @@ timeRoutes.get("/dashboard", async (c) => {
   let targetUserId: number;
   try {
     const rawTargetUserId = c.req.query("targetUserId");
-    targetUserId = resolveTargetUserId(session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
+    targetUserId = session.actorType === "workspace" ? 0 : resolveTargetUserId(session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }

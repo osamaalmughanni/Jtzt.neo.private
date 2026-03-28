@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { authMiddleware, companyDbMiddleware, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
+import { authMiddleware, companyDbMiddleware, hasCompanyAdminAccess, requireCompanyAdmin, requireCompanyUser } from "../../auth/middleware";
 import { calculationService } from "../../services/calculation-service";
 import type { AppRouteConfig } from "../context";
 
@@ -43,7 +43,7 @@ calculationRoutes.use("*", authMiddleware, requireCompanyUser, companyDbMiddlewa
 
 calculationRoutes.get("/", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -52,7 +52,7 @@ calculationRoutes.get("/", requireCompanyAdmin, async (c) => {
 
 calculationRoutes.post("/validate", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -62,7 +62,7 @@ calculationRoutes.post("/validate", requireCompanyAdmin, async (c) => {
 
 calculationRoutes.post("/", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -73,7 +73,7 @@ calculationRoutes.post("/", requireCompanyAdmin, async (c) => {
 
 calculationRoutes.put("/", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -84,7 +84,7 @@ calculationRoutes.put("/", requireCompanyAdmin, async (c) => {
 
 calculationRoutes.delete("/", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 
@@ -95,7 +95,7 @@ calculationRoutes.delete("/", requireCompanyAdmin, async (c) => {
 
 calculationRoutes.post("/from-preset", requireCompanyAdmin, async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAdminAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
 

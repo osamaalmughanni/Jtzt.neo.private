@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { HTTPException } from "hono/http-exception";
-import { authMiddleware, companyDbMiddleware, requireCompanyUser } from "../../auth/middleware";
+import { authMiddleware, companyDbMiddleware, hasCompanyAdminAccess, hasManagerOrAdminAccess, hasCompanyAccess, requireCompanyUser } from "../../auth/middleware";
 import { settingsService } from "../../services/settings-service";
 import { userService } from "../../services/user-service";
 import { validateCustomFieldValuesForTarget } from "../../../shared/utils/custom-fields";
@@ -74,24 +74,20 @@ export const userRoutes = new Hono<AppRouteConfig>();
 userRoutes.use("*", authMiddleware, requireCompanyUser, companyDbMiddleware);
 
 function ensureAdmin(session: AppVariables["session"]) {
-  if (session.actorType !== "company_user" || session.accessMode !== "full" || session.role !== "admin") {
+  if (!hasCompanyAdminAccess(session)) {
     throw new HTTPException(403, { message: "Admin access required" });
   }
 }
 
 function ensureManagerOrAdmin(session: AppVariables["session"]) {
-  if (
-    session.actorType !== "company_user" ||
-    session.accessMode !== "full" ||
-    (session.role !== "admin" && session.role !== "manager")
-  ) {
+  if (!hasManagerOrAdminAccess(session)) {
     throw new HTTPException(403, { message: "Manager access required" });
   }
 }
 
 userRoutes.get("/", async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
   ensureManagerOrAdmin(session);
@@ -102,7 +98,7 @@ userRoutes.get("/", async (c) => {
 
 userRoutes.get("/:userId", async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
   ensureAdmin(session);
@@ -113,7 +109,7 @@ userRoutes.get("/:userId", async (c) => {
 
 userRoutes.post("/", async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
   ensureAdmin(session);
@@ -132,7 +128,7 @@ userRoutes.post("/", async (c) => {
 
 userRoutes.put("/", async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
   ensureAdmin(session);
@@ -151,7 +147,7 @@ userRoutes.put("/", async (c) => {
 
 userRoutes.delete("/", async (c) => {
   const session = c.get("session");
-  if (session.actorType !== "company_user") {
+  if (!hasCompanyAccess(session)) {
     return c.json({ error: "Company login required" }, 403);
   }
   ensureAdmin(session);

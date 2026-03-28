@@ -10,6 +10,7 @@ import type {
 } from "../../shared/types/api";
 import { mapCompanyUserProfile, mapCompanyUser } from "../db/mappers";
 import { signSessionToken } from "../auth/jwt";
+import { verifyWorkspaceKeyToken } from "../auth/jwt";
 import { systemService } from "./system-service";
 import { adminService } from "./admin-service";
 import type { AppDatabase, RuntimeConfig } from "../runtime/types";
@@ -147,6 +148,37 @@ export const authService = {
       companyName: company.name,
       userId: user.id,
       role: user.role
+    });
+  },
+
+  async loginWorkspaceKey(systemDb: AppDatabase, config: RuntimeConfig, input: { token: string }) {
+    let payload;
+    try {
+      payload = await verifyWorkspaceKeyToken(config, input.token.trim());
+    } catch {
+      throw new HTTPException(401, { message: "Invalid workspace key" });
+    }
+
+    const company = await systemService.getCompanyById(systemDb, payload.companyId);
+    if (!company) {
+      throw new HTTPException(401, { message: "Invalid workspace key" });
+    }
+    if (company.name !== payload.companyName) {
+      throw new HTTPException(401, { message: "Invalid workspace key" });
+    }
+
+    const isValidToken = await systemService.verifyDeveloperAccessToken(systemDb, config, company.id, input.token.trim());
+    if (!isValidToken) {
+      throw new HTTPException(401, { message: "Invalid workspace key" });
+    }
+
+    return await signSessionToken(config, {
+      actorType: "workspace",
+      accessMode: "full",
+      companyId: company.id,
+      companyName: company.name,
+      userId: 0,
+      role: "admin",
     });
   },
 

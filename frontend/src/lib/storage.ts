@@ -4,7 +4,7 @@ const TABLET_ACCESS_KEY = "jtzt.tablet.access";
 
 export interface StoredSession {
   token: string;
-  actorType: "admin" | "company_user";
+  actorType: "admin" | "company_user" | "workspace";
   accessMode?: "full" | "tablet";
   expiresAt: string;
 }
