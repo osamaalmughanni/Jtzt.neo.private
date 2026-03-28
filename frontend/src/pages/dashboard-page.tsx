@@ -1110,7 +1110,7 @@ export function DashboardPage() {
                 </p>
               </div>
               <Button
-                variant="secondary"
+                variant={isNowContext ? "secondary" : "default"}
                 size="sm"
                 className="self-stretch min-w-[5.5rem] px-4 py-2 text-[11px] !h-auto"
                 onClick={goToToday}
