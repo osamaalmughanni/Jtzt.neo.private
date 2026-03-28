@@ -294,9 +294,9 @@ export const DateInput = forwardRef<
       {showHelperButton ? (
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="icon"
-          className="h-10 w-10 shrink-0 text-muted-foreground"
+          className="h-10 w-10 shrink-0 text-muted-foreground hover:text-foreground"
           aria-label={t("calendar.openDatePicker")}
           aria-haspopup="dialog"
           aria-expanded={calendarOpen}

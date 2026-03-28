@@ -1,6 +1,7 @@
 export const COMPANY_SESSION_KEY = "jtzt.company.session";
 export const ADMIN_SESSION_KEY = "jtzt.admin.session";
 export const TABLET_ACCESS_KEY = "jtzt.tablet.access";
+export const LANGUAGE_KEY = "jtzt.language";
 
 export interface StoredSession {
   token: string;
@@ -72,4 +73,17 @@ export const sessionStorage = {
   clearTabletAccess() {
     localStorage.removeItem(TABLET_ACCESS_KEY);
   }
+};
+
+export const appStorage = {
+  getLanguage() {
+    const value = localStorage.getItem(LANGUAGE_KEY);
+    return value && value.trim() ? value.trim() : null;
+  },
+  setLanguage(language: string) {
+    localStorage.setItem(LANGUAGE_KEY, language);
+  },
+  clearLanguage() {
+    localStorage.removeItem(LANGUAGE_KEY);
+  },
 };

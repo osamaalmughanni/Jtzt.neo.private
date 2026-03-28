@@ -10,10 +10,6 @@ function isWorkEntry(entryType: TimeEntryType) {
   return entryType === "work";
 }
 
-function usesDateRange(entryType: TimeEntryType) {
-  return entryType === "vacation" || entryType === "sick_leave" || entryType === "time_off_in_lieu";
-}
-
 function resolveNonWorkAnchorIso(day: string, timeZone: string) {
   const anchorIso = combineLocalDayAndTimeToIsoInTimeZone(day, "12:00", timeZone);
   if (!anchorIso) {
@@ -50,16 +46,16 @@ function buildWorkTimestamps(startDate: string, endDate: string | null | undefin
 
   return {
     entryDate: startDate,
-    endDate: resolvedEndDate === startDate ? null : resolvedEndDate,
+    endDate: resolvedEndDate,
     startTime: startAt.toISOString(),
     endTime: endAt.toISOString()
   };
 }
 
-function buildNonWorkTimestamps(entryType: TimeEntryType, startDate: string, endDate: string | null | undefined, timeZone: string) {
-  const resolvedEndDate = usesDateRange(entryType) ? normalizeRangeEndDate(startDate, endDate) : null;
+function buildNonWorkTimestamps(startDate: string, endDate: string | null | undefined, timeZone: string) {
+  const resolvedEndDate = normalizeRangeEndDate(startDate, endDate);
   const startAnchor = resolveNonWorkAnchorIso(startDate, timeZone);
-  const endAnchor = resolveNonWorkAnchorIso(resolvedEndDate ?? startDate, timeZone);
+  const endAnchor = resolveNonWorkAnchorIso(resolvedEndDate, timeZone);
 
   return {
     entryDate: startDate,
@@ -81,7 +77,7 @@ async function normalizeManualEntryInput(db: AppDatabase, companyId: string, inp
 
   return {
     entryType,
-    ...buildNonWorkTimestamps(entryType, input.startDate, input.endDate, (await settingsService.getSettings(db, companyId)).timeZone),
+    ...buildNonWorkTimestamps(input.startDate, input.endDate, (await settingsService.getSettings(db, companyId)).timeZone),
     customFieldValues: input.customFieldValues
   };
 }
@@ -147,7 +143,7 @@ export const timeService = {
           task_id,
           custom_field_values_json,
           created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         normalized.entryType,
@@ -279,6 +275,7 @@ export const timeService = {
           entry_date,
           end_date,
           start_time,
+          end_time,
           notes,
           project_id,
           task_id,
@@ -289,8 +286,9 @@ export const timeService = {
         userId,
         "work",
         snapshot.localDay,
-        null,
+        snapshot.localDay,
         snapshot.instantIso,
+        null,
         input.notes?.trim() || null,
         input.projectId ?? null,
         input.taskId ?? null,
@@ -315,7 +313,7 @@ export const timeService = {
 
     const stoppedAt = new Date();
     const snapshot = await settingsService.getBusinessNowSnapshot(db, companyId, stoppedAt);
-    const resolvedEndDate = snapshot.localDay > target.entry_date ? snapshot.localDay : null;
+    const resolvedEndDate = snapshot.localDay;
 
     await db.run(
       "UPDATE time_entries SET end_time = ?, end_date = ?, notes = COALESCE(?, notes) WHERE id = ?",

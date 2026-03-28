@@ -125,11 +125,10 @@ def pause_on_success(timeout_seconds: int = 10) -> None:
 
     print("")
     print(green(bold("DEPLOY SUCCESS")))
-    print(f"Press Enter to close now, or wait {timeout_seconds} seconds to close automatically.")
+    print("Press Enter to close now.")
     print("")
     print(">", end=" ", flush=True)
 
-    deadline = datetime.now().timestamp() + timeout_seconds
     if os.name == "nt":
         try:
             import msvcrt
@@ -145,20 +144,14 @@ def pause_on_success(timeout_seconds: int = 10) -> None:
                     return
                 if key == "\x03":
                     raise KeyboardInterrupt
-            if datetime.now().timestamp() >= deadline:
-                print("")
-                return
             time.sleep(1)
     else:
-        remaining = timeout_seconds
-        while remaining > 0:
+        while True:
             ready, _, _ = select.select([sys.stdin], [], [], 1)
             if ready:
                 sys.stdin.readline()
                 print("")
                 return
-            remaining -= 1
-        print("")
 
 
 def run(command: list[str], *, cwd: Path | None = None, capture_output: bool = False, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -365,7 +358,13 @@ def render_caddyfile(env: dict[str, str]) -> str:
 """
 
 
-def print_report(env: dict[str, str], release: str | None = None) -> None:
+def print_report(
+    env: dict[str, str],
+    release: str | None = None,
+    *,
+    size_text: str | None = None,
+    cleanup_text: str | None = None,
+) -> None:
     print("")
     print(green(bold("JTZT DEPLOY REPORT")))
     print(cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
@@ -392,6 +391,14 @@ def print_report(env: dict[str, str], release: str | None = None) -> None:
     print(f"{bold('Status')}       python .deploy.py status")
     print(f"{bold('Logs')}         python .deploy.py logs")
     print(f"{bold('Rollback')}     python .deploy.py rollback")
+    if cleanup_text:
+        print("")
+        print(cyan("Cleanup"))
+        print(cleanup_text.rstrip())
+    if size_text:
+        print("")
+        print(cyan("Size"))
+        print(size_text.rstrip())
     print(cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
     print("")
 
@@ -854,10 +861,10 @@ systemctl start {env['DEPLOY_SERVICE']}
         remote_run(env, deploy_script)
         wait_for_remote_health(env)
         wait_for_public_website(env)
-        prune_releases(env, keep=3)
+        cleanup_text = prune_releases(env, keep=3, emit=False)
         info(f"deploy complete: {release}")
-        size_report(env, release=release)
-        print_report(env, release)
+        size_text = size_report(env, release=release, emit=False)
+        print_report(env, release, cleanup_text=cleanup_text, size_text=size_text)
     except Exception:
         info("deploy failed, attempting rollback")
         try:
@@ -910,7 +917,7 @@ def logs(env: dict[str, str]) -> None:
     remote_run(env, f"journalctl -u {env['DEPLOY_SERVICE']} -n 200 --no-pager")
 
 
-def size_report(env: dict[str, str], release: str | None = None) -> None:
+def size_report(env: dict[str, str], release: str | None = None, *, emit: bool = True) -> str | None:
     ensure_local_tools()
     validate_env(env)
     result = remote_run(
@@ -940,13 +947,14 @@ readlink -f {env['DEPLOY_BASE_DIR']}/previous || true
 """.strip(),
         capture_output=True,
     )
-    if result.stdout:
+    if emit and result.stdout:
         print_size_report(env, release=release, remote_text=result.stdout)
     if result.stderr:
         print(result.stderr, file=sys.stderr)
+    return result.stdout or ""
 
 
-def prune_releases(env: dict[str, str], keep: int = 3) -> None:
+def prune_releases(env: dict[str, str], keep: int = 3, *, emit: bool = True) -> str | None:
     ensure_local_tools()
     validate_env(env)
     if keep < 1:
@@ -1043,10 +1051,11 @@ fi
 """.strip(),
         capture_output=True,
     )
-    if result.stdout:
+    if emit and result.stdout:
         print_cleanup_report(env, remote_text=result.stdout)
     if result.stderr:
         print(result.stderr, file=sys.stderr)
+    return result.stdout or ""
 
 
 def diagnose(env: dict[str, str]) -> None:

@@ -169,8 +169,8 @@ function EntryScheduleFields({
 }) {
   return (
     <>
-      {entryType === "work" ? (
-        <Field label={fromDateLabel}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+        <Field className="flex-1" label={fromDateLabel}>
           <DateInput
             value={startDate}
             locale={locale}
@@ -179,28 +179,16 @@ function EntryScheduleFields({
             onChange={onStartDateChange}
           />
         </Field>
-      ) : (
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-          <Field className="flex-1" label={fromDateLabel}>
-            <DateInput
-              value={startDate}
-              locale={locale}
-              firstDayOfWeek={settings.firstDayOfWeek}
-              weekendDays={settings.weekendDays}
-              onChange={onStartDateChange}
-            />
-          </Field>
-          <Field className="flex-1" label={toDateLabel}>
-            <DateInput
-              value={endDate}
-              locale={locale}
-              firstDayOfWeek={settings.firstDayOfWeek}
-              weekendDays={settings.weekendDays}
-              onChange={onEndDateChange}
-            />
-          </Field>
-        </div>
-      )}
+        <Field className="flex-1" label={toDateLabel}>
+          <DateInput
+            value={endDate}
+            locale={locale}
+            firstDayOfWeek={settings.firstDayOfWeek}
+            weekendDays={settings.weekendDays}
+            onChange={onEndDateChange}
+          />
+        </Field>
+      </div>
       {entryType === "work" ? (
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <Field className="flex-1" label={startTimeLabel}>
@@ -820,7 +808,13 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
                 onStartDateChange={(value) => {
                   setStartDate(value);
                   if (entryType === "work") {
-                    setEndDate(value);
+                    setEndDate((currentEndDate) => {
+                      if (!currentEndDate || currentEndDate === startDate || currentEndDate < value) {
+                        return value;
+                      }
+
+                      return currentEndDate;
+                    });
                   }
                 }}
                 onEndDateChange={setEndDate}

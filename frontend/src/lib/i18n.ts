@@ -1,11 +1,15 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { resources, type AppLanguage } from "@/lib/locales";
-
-const LANGUAGE_STORAGE_KEY = "jtzt.language";
+import { appStorage } from "@/lib/storage";
 const fallbackLanguage: AppLanguage = "en";
 
 function detectLanguage(): AppLanguage {
+  const storedLanguage = appStorage.getLanguage();
+  if (storedLanguage === "en" || storedLanguage === "de") {
+    return storedLanguage;
+  }
+
   const browserLanguage = window.navigator.language.toLowerCase();
   if (browserLanguage.startsWith("de")) {
     return "de";
@@ -24,10 +28,12 @@ void i18n.use(initReactI18next).init({
 });
 
 void i18n.on("languageChanged", (language) => {
+  if (language === "en" || language === "de") {
+    appStorage.setLanguage(language);
+  }
   document.documentElement.lang = language;
 });
 
-window.localStorage.removeItem(LANGUAGE_STORAGE_KEY);
 document.documentElement.lang = i18n.language;
 
 export { i18n };
