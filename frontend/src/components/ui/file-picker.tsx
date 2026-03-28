@@ -39,7 +39,7 @@ export const FilePicker = React.forwardRef<HTMLInputElement, FilePickerProps>(
           : multipleSelectionLabel.replace("{{count}}", String(files.length));
 
     return (
-      <div className={cn("flex w-full items-center gap-2", className)}>
+      <div className={cn("flex w-full items-stretch gap-2", className)}>
         <input
           id={inputId}
           ref={inputRef}
@@ -50,19 +50,18 @@ export const FilePicker = React.forwardRef<HTMLInputElement, FilePickerProps>(
           onChange={handleChange}
           aria-label={label}
         />
-        <div className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm">
-          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className={cn("min-w-0 truncate", files.length > 0 ? "text-foreground" : "text-muted-foreground")}>{selectedLabel}</span>
+        <div className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-muted-foreground">
+          <FileText className="h-4 w-4 shrink-0" />
+          <span className={cn("min-w-0 truncate text-sm leading-none", files.length > 0 ? "text-foreground" : "text-muted-foreground")}>{selectedLabel}</span>
           {files.length > 1 ? (
-            <Badge variant="secondary" className="ml-auto shrink-0 tabular-nums">
+            <Badge variant="secondary" className="ml-auto h-5 shrink-0 px-2 text-[11px] tabular-nums">
               {files.length}
             </Badge>
           ) : null}
         </div>
-        <Button type="button" variant="outline" size="sm" className="shrink-0 gap-2" onClick={openPicker}>
+        <Button type="button" variant="outline" className="h-10 shrink-0 gap-2 px-3 text-sm" onClick={openPicker}>
           <Upload className="h-4 w-4" />
-          <span className="hidden sm:inline">{buttonLabel}</span>
-          <span className="sm:hidden">{buttonLabel}</span>
+          <span className="whitespace-nowrap">{buttonLabel}</span>
         </Button>
       </div>
     );
