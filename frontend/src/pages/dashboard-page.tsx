@@ -550,7 +550,6 @@ export function DashboardPage() {
 
     if (next.day) {
       setSelectedDate(day);
-      setVisibleMonth(startOfMonth(day));
     }
 
     if (userId) params.set("user", String(userId));
@@ -762,10 +761,12 @@ export function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (previousSelectedDayKeyRef.current !== selectedDayKey) {
-      previousSelectedDayKeyRef.current = selectedDayKey;
-      setVisibleMonth(startOfMonth(selectedDate));
+    if (previousSelectedDayKeyRef.current === selectedDayKey) {
+      return;
     }
+
+    previousSelectedDayKeyRef.current = selectedDayKey;
+    setVisibleMonth(startOfMonth(selectedDate));
   }, [selectedDate, selectedDayKey]);
 
   useEffect(() => {

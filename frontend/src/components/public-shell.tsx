@@ -140,15 +140,17 @@ function PublicShellContent({
   }, [children, syncScrollChrome]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-hidden">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-hidden">
       <AppHeaderLoadingBar />
-      <AppContentLane>
-        <AppHeader scope="public" actions={actions} />
-      </AppContentLane>
+      <div className="relative z-20">
+        <AppContentLane>
+          <AppHeader scope="public" actions={actions} />
+        </AppContentLane>
+      </div>
       <main className="relative flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-hidden">
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-28 bg-gradient-to-b from-background via-background/90 via-20% to-transparent transition-opacity duration-300 ease-out ${showTopFade ? "opacity-100" : "opacity-0"}`}
+          className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-36 bg-gradient-to-b from-background via-background/98 via-22% to-transparent transition-[opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${showTopFade ? "opacity-100" : "opacity-0"}`}
         />
         <div
           ref={scrollAreaRef}
@@ -162,12 +164,14 @@ function PublicShellContent({
         </div>
         <div
           aria-hidden="true"
-          className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-background via-background/95 via-20% to-transparent transition-opacity duration-300 ease-out ${showBottomFade ? "opacity-100" : "opacity-0"}`}
+          className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-36 bg-gradient-to-t from-background via-background/98 via-22% to-transparent transition-[opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${showBottomFade ? "opacity-100" : "opacity-0"}`}
         />
       </main>
-      <AppContentLane>
-        <AppFooter context="app" actions={footerActions} />
-      </AppContentLane>
+      <div className="relative z-20">
+        <AppContentLane>
+          <AppFooter context="app" actions={footerActions} />
+        </AppContentLane>
+      </div>
     </div>
   );
 }

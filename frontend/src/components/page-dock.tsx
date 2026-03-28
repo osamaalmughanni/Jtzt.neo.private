@@ -1,22 +1,20 @@
-import { useEffect, useRef } from "react";
-import { useAppHeaderState } from "@/components/app-header-state";
+import { AnimatePresence, motion } from "framer-motion";
 
 export function PageDock({ children, cacheKey }: { children: React.ReactNode; cacheKey?: string }) {
-  const { setBottomBar, setBottomBarKey } = useAppHeaderState();
-  const childrenRef = useRef(children);
-
-  useEffect(() => {
-    childrenRef.current = children;
-  }, [children]);
-
-  useEffect(() => {
-    setBottomBar(childrenRef.current);
-    setBottomBarKey(cacheKey ?? null);
-    return () => {
-      setBottomBar(null);
-      setBottomBarKey(null);
-    };
-  }, [cacheKey, setBottomBar, setBottomBarKey]);
-
-  return null;
+  return (
+    <div className="min-h-[8.5rem]">
+      <AnimatePresence initial={false} mode="wait">
+        <motion.div
+          key={cacheKey ?? "page-dock"}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+          style={{ willChange: "opacity" }}
+        >
+          {children}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
 }
