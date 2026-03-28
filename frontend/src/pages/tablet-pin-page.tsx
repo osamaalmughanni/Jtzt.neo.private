@@ -128,6 +128,11 @@ export function TabletPinPage() {
       return;
     }
 
+    if (errorState) {
+      setErrorState(false);
+      setErrorMessage("");
+    }
+
     setPinCode((current) => {
       const nextValue = `${current}${value}`.slice(0, 8);
       if (nextValue.length === 4) {
@@ -188,26 +193,37 @@ export function TabletPinPage() {
                 {Array.from({ length: 4 }).map((_, index) => (
                   <span
                     key={index}
-                    className="flex h-11 w-10 items-center justify-center rounded-lg border text-base font-semibold transition-[border-color,background-color,color,transform] duration-150 sm:h-12 sm:w-11"
+                    className="flex h-11 w-10 items-center justify-center rounded-xl border text-base font-semibold transition-[border-color,background-color,color,box-shadow,opacity] duration-200 ease-out sm:h-12 sm:w-11"
                     style={{
                       borderColor: errorState
-                        ? "hsl(var(--destructive))"
+                        ? "hsl(var(--destructive) / 0.9)"
                         : index < pinCode.length
-                          ? "hsl(var(--foreground) / 0.22)"
+                          ? "hsl(var(--foreground) / 0.18)"
                           : "hsl(var(--border))",
                       backgroundColor: errorState
-                        ? "hsl(var(--destructive) / 0.18)"
+                        ? "hsl(var(--destructive) / 0.16)"
                         : index < pinCode.length
                           ? "hsl(var(--foreground))"
-                          : "hsl(var(--muted) / 0.28)",
+                          : "hsl(var(--muted) / 0.26)",
                       color: errorState
                         ? "hsl(var(--destructive))"
                         : index < pinCode.length
                           ? "hsl(var(--background))"
-                          : "hsl(var(--muted-foreground))"
+                          : "hsl(var(--muted-foreground))",
+                      boxShadow: errorState
+                        ? "0 10px 24px hsl(var(--destructive) / 0.12)"
+                        : index < pinCode.length
+                          ? "inset 0 1px 0 hsl(var(--background) / 0.18), 0 8px 18px hsl(var(--foreground) / 0.10)"
+                          : "inset 0 1px 0 hsl(var(--background) / 0.28)",
                     }}
                   >
-                    <span className={cn("leading-none", index < pinCode.length ? "opacity-100" : "opacity-0")}>
+                    <span
+                      className={cn(
+                        "leading-none transition-opacity duration-150 ease-out",
+                        index < pinCode.length ? "opacity-100" : "opacity-0",
+                      )}
+                      aria-hidden="true"
+                    >
                       •
                     </span>
                   </span>
