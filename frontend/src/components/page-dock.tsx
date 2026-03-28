@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useAppHeaderState } from "@/components/app-header-state";
 
 export function PageDock({ children, cacheKey }: { children: React.ReactNode; cacheKey?: string }) {
-  const { setBottomBar } = useAppHeaderState();
+  const { setBottomBar, setBottomBarKey } = useAppHeaderState();
   const childrenRef = useRef(children);
 
   useEffect(() => {
@@ -11,8 +11,12 @@ export function PageDock({ children, cacheKey }: { children: React.ReactNode; ca
 
   useEffect(() => {
     setBottomBar(childrenRef.current);
-    return () => setBottomBar(null);
-  }, [cacheKey, setBottomBar]);
+    setBottomBarKey(cacheKey ?? null);
+    return () => {
+      setBottomBar(null);
+      setBottomBarKey(null);
+    };
+  }, [cacheKey, setBottomBar, setBottomBarKey]);
 
   return null;
 }

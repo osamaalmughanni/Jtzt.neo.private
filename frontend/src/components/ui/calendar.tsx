@@ -38,6 +38,7 @@ export function Calendar({
   disableDate,
   bare = false,
   weekendDays = [6, 7],
+  selectionTone = "default",
 }: {
   selected?: Date | null;
   month?: Date;
@@ -52,6 +53,7 @@ export function Calendar({
   disableDate?: (date: Date) => boolean;
   bare?: boolean;
   weekendDays?: number[];
+  selectionTone?: "default" | "destructive";
 }) {
   const { t, i18n } = useTranslation();
   const entryStateUi = useMemo(() => getEntryStateUi(t), [t]);
@@ -109,6 +111,12 @@ export function Calendar({
   const weekdayClassName = compact ? "text-[10px]" : "text-xs";
   const headerTextClassName = compact ? "text-[11px] font-medium" : "text-sm font-medium";
   const navButtonClassName = compact ? "h-7 w-7 p-0" : "h-9 px-3";
+  const selectionRingClassName =
+    selectionTone === "destructive"
+      ? "border-destructive ring-1 ring-inset ring-destructive/55"
+      : "border-foreground ring-1 ring-inset ring-foreground/45";
+  const stateInsetClassName = compact ? "inset-0.5" : "inset-1";
+  const stateTextClassName = compact ? "text-[11px]" : "text-sm";
 
   return (
     <div
@@ -166,26 +174,34 @@ export function Calendar({
           const isSelected = selected ? isSameDay(day, selected) : false;
           const isDisabled = disableDate?.(day) ?? false;
           const weekend = isWeekendDay(isoDate, weekendDays);
+          const baseCellClassName = cn(
+            "relative flex items-center justify-center overflow-hidden rounded-xl border tabular-nums transition-[background-color,border-color,color,opacity] duration-200 ease-out",
+            cellClassName,
+            isDisabled
+              ? "cursor-not-allowed border-transparent bg-background text-muted-foreground/40 opacity-50"
+              : undefined,
+            dayState
+              ? entryStateUi[dayState].calendarCellClassName
+              : isHoliday
+                ? entryStateUi.holiday.calendarCellClassName
+                : weekend
+                  ? "border-border/80 bg-muted/35 text-foreground hover:bg-muted/50"
+                  : "border-border/80 bg-background text-foreground hover:bg-muted/40",
+            isSelected ? selectionRingClassName : undefined,
+          );
+          const innerStateClassName =
+            dayState
+              ? entryStateUi[dayState].calendarInnerClassName
+              : isHoliday
+                ? entryStateUi.holiday.calendarInnerClassName
+                : weekend
+                  ? "bg-muted/55 ring-1 ring-inset ring-border/70"
+                  : "bg-background";
 
           return (
             <button
               key={isoDate}
-              className={cn(
-                "relative flex items-center justify-center rounded-xl border tabular-nums transition-colors",
-                cellClassName,
-                isDisabled
-                  ? "cursor-not-allowed border-transparent bg-background text-muted-foreground/40 opacity-50"
-                  : undefined,
-                dayState
-                  ? entryStateUi[dayState].calendarCellClassName
-                  : isHoliday
-                    ? entryStateUi.holiday.calendarCellClassName
-                  : weekend
-                    ? "border-transparent bg-muted/50 text-foreground hover:bg-muted"
-                    : "border-transparent bg-background text-foreground hover:bg-muted",
-                isSelected ? "border-2 border-foreground shadow-sm" : undefined,
-                isHoliday && !dayState ? "ring-1 ring-inset ring-border/80" : undefined,
-              )}
+              className={baseCellClassName}
               onClick={() => {
                 if (!isDisabled) {
                   onSelect(day);
@@ -195,24 +211,25 @@ export function Calendar({
               disabled={isDisabled}
               aria-disabled={isDisabled}
             >
-              {isHoliday && dayState ? (
+              {dayState || isHoliday ? (
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "pointer-events-none absolute inset-1 rounded-lg border border-border/80",
-                    compact ? "inset-0.5 rounded-md" : undefined,
+                    "pointer-events-none absolute",
+                    stateInsetClassName,
+                    "rounded-full transition-[background-color,border-color,transform,opacity] duration-200 ease-out",
+                    innerStateClassName,
                   )}
                 />
               ) : null}
               <span
                 className={cn(
-                "flex items-center justify-center rounded-full font-medium",
-                innerClassName,
-                dayState ? entryStateUi[dayState].calendarInnerClassName : undefined,
-                isHoliday && !dayState ? entryStateUi.holiday.calendarInnerClassName : undefined,
-                weekend && !dayState && !isHoliday ? "opacity-90" : undefined,
-                isSelected ? "font-bold" : undefined,
-              )}
+                  "relative z-10 flex items-center justify-center rounded-full font-medium transition-[color,transform] duration-200 ease-out",
+                  innerClassName,
+                  stateTextClassName,
+                  weekend && !dayState && !isHoliday ? "opacity-90" : undefined,
+                  isSelected ? "font-semibold" : undefined,
+                )}
               >
                 {day.getDate()}
               </span>

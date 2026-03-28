@@ -1,6 +1,7 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Icon } from "phosphor-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { AppContentLane } from "@/components/app-content-lane";
 import { AppFooter } from "@/components/app-footer";
 import { AppHeader } from "@/components/app-header";
@@ -174,7 +175,7 @@ function ShellContent({
   menuTo?: string;
   scope: "company" | "admin" | "tablet";
 }) {
-  const { bottomBar, startLoading, stopLoading } = useAppHeaderState();
+  const { bottomBar, bottomBarKey, startLoading, stopLoading } = useAppHeaderState();
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const scrollContentRef = useRef<HTMLDivElement | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
@@ -316,7 +317,22 @@ function ShellContent({
           className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-background via-background/95 via-20% to-transparent transition-opacity duration-300 ease-out ${isRouteChromePending || showBottomFade ? "opacity-100" : "opacity-0"}`}
         />
       </main>
-      {bottomBar ? <AppContentLane className="mb-4 pt-3 pb-4">{bottomBar}</AppContentLane> : null}
+      <div className="min-h-[8.5rem]">
+        <AnimatePresence initial={false} mode="wait">
+          {bottomBar ? (
+            <motion.div
+              key={bottomBarKey ?? locationKey}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: isRouteChromePending ? 0 : 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+              style={{ willChange: "opacity" }}
+            >
+              <AppContentLane className="mb-4 pt-3 pb-4">{bottomBar}</AppContentLane>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
       <AppContentLane>
         <AppFooter context="app" actions={footerActions} />
       </AppContentLane>

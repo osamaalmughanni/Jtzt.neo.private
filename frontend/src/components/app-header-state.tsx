@@ -15,6 +15,8 @@ interface AppHeaderStateValue {
   setHomeAction: (action: HeaderHomeAction | null) => void;
   bottomBar: ReactNode | null;
   setBottomBar: (bottomBar: ReactNode | null) => void;
+  bottomBarKey: string | null;
+  setBottomBarKey: (key: string | null) => void;
   loadingCount: number;
   startLoading: () => void;
   stopLoading: () => void;
@@ -26,6 +28,7 @@ export function AppHeaderStateProvider({ children }: { children: React.ReactNode
   const [actions, setActions] = useState<HeaderAction[] | null>(null);
   const [homeAction, setHomeAction] = useState<HeaderHomeAction | null>(null);
   const [bottomBar, setBottomBar] = useState<ReactNode | null>(null);
+  const [bottomBarKey, setBottomBarKey] = useState<string | null>(null);
   const [loadingCount, setLoadingCount] = useState(0);
   const startLoading = useCallback(() => {
     setLoadingCount((current) => current + 1);
@@ -41,11 +44,13 @@ export function AppHeaderStateProvider({ children }: { children: React.ReactNode
       setHomeAction,
       bottomBar,
       setBottomBar,
+      bottomBarKey,
+      setBottomBarKey,
       loadingCount,
       startLoading,
       stopLoading,
     }),
-    [actions, bottomBar, homeAction, loadingCount, startLoading, stopLoading]
+    [actions, bottomBar, bottomBarKey, homeAction, loadingCount, startLoading, stopLoading]
   );
   return <AppHeaderStateContext.Provider value={value}>{children}</AppHeaderStateContext.Provider>;
 }

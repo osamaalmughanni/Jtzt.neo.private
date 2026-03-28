@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Briefcase, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
+import { Briefcase, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, Prohibit, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import type {
   CompanyCustomField,
@@ -37,6 +37,7 @@ import { PageDock } from "@/components/page-dock";
 import { PageLoadBoundary } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Stack } from "@/components/stack";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Combobox } from "@/components/ui/combobox";
@@ -270,6 +271,20 @@ function RecordStatusIcon({
     >
       <Icon size={14} weight={active ? "bold" : "fill"} className={active ? "animate-spin" : undefined} />
     </Button>
+  );
+}
+
+function EmptyRecordIcon({ className }: { className?: string }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn(
+        "flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground/80",
+        className,
+      )}
+    >
+      <Prohibit size={14} weight="bold" />
+    </div>
   );
 }
 
@@ -1034,101 +1049,6 @@ export function DashboardPage() {
 
   return (
     <FormPage className="min-h-0 flex-none">
-      <PageDock cacheKey={dashboardDockKey}>
-        <DockActionStack
-          primary={dashboardLoading ? null : isTabletMode ? (
-            <>
-              {dockShowsStop || dockShowsPlay ? (
-                <Button
-                  className={
-                    summary.activeEntry
-                      ? "h-16 w-16 rounded-[999px] bg-destructive text-destructive-foreground transition-[background-color,color,transform,opacity] duration-200 ease-out hover:opacity-95 active:scale-95"
-                      : "h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-[background-color,color,transform,opacity] duration-200 ease-out hover:opacity-95 active:scale-95"
-                  }
-                  size="icon"
-                  type="button"
-                  disabled={!canUseTabletPunch}
-                  onClick={handleTabletPunch}
-                  aria-label={summary.activeEntry ? t("dashboard.stopWork") : t("dashboard.startWork")}
-                >
-                  <span className="relative block h-8 w-8">
-                    <Play
-                      size={30}
-                      weight="fill"
-                      className={cn(
-                        "absolute inset-0 m-auto transition-opacity duration-300 ease-out",
-                        dockButtonMode === "play" ? "opacity-100" : "opacity-0",
-                      )}
-                    />
-                    <Stop
-                      size={30}
-                      weight="fill"
-                      className={cn(
-                        "absolute inset-0 m-auto transition-opacity duration-300 ease-out",
-                        dockButtonMode === "stop" ? "opacity-100" : "opacity-0",
-                      )}
-                    />
-                  </span>
-                </Button>
-              ) : canAddRecordButton ? (
-                <Button
-                  asChild
-                  className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-                  size="icon"
-                  type="button"
-                  onPointerDown={triggerHapticFeedback}
-                >
-                  <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
-                    <Plus size={30} weight="bold" />
-                  </Link>
-                </Button>
-              ) : (
-                <Button
-                  disabled
-                  className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out"
-                  size="icon"
-                  type="button"
-                  aria-label={t("dashboard.addRecordUnavailable")}
-                >
-                  <Plus size={30} weight="bold" />
-                </Button>
-              )}
-            </>
-          ) : canAddRecordButton ? (
-            <Button
-              asChild
-              className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
-              size="icon"
-              type="button"
-              onPointerDown={triggerHapticFeedback}
-            >
-              <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
-                <Plus size={30} weight="bold" />
-              </Link>
-            </Button>
-          ) : (
-            <Button
-              disabled
-              className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out"
-              size="icon"
-              type="button"
-              aria-label={t("dashboard.addRecordUnavailable")}
-            >
-              <Plus size={30} weight="bold" />
-            </Button>
-          )}
-          secondary={!dashboardLoading && isTabletMode && dockShowsPlay && canAddRecordButton ? (
-            <DockActionButton asChild onPointerDown={triggerHapticFeedback}>
-              <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
-            </DockActionButton>
-          ) : null}
-          message={!dashboardLoading && createRecordMessage ? (
-            <p className="text-center text-xs leading-5 text-muted-foreground">
-              {createRecordMessage}
-            </p>
-          ) : null}
-        />
-      </PageDock>
       <AppConfirmDialog
         open={pendingDeleteEntry !== null}
         onOpenChange={(open) =>
@@ -1225,12 +1145,13 @@ export function DashboardPage() {
               dayStates={calendarDayStates}
               onMonthChange={setVisibleMonth}
               compact
+              selectionTone={pendingDeleteEntry ? "destructive" : "default"}
               className="mt-2"
             />
           </div>
-          <div className="flex flex-col gap-2 rounded-xl border border-border bg-background p-3">
+          <div className="flex flex-col gap-1">
             <p className="text-sm font-medium text-foreground">{t("dashboard.records")}</p>
-            <div className="flex flex-col gap-1">
+            <div className="divide-y divide-border/60">
                 {entries.map((entry) => {
                   const canEdit =
                     evaluateTimeEntryPolicy({
@@ -1262,34 +1183,36 @@ export function DashboardPage() {
                       : formatDayCount(entry.effectiveDayCount);
 
                   return (
-                    <div key={entry.id} className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2.5">
+                    <div
+                      key={entry.id}
+                      className="grid min-h-12 grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 px-0 py-2"
+                    >
                       <div>
                         <RecordStatusIcon entryType={entry.entryType} active={isActiveWorkEntry} className={entryStateUi[entry.entryType].recordStatusClassName} />
                       </div>
-                      <div className="min-w-0 flex items-center gap-2 overflow-hidden">
-                        <p className="shrink-0 text-sm font-medium leading-none text-foreground">
-                          {entryHeadline}
-                        </p>
-                        <span
-                          className={
-                            isActiveWorkEntry
-                              ? "shrink-0 rounded-full bg-destructive px-2 py-0.5 text-xs font-medium leading-none text-destructive-foreground"
-                              : "shrink-0 rounded-full bg-background px-2 py-0.5 text-xs font-medium leading-none text-foreground"
-                          }
-                        >
-                          {entryMeta}
-                        </span>
+                      <div className="min-w-0 flex flex-col gap-1 overflow-hidden">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                          <p className="min-w-0 whitespace-normal break-words text-sm font-medium leading-4 text-foreground">
+                            {entryHeadline}
+                          </p>
+                          <Badge
+                            variant={isActiveWorkEntry ? "destructive" : "secondary"}
+                            className="shrink-0 rounded-full px-2 py-0 text-[11px] leading-5"
+                          >
+                            {entryMeta}
+                          </Badge>
+                        </div>
                         {supportText ? (
-                          <span className="min-w-0 truncate text-xs leading-none text-muted-foreground">
+                          <p className="whitespace-normal break-words text-xs leading-4 text-muted-foreground">
                             {supportText}
-                          </span>
+                          </p>
                         ) : null}
                       </div>
                       <div className="relative z-10 flex shrink-0 items-center justify-end gap-0.5 self-center">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 p-0 text-muted-foreground"
+                          className="h-7 w-7 p-0 text-muted-foreground/80"
                           disabled={!canDelete}
                           onPointerDown={triggerHapticFeedback}
                           onClick={() => canDelete && setPendingDeleteEntry(entry)}
@@ -1300,7 +1223,7 @@ export function DashboardPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 p-0 text-muted-foreground"
+                          className="h-7 w-7 p-0 text-muted-foreground/80"
                           disabled={!canEdit}
                           onPointerDown={triggerHapticFeedback}
                           onClick={() => canEdit && navigate(editHref)}
@@ -1314,9 +1237,15 @@ export function DashboardPage() {
                 })}
 
               {entries.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  {t("dashboard.noRecords")}
-                </p>
+                <div className="grid min-h-12 grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 px-0 py-2 text-muted-foreground transition-colors">
+                  <EmptyRecordIcon />
+                  <div className="min-w-0 flex items-center overflow-hidden">
+                    <p className="truncate text-sm font-medium leading-4 text-foreground/80">
+                      {t("dashboard.noRecords")}
+                    </p>
+                  </div>
+                  <div className="h-7 w-[4rem]" aria-hidden="true" />
+                </div>
               ) : null}
             </div>
           </div>
@@ -1325,6 +1254,101 @@ export function DashboardPage() {
 
       </Stack>
       </PageLoadBoundary>
+      <PageDock cacheKey={dashboardDockKey}>
+        <DockActionStack
+          primary={dashboardLoading ? null : isTabletMode ? (
+            <>
+              {dockShowsStop || dockShowsPlay ? (
+                <Button
+                  className={
+                    summary.activeEntry
+                      ? "h-16 w-16 rounded-[999px] bg-destructive text-destructive-foreground transition-[background-color,color,transform,opacity] duration-200 ease-out hover:opacity-95 active:scale-95"
+                      : "h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-[background-color,color,transform,opacity] duration-200 ease-out hover:opacity-95 active:scale-95"
+                  }
+                  size="icon"
+                  type="button"
+                  disabled={!canUseTabletPunch}
+                  onClick={handleTabletPunch}
+                  aria-label={summary.activeEntry ? t("dashboard.stopWork") : t("dashboard.startWork")}
+                >
+                  <span className="relative block h-8 w-8">
+                    <Play
+                      size={30}
+                      weight="fill"
+                      className={cn(
+                        "absolute inset-0 m-auto transition-opacity duration-300 ease-out",
+                        dockButtonMode === "play" ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    <Stop
+                      size={30}
+                      weight="fill"
+                      className={cn(
+                        "absolute inset-0 m-auto transition-opacity duration-300 ease-out",
+                        dockButtonMode === "stop" ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                  </span>
+                </Button>
+              ) : canAddRecordButton ? (
+                <Button
+                  asChild
+                  className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+                  size="icon"
+                  type="button"
+                  onPointerDown={triggerHapticFeedback}
+                >
+                  <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
+                    <Plus size={30} weight="bold" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  disabled
+                  className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out"
+                  size="icon"
+                  type="button"
+                  aria-label={t("dashboard.addRecordUnavailable")}
+                >
+                  <Plus size={30} weight="bold" />
+                </Button>
+              )}
+            </>
+          ) : canAddRecordButton ? (
+            <Button
+              asChild
+              className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out hover:opacity-90 active:scale-95"
+              size="icon"
+              type="button"
+              onPointerDown={triggerHapticFeedback}
+            >
+              <Link to={createRecordHref} aria-label={t("dashboard.addRecord")}>
+                <Plus size={30} weight="bold" />
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              disabled
+              className="h-16 w-16 rounded-[999px] bg-primary text-primary-foreground transition-transform duration-150 ease-out"
+              size="icon"
+              type="button"
+              aria-label={t("dashboard.addRecordUnavailable")}
+            >
+              <Plus size={30} weight="bold" />
+            </Button>
+          )}
+          secondary={!dashboardLoading && isTabletMode && dockShowsPlay && canAddRecordButton ? (
+            <DockActionButton asChild onPointerDown={triggerHapticFeedback}>
+              <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
+            </DockActionButton>
+          ) : null}
+          message={!dashboardLoading && createRecordMessage ? (
+            <p className="text-center text-xs leading-5 text-muted-foreground">
+              {createRecordMessage}
+            </p>
+          ) : null}
+        />
+      </PageDock>
     </FormPage>
   );
 }
