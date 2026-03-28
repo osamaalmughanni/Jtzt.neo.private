@@ -1,6 +1,7 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Icon } from "phosphor-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { AppContentLane } from "@/components/app-content-lane";
 import { AppFooter } from "@/components/app-footer";
 import { AppHeader } from "@/components/app-header";
@@ -174,7 +175,7 @@ function ShellContent({
   menuTo?: string;
   scope: "company" | "admin" | "tablet";
 }) {
-  const { startLoading, stopLoading } = useAppHeaderState();
+  const { bottomBar, bottomBarKey, startLoading, stopLoading } = useAppHeaderState();
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const scrollContentRef = useRef<HTMLDivElement | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
@@ -318,7 +319,25 @@ function ShellContent({
           className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-36 bg-gradient-to-t from-background via-background/98 via-22% to-transparent transition-[opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${isRouteChromePending || showBottomFade ? "opacity-100" : "opacity-0"}`}
         />
       </main>
-      <div className="relative z-20">
+      {bottomBar ? (
+        <div className="relative z-20 pt-2 pb-4">
+          <AnimatePresence initial={false} mode="wait">
+            <motion.div
+              key={bottomBarKey ?? locationKey}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+              style={{ willChange: "opacity" }}
+            >
+              <AppContentLane className="py-3">
+                {bottomBar}
+              </AppContentLane>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      ) : null}
+      <div className="relative z-20 pt-1">
         <AppContentLane>
           <AppFooter context="app" actions={footerActions} />
         </AppContentLane>

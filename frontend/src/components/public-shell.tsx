@@ -142,7 +142,7 @@ function PublicShellContent({
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-hidden">
       <AppHeaderLoadingBar />
-      <div className="relative z-20">
+      <div className="relative z-20 pt-1">
         <AppContentLane>
           <AppHeader scope="public" actions={actions} />
         </AppContentLane>
@@ -167,7 +167,7 @@ function PublicShellContent({
           className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-36 bg-gradient-to-t from-background via-background/98 via-22% to-transparent transition-[opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${showBottomFade ? "opacity-100" : "opacity-0"}`}
         />
       </main>
-      <div className="relative z-20">
+      <div className="relative z-20 pt-1">
         <AppContentLane>
           <AppFooter context="app" actions={footerActions} />
         </AppContentLane>
