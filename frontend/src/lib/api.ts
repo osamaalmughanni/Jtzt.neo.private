@@ -6,7 +6,6 @@ import type {
   CompanyApiKeyStatusResponse,
   CompanyListResponse,
   CompanyLoginInput,
-  CompanySecurityResponse,
   CompanyMeResponse,
   CreateManualTimeEntryInput,
   CreateUserInput,
@@ -40,6 +39,7 @@ import type {
   SystemStatsResponse,
   TimeListResponse,
   TimeOffInLieuBalanceResponse,
+  SickLeaveSummaryResponse,
   VacationBalanceResponse,
   UpdateSettingsInput,
   UpdateOvertimeSettingsInput,
@@ -238,11 +238,6 @@ export const api = {
     });
   },
 
-  getCompanySecurity(companyName: string) {
-    const params = new URLSearchParams({ companyName });
-    return request<CompanySecurityResponse>(`/api/auth/company-security?${params.toString()}`);
-  },
-
   tabletAccess(input: TabletAccessInput) {
     return request<TabletAccessResponse>("/api/auth/tablet/access", {
       method: "POST",
@@ -339,6 +334,15 @@ export const api = {
     if (filters.endDate) params.set("endDate", filters.endDate);
     const suffix = params.toString() ? `?${params.toString()}` : "";
     return request<VacationBalanceResponse>(`/api/time/vacation/balance${suffix}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  getSickLeaveSummary(token: string, filters: { targetUserId?: number }) {
+    const params = new URLSearchParams();
+    if (filters.targetUserId) params.set("targetUserId", String(filters.targetUserId));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<SickLeaveSummaryResponse>(`/api/time/sick-leave/summary${suffix}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
   },

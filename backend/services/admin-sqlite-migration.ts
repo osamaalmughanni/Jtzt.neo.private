@@ -57,11 +57,6 @@ CREATE TABLE IF NOT EXISTS ${MIGRATION_METADATA_TABLE} (
   schema_json TEXT NOT NULL,
   original_company_id TEXT NOT NULL,
   name TEXT NOT NULL,
-  encryption_enabled INTEGER NOT NULL,
-  encryption_kdf_algorithm TEXT,
-  encryption_kdf_iterations INTEGER,
-  encryption_kdf_salt TEXT,
-  encryption_key_verifier TEXT,
   api_key_hash TEXT,
   api_key_created_at TEXT,
   tablet_code_value TEXT,
@@ -220,11 +215,6 @@ function buildPackageMetadataColumns(): PackageMetadataColumn[] {
     { name: "schema_json", type: "TEXT", nullable: false, primaryKey: false, example: "{\"format\":{...}}" },
     { name: "original_company_id", type: "TEXT", nullable: false, primaryKey: false, example: "company_uuid" },
     { name: "name", type: "TEXT", nullable: false, primaryKey: false, example: "Example Company" },
-    { name: "encryption_enabled", type: "INTEGER", nullable: false, primaryKey: false, example: 1 },
-    { name: "encryption_kdf_algorithm", type: "TEXT", nullable: true, primaryKey: false, example: "pbkdf2-sha256" },
-    { name: "encryption_kdf_iterations", type: "INTEGER", nullable: true, primaryKey: false, example: 120000 },
-    { name: "encryption_kdf_salt", type: "TEXT", nullable: true, primaryKey: false, example: "base64-salt" },
-    { name: "encryption_key_verifier", type: "TEXT", nullable: true, primaryKey: false, example: "base64-verifier" },
     { name: "api_key_hash", type: "TEXT", nullable: true, primaryKey: false, example: null },
     { name: "api_key_created_at", type: "TEXT", nullable: true, primaryKey: false, example: null },
     { name: "tablet_code_value", type: "TEXT", nullable: true, primaryKey: false, example: null },
@@ -508,11 +498,6 @@ function readMigrationMetadata(packageDb: BetterSqliteDatabase) {
       schema_json,
       original_company_id,
       name,
-      encryption_enabled,
-      encryption_kdf_algorithm,
-      encryption_kdf_iterations,
-      encryption_kdf_salt,
-      encryption_key_verifier,
       api_key_hash,
       api_key_created_at,
       tablet_code_value,
@@ -530,11 +515,6 @@ function readMigrationMetadata(packageDb: BetterSqliteDatabase) {
         schema_json: string;
         original_company_id: string;
         name: string;
-        encryption_enabled: number;
-        encryption_kdf_algorithm: string | null;
-        encryption_kdf_iterations: number | null;
-        encryption_kdf_salt: string | null;
-        encryption_key_verifier: string | null;
         api_key_hash: string | null;
         api_key_created_at: string | null;
         tablet_code_value: string | null;
@@ -572,11 +552,6 @@ export const adminSqliteMigrationService = {
   async exportCompany(systemDb: AppDatabase, companyDb: AppDatabase, companyId: string) {
     const company = await systemDb.first<{
       name: string;
-      encryption_enabled: number;
-      encryption_kdf_algorithm: string | null;
-      encryption_kdf_iterations: number | null;
-      encryption_kdf_salt: string | null;
-      encryption_key_verifier: string | null;
       api_key_hash: string | null;
       api_key_created_at: string | null;
       tablet_code_value: string | null;
@@ -586,11 +561,6 @@ export const adminSqliteMigrationService = {
     }>(
       `SELECT
         name,
-        encryption_enabled,
-        encryption_kdf_algorithm,
-        encryption_kdf_iterations,
-        encryption_kdf_salt,
-        encryption_key_verifier,
         api_key_hash,
         api_key_created_at,
         tablet_code_value,
@@ -621,18 +591,13 @@ export const adminSqliteMigrationService = {
         schema_json,
         original_company_id,
         name,
-        encryption_enabled,
-        encryption_kdf_algorithm,
-        encryption_kdf_iterations,
-        encryption_kdf_salt,
-        encryption_key_verifier,
         api_key_hash,
         api_key_created_at,
         tablet_code_value,
         tablet_code_hash,
         tablet_code_updated_at,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       MIGRATION_PACKAGE_KEY,
       MIGRATION_PACKAGE_VERSION,
@@ -641,11 +606,6 @@ export const adminSqliteMigrationService = {
       schemaJson,
       companyId,
       company.name,
-      company.encryption_enabled,
-      company.encryption_kdf_algorithm,
-      company.encryption_kdf_iterations,
-      company.encryption_kdf_salt,
-      company.encryption_key_verifier,
       company.api_key_hash,
       company.api_key_created_at,
       company.tablet_code_value,
@@ -726,26 +686,16 @@ export const adminSqliteMigrationService = {
       `INSERT INTO companies (
         id,
         name,
-        encryption_enabled,
-        encryption_kdf_algorithm,
-        encryption_kdf_iterations,
-        encryption_kdf_salt,
-        encryption_key_verifier,
         api_key_hash,
         api_key_created_at,
         tablet_code_value,
         tablet_code_hash,
         tablet_code_updated_at,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         companyId,
         companyName,
-        metadata.encryption_enabled ? 1 : 0,
-        metadata.encryption_kdf_algorithm,
-        metadata.encryption_kdf_iterations,
-        metadata.encryption_kdf_salt,
-        metadata.encryption_key_verifier,
         metadata.api_key_hash,
         metadata.api_key_created_at,
         metadata.tablet_code_value,
@@ -818,11 +768,6 @@ export const adminSqliteMigrationService = {
       `UPDATE companies
        SET
          name = ?,
-         encryption_enabled = ?,
-         encryption_kdf_algorithm = ?,
-         encryption_kdf_iterations = ?,
-         encryption_kdf_salt = ?,
-         encryption_key_verifier = ?,
          api_key_hash = ?,
          api_key_created_at = ?,
          tablet_code_value = ?,
@@ -832,11 +777,6 @@ export const adminSqliteMigrationService = {
        WHERE id = ?`,
       [
         targetName,
-        metadata.encryption_enabled ? 1 : 0,
-        metadata.encryption_kdf_algorithm,
-        metadata.encryption_kdf_iterations,
-        metadata.encryption_kdf_salt,
-        metadata.encryption_key_verifier,
         metadata.api_key_hash,
         metadata.api_key_created_at,
         metadata.tablet_code_value,
@@ -850,3 +790,4 @@ export const adminSqliteMigrationService = {
     return systemService.getCompanyById(systemDb, input.companyId);
   },
 };
+

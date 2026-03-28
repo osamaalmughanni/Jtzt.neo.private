@@ -1,7 +1,13 @@
 import { getZonedDateTimeParts, normalizeTimeZone, parseLocalDay } from "@shared/utils/time";
+import {
+  DEFAULT_COMPANY_DATE_TIME_FORMAT,
+  DEFAULT_COMPANY_LOCALE,
+  normalizeCompanyDateTimeFormat,
+  normalizeCompanyLocale,
+} from "@shared/utils/company-locale";
 
 function normalizeLocale(locale: string) {
-  return locale.trim() || "en-GB";
+  return normalizeCompanyLocale(locale);
 }
 
 function parseDateTimeValue(value: string) {
@@ -49,22 +55,12 @@ function formatWithPattern(date: Date, pattern: string, locale: string, timeZone
 }
 
 function formatStandard(date: Date, locale: string, formatString: string, timeZone?: string | null) {
-  const key = formatString.trim() || "g";
-  const zonedOptions = normalizeTimeZone(timeZone) ? { timeZone: normalizeTimeZone(timeZone)! } : {};
-
-  if (key === "d") return date.toLocaleDateString(locale, zonedOptions);
-  if (key === "D") return date.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric", ...zonedOptions });
-  if (key === "t") return date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", ...zonedOptions });
-  if (key === "T") return date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", ...zonedOptions });
-  if (key === "g") return date.toLocaleString(locale, { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", ...zonedOptions });
-  if (key === "G") return date.toLocaleString(locale, { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", ...zonedOptions });
-  if (key === "f") return date.toLocaleString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", ...zonedOptions });
-  if (key === "F") return date.toLocaleString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", ...zonedOptions });
-  if (key === "M" || key === "m") return date.toLocaleDateString(locale, { day: "numeric", month: "long", ...zonedOptions });
-  if (key === "Y" || key === "y") return date.toLocaleDateString(locale, { month: "long", year: "numeric", ...zonedOptions });
-  if (key === "O" || key === "o" || key === "s" || key === "u") return date.toLocaleString(locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", ...zonedOptions });
-
-  return formatWithPattern(date, key, locale, timeZone);
+  const pattern = normalizeCompanyDateTimeFormat(formatString) || DEFAULT_COMPANY_DATE_TIME_FORMAT;
+  try {
+    return formatWithPattern(date, pattern, locale, timeZone);
+  } catch {
+    return formatWithPattern(date, DEFAULT_COMPANY_DATE_TIME_FORMAT, DEFAULT_COMPANY_LOCALE, timeZone);
+  }
 }
 
 export function formatCompanyDate(day: string, locale: string, options?: Intl.DateTimeFormatOptions) {

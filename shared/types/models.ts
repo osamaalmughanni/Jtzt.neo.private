@@ -68,7 +68,6 @@ export interface UserContractScheduleBlock {
 export interface CompanyRecord {
   id: string;
   name: string;
-  encryptionEnabled: boolean;
   tabletCodeUpdatedAt?: string | null;
   createdAt: string;
 }

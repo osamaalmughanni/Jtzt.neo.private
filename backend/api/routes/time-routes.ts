@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { diffCalendarDays } from "../../../shared/utils/time";
+import { diffCalendarDays, enumerateLocalDays } from "../../../shared/utils/time";
 import { evaluateTimeEntryPolicy, getRangeEndDay } from "../../../shared/utils/time-entry-policy";
 import { validateCustomFieldValuesForTarget } from "../../../shared/utils/custom-fields";
 import { authMiddleware, companyDbMiddleware, hasCompanyAccess, requireCompanyUser } from "../../auth/middleware";
@@ -81,8 +81,33 @@ async function validateCustomFields(
   return validateCustomFieldValuesForTarget(settings.customFields, { scope: "time_entry", entryType }, values);
 }
 
-function resolveTargetUserId(session: CompanyTokenPayload | Extract<SessionTokenPayload, { actorType: "workspace" }>, requestedUserId?: number) {
-  if (!requestedUserId || requestedUserId === session.userId) {
+async function resolveTargetUserId(
+  db: AppDatabase,
+  session: CompanyTokenPayload | Extract<SessionTokenPayload, { actorType: "workspace" }>,
+  requestedUserId?: number,
+) {
+  const normalizedRequestedUserId = requestedUserId && requestedUserId > 0 ? requestedUserId : undefined;
+
+  if (session.actorType === "workspace") {
+    if (normalizedRequestedUserId) {
+      return normalizedRequestedUserId;
+    }
+
+    const firstActiveUser = await db.first<{ id: number }>(
+      `SELECT id
+       FROM users
+       WHERE company_id = ? AND deleted_at IS NULL
+       ORDER BY is_active DESC, full_name COLLATE NOCASE ASC, id ASC
+       LIMIT 1`,
+      [session.companyId]
+    );
+    if (!firstActiveUser) {
+      throw new Error("No active users found");
+    }
+    return firstActiveUser.id;
+  }
+
+  if (!normalizedRequestedUserId || normalizedRequestedUserId === session.userId) {
     return session.userId;
   }
   if (session.accessMode === "tablet") {
@@ -91,7 +116,7 @@ function resolveTargetUserId(session: CompanyTokenPayload | Extract<SessionToken
   if (session.role !== "admin" && session.role !== "manager") {
     throw new Error("Manager access required");
   }
-  return requestedUserId;
+  return normalizedRequestedUserId;
 }
 
 function getCompanySession(session: AppVariables["session"]): CompanyTokenPayload | Extract<SessionTokenPayload, { actorType: "workspace" }> {
@@ -562,7 +587,7 @@ timeRoutes.post("/entry", async (c) => {
 
   let targetUserId: number;
   try {
-    targetUserId = resolveTargetUserId(session, body.targetUserId);
+    targetUserId = await resolveTargetUserId(db, session, body.targetUserId);
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
@@ -646,7 +671,7 @@ timeRoutes.get("/list", async (c) => {
   let targetUserId: number;
   try {
     const rawTargetUserId = c.req.query("targetUserId");
-    targetUserId = resolveTargetUserId(session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
+    targetUserId = await resolveTargetUserId(db, session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
@@ -671,7 +696,7 @@ timeRoutes.get("/entry/:entryId", async (c) => {
   let targetUserId: number;
   try {
     const rawTargetUserId = c.req.query("targetUserId");
-    targetUserId = resolveTargetUserId(session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
+    targetUserId = await resolveTargetUserId(db, session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
@@ -690,7 +715,7 @@ timeRoutes.get("/time-off-in-lieu/balance", async (c) => {
   let targetUserId: number;
   try {
     const rawTargetUserId = c.req.query("targetUserId");
-    targetUserId = resolveTargetUserId(session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
+    targetUserId = await resolveTargetUserId(db, session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
@@ -718,7 +743,7 @@ timeRoutes.get("/vacation/balance", async (c) => {
   let targetUserId: number;
   try {
     const rawTargetUserId = c.req.query("targetUserId");
-    targetUserId = resolveTargetUserId(session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
+    targetUserId = await resolveTargetUserId(db, session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
@@ -740,6 +765,33 @@ timeRoutes.get("/vacation/balance", async (c) => {
   });
 });
 
+timeRoutes.get("/sick-leave/summary", async (c) => {
+  const session = getCompanySession(c.get("session"));
+  const db = c.get("db");
+
+  let targetUserId: number;
+  try {
+    const rawTargetUserId = c.req.query("targetUserId");
+    targetUserId = await resolveTargetUserId(db, session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
+  } catch {
+    return c.json({ error: "Manager access required" }, 403);
+  }
+
+  const yearEnd = (await settingsService.getBusinessNowSnapshot(db, session.companyId)).localDay;
+  const yearStart = `${yearEnd.slice(0, 4)}-01-01`;
+  const entries = await timeService.listEntries(db, session.companyId, targetUserId, { from: yearStart, to: yearEnd });
+  const usedDays = entries
+    .filter((entry) => entry.entryType === "sick_leave")
+    .reduce((sum, entry) => sum + entry.totalDayCount, 0);
+
+  return c.json({
+    summary: {
+      usedDays,
+      elapsedDays: Math.max(0, enumerateLocalDays(yearStart, yearEnd).length),
+    },
+  });
+});
+
 timeRoutes.put("/entry", async (c) => {
   const session = getCompanySession(c.get("session"));
   const db = c.get("db");
@@ -748,7 +800,7 @@ timeRoutes.put("/entry", async (c) => {
 
   let targetUserId: number;
   try {
-    targetUserId = resolveTargetUserId(session, body.targetUserId);
+    targetUserId = await resolveTargetUserId(db, session, body.targetUserId);
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
@@ -820,10 +872,11 @@ timeRoutes.put("/entry", async (c) => {
 
 timeRoutes.delete("/entry", async (c) => {
   const session = getCompanySession(c.get("session"));
+  const db = c.get("db");
   const body = deleteEntrySchema.parse(await c.req.json());
   let targetUserId: number;
   try {
-    targetUserId = resolveTargetUserId(session, body.targetUserId);
+    targetUserId = await resolveTargetUserId(db, session, body.targetUserId);
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }
@@ -833,10 +886,11 @@ timeRoutes.delete("/entry", async (c) => {
 
 timeRoutes.get("/dashboard", async (c) => {
   const session = getCompanySession(c.get("session"));
+  const db = c.get("db");
   let targetUserId: number;
   try {
     const rawTargetUserId = c.req.query("targetUserId");
-    targetUserId = session.actorType === "workspace" ? 0 : resolveTargetUserId(session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
+    targetUserId = await resolveTargetUserId(db, session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
   } catch {
     return c.json({ error: "Manager access required" }, 403);
   }

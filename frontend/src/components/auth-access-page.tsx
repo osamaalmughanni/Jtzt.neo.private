@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import type { CompanySecurityResponse, TabletAccessResponse } from "@shared/types/api";
+import type { TabletAccessResponse } from "@shared/types/api";
 import { Info } from "phosphor-react";
 import { PublicShell } from "@/components/public-shell";
 import { Stack } from "@/components/stack";
@@ -13,24 +13,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { deriveEncryptionProof, generateKdfSalt } from "@/lib/crypto";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { downloadSecureRecoveryKit } from "@/lib/recovery-kit";
 import { toast, toastError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
-import { Shield, ShieldCheck, TabletSmartphone } from "lucide-react";
+import { Shield, TabletSmartphone } from "lucide-react";
 
-const SECURE_MODE_ITERATIONS = 210000;
 const AUTH_MODES = ["sign-in", "register", "workspace", "tablet", "admin"] as const;
 
 const companyLoginSchema = z.object({
   companyName: z.string().min(1, "Company is required"),
   username: z.string().min(1, "Username is required"),
   password: z.string().min(1, "Password is required"),
-  encryptionKey: z.string().optional(),
 });
 
 const registerSchema = z
@@ -39,25 +34,10 @@ const registerSchema = z
     adminUsername: z.string().min(2, "Admin username is required"),
     adminPassword: z.string().min(6, "Admin password must be at least 6 characters"),
     invitationCode: z.string().min(4, "Invitation code is required"),
-    encryptionEnabled: z.boolean(),
-    encryptionKey: z.string().optional(),
-    confirmEncryptionKey: z.string().optional(),
-  })
-  .superRefine((value, context) => {
-    if (!value.encryptionEnabled) return;
-
-    if (!value.encryptionKey || value.encryptionKey.length < 10) {
-      context.addIssue({ code: "custom", path: ["encryptionKey"], message: "Encryption key must be at least 10 characters" });
-    }
-
-    if (value.encryptionKey !== value.confirmEncryptionKey) {
-      context.addIssue({ code: "custom", path: ["confirmEncryptionKey"], message: "Encryption keys must match" });
-    }
   });
 
 const tabletAccessSchema = z.object({
   code: z.string().min(1, "Tablet code is required"),
-  encryptionKey: z.string().optional(),
 });
 
 const adminLoginSchema = z.object({
@@ -79,40 +59,17 @@ function resolveAuthMode(value: string | null): AuthMode {
   return AUTH_MODES.includes(value as AuthMode) ? (value as AuthMode) : "sign-in";
 }
 
-async function buildRecoverySnapshot(token: string) {
-  const [meResult, dashboardResult, usersResult] = await Promise.allSettled([
-    api.getCompanyMe(token),
-    api.getDashboard(token),
-    api.listUsers(token),
-  ]);
-
-  const me = meResult.status === "fulfilled" ? meResult.value : null;
-  const dashboard = dashboardResult.status === "fulfilled" ? dashboardResult.value : null;
-  const users = usersResult.status === "fulfilled" ? usersResult.value : null;
-
-  return {
-    company: me?.company ?? null,
-    currentUser: me?.user ?? null,
-    dashboard: dashboard?.summary ?? null,
-    projects: [],
-    tasks: [],
-    users: users?.users ?? [],
-  };
-}
-
 export function AuthAccessPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const { loginCompany, loginAdmin, setTabletAccess } = useAuth();
-  const [companySecurity, setCompanySecurity] = useState<CompanySecurityResponse | null>(null);
   const [tabletAccessPreview, setTabletAccessPreview] = useState<TabletAccessResponse | null>(null);
   const [registerSubmitting, setRegisterSubmitting] = useState(false);
   const mode = resolveAuthMode(searchParams.get("mode"));
 
   const copy = useMemo(
     () => ({
-      workspaceButton: t("auth.workspaceKeyButton"),
       workspaceSubmitButton: t("auth.workspaceSubmitButton"),
       workspaceTokenLabel: t("auth.workspaceTokenLabel"),
       workspaceTokenPlaceholder: t("auth.workspaceTokenPlaceholder"),
@@ -122,8 +79,6 @@ export function AuthAccessPage() {
       continueToTablet: t("auth.continueToTablet"),
       tabletChecking: t("auth.tabletChecking"),
       tabletAccessFailed: t("auth.tabletAccessFailed"),
-      tabletEncryptionRequiredDescription: t("auth.tabletEncryptionRequiredDescription"),
-      tabletSecureCompanyDescription: t("auth.tabletSecureCompanyDescription"),
       tabletStandardCompanyDescription: t("auth.tabletStandardCompanyDescription"),
       companyNamePlaceholder: t("auth.companyNamePlaceholder"),
       usernamePlaceholder: t("auth.usernamePlaceholder"),
@@ -137,7 +92,7 @@ export function AuthAccessPage() {
 
   const companyForm = useForm<CompanyLoginValues>({
     resolver: zodResolver(companyLoginSchema),
-    defaultValues: { companyName: "", username: "", password: "", encryptionKey: "" },
+    defaultValues: { companyName: "", username: "", password: "" },
   });
   const workspaceForm = useForm<WorkspaceLoginValues>({
     resolver: zodResolver(workspaceLoginSchema),
@@ -150,41 +105,18 @@ export function AuthAccessPage() {
       adminUsername: "",
       adminPassword: "",
       invitationCode: "",
-      encryptionEnabled: false,
-      encryptionKey: "",
-      confirmEncryptionKey: "",
     },
   });
   const tabletForm = useForm<TabletAccessValues>({
     resolver: zodResolver(tabletAccessSchema),
-    defaultValues: { code: "", encryptionKey: "" },
+    defaultValues: { code: "" },
   });
   const adminForm = useForm<AdminLoginValues>({
     resolver: zodResolver(adminLoginSchema),
     defaultValues: { token: "" },
   });
 
-  const companyName = companyForm.watch("companyName");
-  const encryptionEnabled = registerForm.watch("encryptionEnabled");
   const tabletCode = tabletForm.watch("code");
-
-  useEffect(() => {
-    const normalizedCompany = companyName.trim();
-    if (normalizedCompany.length < 2) {
-      setCompanySecurity(null);
-      return;
-    }
-
-    const timeout = window.setTimeout(async () => {
-      try {
-        setCompanySecurity(await api.getCompanySecurity(normalizedCompany));
-      } catch {
-        setCompanySecurity(null);
-      }
-    }, 250);
-
-    return () => window.clearTimeout(timeout);
-  }, [companyName]);
 
   useEffect(() => {
     const normalizedCode = tabletCode.trim();
@@ -210,25 +142,10 @@ export function AuthAccessPage() {
 
   async function onCompanySubmit(values: CompanyLoginValues) {
     try {
-      let encryptionKeyProof: string | undefined;
-
-      if (companySecurity?.encryptionEnabled) {
-        if (!values.encryptionKey || !companySecurity.kdfSalt || !companySecurity.kdfIterations) {
-          toast({
-            title: t("auth.encryptionRequiredTitle"),
-            description: t("auth.encryptionRequiredDescription"),
-          });
-          return;
-        }
-
-        encryptionKeyProof = await deriveEncryptionProof(values.encryptionKey, companySecurity.kdfSalt, companySecurity.kdfIterations);
-      }
-
       const response = await api.companyLogin({
         companyName: values.companyName,
         username: values.username,
         password: values.password,
-        encryptionKeyProof,
       });
       await loginCompany(response.session);
       navigate("/dashboard");
@@ -259,50 +176,12 @@ export function AuthAccessPage() {
     try {
       setRegisterSubmitting(true);
 
-      let encryptionKdfAlgorithm: "pbkdf2-sha256" | undefined;
-      let encryptionKdfIterations: number | undefined;
-      let encryptionKdfSalt: string | undefined;
-      let encryptionKeyVerifier: string | undefined;
-
-      if (values.encryptionEnabled && values.encryptionKey) {
-        encryptionKdfAlgorithm = "pbkdf2-sha256";
-        encryptionKdfIterations = SECURE_MODE_ITERATIONS;
-        encryptionKdfSalt = generateKdfSalt();
-        encryptionKeyVerifier = await deriveEncryptionProof(values.encryptionKey, encryptionKdfSalt, encryptionKdfIterations);
-      }
-
       const response = await api.registerCompany({
         name: values.name,
         adminUsername: values.adminUsername,
         adminPassword: values.adminPassword,
         invitationCode: values.invitationCode,
-        encryptionEnabled: values.encryptionEnabled,
-        encryptionKdfAlgorithm,
-        encryptionKdfIterations,
-        encryptionKdfSalt,
-        encryptionKeyVerifier,
       });
-
-      if (values.encryptionEnabled && values.encryptionKey && encryptionKdfSalt && encryptionKdfIterations) {
-        try {
-          const snapshot = await buildRecoverySnapshot(response.session.token);
-          await downloadSecureRecoveryKit({
-            companyName: values.name,
-            adminUsername: values.adminUsername,
-            adminPassword: values.adminPassword,
-            encryptionKey: values.encryptionKey,
-            kdfAlgorithm: "pbkdf2-sha256",
-            kdfIterations: encryptionKdfIterations,
-            companyKdfSalt: encryptionKdfSalt,
-            snapshot,
-          });
-        } catch {
-          toast({
-            title: t("auth.recoveryPackageSkippedTitle"),
-            description: t("auth.recoveryPackageSkippedDescription"),
-          });
-        }
-      }
 
       await loginCompany(response.session);
       navigate("/dashboard");
@@ -320,14 +199,6 @@ export function AuthAccessPage() {
   async function onTabletSubmit(values: TabletAccessValues) {
     try {
       const response = await api.tabletAccess({ code: values.code });
-
-      if (response.encryptionEnabled && !values.encryptionKey) {
-        toast({
-          title: t("auth.encryptionRequiredTitle"),
-          description: copy.tabletEncryptionRequiredDescription,
-        });
-        return;
-      }
 
       setTabletAccess({
         companyName: response.companyName,
@@ -392,15 +263,6 @@ export function AuthAccessPage() {
                     <AuthField control={companyForm.control} name="companyName" label={t("auth.companyLabel")} placeholder={copy.companyNamePlaceholder} />
                     <AuthField control={companyForm.control} name="username" label={t("common.username")} placeholder={copy.usernamePlaceholder} />
                     <AuthField control={companyForm.control} name="password" label={t("common.password")} placeholder="********" type="password" />
-                    {companySecurity?.encryptionEnabled ? (
-                      <AuthField
-                        control={companyForm.control}
-                        name="encryptionKey"
-                        label={t("auth.encryptionKeyLabel")}
-                        placeholder={t("auth.secureModeLoginPlaceholder")}
-                        type="password"
-                      />
-                    ) : null}
                     <Button className="w-full" type="submit" disabled={companyForm.formState.isSubmitting}>
                       {t("common.signIn")}
                     </Button>
@@ -415,44 +277,6 @@ export function AuthAccessPage() {
                     <AuthField control={registerForm.control} name="adminUsername" label={t("auth.adminUsernameLabel")} placeholder={copy.adminUsernamePlaceholder} />
                     <AuthField control={registerForm.control} name="adminPassword" label={t("auth.adminPasswordLabel")} placeholder="********" type="password" />
                     <AuthField control={registerForm.control} name="invitationCode" label="Einladungscode" placeholder="ABCD-EFGH-IJKL" />
-                    <FormField
-                      control={registerForm.control}
-                      name="encryptionEnabled"
-                      render={({ field }) => (
-                        <FormItem className="border border-border bg-muted/20 p-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="space-y-1">
-                              <p className="text-sm font-semibold text-foreground">
-                                {field.value ? t("auth.secureModeOn") : t("auth.secureModeOff")}
-                              </p>
-                              <p className="text-xs leading-5 text-muted-foreground">
-                                {field.value ? t("auth.secureModeOnDescription") : t("auth.secureModeOffDescription")}
-                              </p>
-                            </div>
-                            <Switch checked={field.value} onCheckedChange={field.onChange} />
-                          </div>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    {encryptionEnabled ? (
-                      <>
-                        <AuthField
-                          control={registerForm.control}
-                          name="encryptionKey"
-                          label={t("auth.encryptionKeyLabel")}
-                          placeholder={t("auth.secureModePlaceholder")}
-                          type="password"
-                        />
-                        <AuthField
-                          control={registerForm.control}
-                          name="confirmEncryptionKey"
-                          label={t("auth.confirmEncryptionKeyLabel")}
-                          placeholder={t("auth.secureModeConfirmPlaceholder")}
-                          type="password"
-                        />
-                      </>
-                    ) : null}
                     <Button className="w-full" type="submit" disabled={registerSubmitting}>
                       {registerSubmitting ? t("auth.creatingCompany") : t("auth.createCompany")}
                     </Button>
@@ -467,19 +291,8 @@ export function AuthAccessPage() {
                     {tabletAccessPreview ? (
                       <div className="border border-border bg-muted/20 p-4">
                         <p className="text-sm font-semibold text-foreground">{tabletAccessPreview.companyName}</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                          {tabletAccessPreview.encryptionEnabled ? copy.tabletSecureCompanyDescription : copy.tabletStandardCompanyDescription}
-                        </p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{copy.tabletStandardCompanyDescription}</p>
                       </div>
-                    ) : null}
-                    {tabletAccessPreview?.encryptionEnabled ? (
-                      <AuthField
-                        control={tabletForm.control}
-                        name="encryptionKey"
-                        label={t("auth.encryptionKeyLabel")}
-                        placeholder={t("auth.secureModeLoginPlaceholder")}
-                        type="password"
-                      />
                     ) : null}
                     <Button className="w-full" type="submit" disabled={tabletForm.formState.isSubmitting}>
                       {tabletForm.formState.isSubmitting ? copy.tabletChecking : copy.continueToTablet}
@@ -505,11 +318,11 @@ export function AuthAccessPage() {
 
         <Card className="border bg-card shadow-sm">
           <CardContent className="p-4 sm:p-5">
-            <div className="mb-3 flex items-center gap-2">
-              <Badge variant="secondary" className="px-2 py-0.5 text-[10px] uppercase tracking-[0.18em]">
-                {copy.quickAccessLabel}
-              </Badge>
-            </div>
+              <div className="mb-3 flex items-center gap-2">
+                <Badge variant="secondary" className="px-2 py-0.5 text-[10px] uppercase tracking-[0.18em]">
+                  {copy.quickAccessLabel}
+                </Badge>
+              </div>
             <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
@@ -518,8 +331,8 @@ export function AuthAccessPage() {
                   className="h-8 gap-1.5 px-2.5 text-xs"
                   onClick={() => navigateToMode("workspace")}
                 >
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  {copy.workspaceButton}
+                  <Shield className="h-3.5 w-3.5" />
+                  {t("auth.workspaceKeyButton")}
                 </Button>
               <Button
                 type="button"

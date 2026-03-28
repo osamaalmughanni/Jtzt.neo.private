@@ -4,11 +4,6 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS companies (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
-  encryption_enabled INTEGER NOT NULL DEFAULT 0,
-  encryption_kdf_algorithm TEXT,
-  encryption_kdf_iterations INTEGER,
-  encryption_kdf_salt TEXT,
-  encryption_key_verifier TEXT,
   api_key_hash TEXT,
   api_key_created_at TEXT,
   tablet_code_value TEXT,
@@ -64,9 +59,9 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS company_settings (
   company_id TEXT PRIMARY KEY,
   currency TEXT NOT NULL DEFAULT 'EUR',
-  locale TEXT NOT NULL DEFAULT 'en-GB',
+  locale TEXT NOT NULL DEFAULT 'de-AT',
   time_zone TEXT NOT NULL DEFAULT 'Europe/Vienna',
-  date_time_format TEXT NOT NULL DEFAULT 'g',
+  date_time_format TEXT NOT NULL DEFAULT 'dd.MM.yyyy HH:mm',
   first_day_of_week INTEGER NOT NULL DEFAULT 1,
   edit_days_limit INTEGER NOT NULL DEFAULT 30,
   insert_days_limit INTEGER NOT NULL DEFAULT 30,

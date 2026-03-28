@@ -21,12 +21,17 @@ import { createReportDraftId, loadReportDraft, saveReportDraft } from "@/lib/rep
 import { toast } from "@/lib/toast";
 import { MultiSelectFilter } from "@/components/multi-select-filter";
 import { getCustomFieldsForTarget } from "@shared/utils/custom-fields";
+import {
+  DEFAULT_COMPANY_DATE_TIME_FORMAT,
+  DEFAULT_COMPANY_LOCALE,
+  DEFAULT_COMPANY_TIME_ZONE,
+} from "@shared/utils/company-locale";
 
 const defaultSettings: CompanySettings = {
   currency: "EUR",
-  locale: "en-GB",
-  timeZone: "Europe/Vienna",
-  dateTimeFormat: "g",
+  locale: DEFAULT_COMPANY_LOCALE,
+  timeZone: DEFAULT_COMPANY_TIME_ZONE,
+  dateTimeFormat: DEFAULT_COMPANY_DATE_TIME_FORMAT,
   firstDayOfWeek: 1,
   editDaysLimit: 30,
   insertDaysLimit: 30,

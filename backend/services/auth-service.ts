@@ -15,10 +15,6 @@ import { systemService } from "./system-service";
 import { adminService } from "./admin-service";
 import type { AppDatabase, RuntimeConfig } from "../runtime/types";
 
-function normalizeProof(value?: string) {
-  return value?.trim().toLowerCase() ?? "";
-}
-
 function compareProofs(expected: string, provided: string) {
   const expectedBuffer = Buffer.from(expected, "utf8");
   const providedBuffer = Buffer.from(provided, "utf8");
@@ -50,12 +46,6 @@ export const authService = {
   },
 
   async registerCompany(systemDb: AppDatabase, companyDb: AppDatabase, config: RuntimeConfig, input: RegisterCompanyInput, companyId: string) {
-    if (input.encryptionEnabled) {
-      if (!input.encryptionKdfSalt || !input.encryptionKdfIterations || !input.encryptionKeyVerifier) {
-        throw new HTTPException(400, { message: "Secure mode requires client-side encryption metadata" });
-      }
-    }
-
     const invitationCode = normalizeInvitationCode(input.invitationCode);
     const invitationRow = await systemDb.first(
       `SELECT id
@@ -74,11 +64,6 @@ export const authService = {
       adminUsername: input.adminUsername,
       adminPassword: input.adminPassword,
       adminFullName: input.adminFullName?.trim() || input.adminUsername.trim(),
-      encryptionEnabled: input.encryptionEnabled,
-      encryptionKdfAlgorithm: input.encryptionEnabled ? input.encryptionKdfAlgorithm ?? "pbkdf2-sha256" : undefined,
-      encryptionKdfIterations: input.encryptionEnabled ? input.encryptionKdfIterations : undefined,
-      encryptionKdfSalt: input.encryptionEnabled ? input.encryptionKdfSalt : undefined,
-      encryptionKeyVerifier: input.encryptionEnabled ? normalizeProof(input.encryptionKeyVerifier) : undefined
     }, companyId);
     if (!company) {
       throw new HTTPException(500, { message: "Company could not be created" });
@@ -113,19 +98,6 @@ export const authService = {
     const company = await systemService.getCompanyByName(systemDb, input.companyName);
     if (!company) {
       throw new HTTPException(401, { message: "Invalid company credentials" });
-    }
-
-    if (company.encryptionEnabled) {
-      const security = await systemDb.first("SELECT encryption_key_verifier FROM companies WHERE id = ?", [company.id]) as
-        | { encryption_key_verifier: string | null }
-        | null;
-
-      const providedProof = normalizeProof(input.encryptionKeyProof);
-      const expectedProof = normalizeProof(security?.encryption_key_verifier ?? "");
-
-      if (!providedProof || !expectedProof || !compareProofs(expectedProof, providedProof)) {
-        throw new HTTPException(401, { message: "Invalid encryption key" });
-      }
     }
 
     const userRow = await companyDb.first(
@@ -188,14 +160,8 @@ export const authService = {
       throw new HTTPException(401, { message: "Invalid tablet code" });
     }
 
-    const security = await systemService.getCompanySecurity(systemDb, company.name);
-
     return {
       companyName: company.name,
-      encryptionEnabled: Boolean(security?.encryptionEnabled),
-      kdfAlgorithm: security?.kdfAlgorithm ?? null,
-      kdfIterations: security?.kdfIterations ?? null,
-      kdfSalt: security?.kdfSalt ?? null
     };
   },
 
@@ -226,15 +192,6 @@ export const authService = {
       userId: user.id,
       role: user.role
     });
-  },
-
-  async getCompanySecurity(systemDb: AppDatabase, companyName: string) {
-    const companySecurity = await systemService.getCompanySecurity(systemDb, companyName);
-    if (!companySecurity) {
-      throw new HTTPException(404, { message: "Company not found" });
-    }
-
-    return companySecurity;
   },
 
   async getCompanySessionDetails(systemDb: AppDatabase, companyDb: AppDatabase, payload: { companyId: string; userId: number; accessMode: "full" | "tablet" }) {

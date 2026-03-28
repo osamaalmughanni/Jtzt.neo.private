@@ -50,17 +50,17 @@ function formatDeveloperAccessTokenRecord(row: {
 
 export const systemService = {
   async listCompanies(db: AppDatabase) {
-    const rows = await db.all("SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies ORDER BY created_at DESC");
+    const rows = await db.all("SELECT id, name, tablet_code_updated_at, created_at FROM companies ORDER BY created_at DESC");
     return rows.map(mapCompanyRecord);
   },
 
   async getCompanyById(db: AppDatabase, companyId: string) {
-    const row = await db.first("SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies WHERE id = ?", [companyId]);
+    const row = await db.first("SELECT id, name, tablet_code_updated_at, created_at FROM companies WHERE id = ?", [companyId]);
     return row ? mapCompanyRecord(row) : null;
   },
 
   async getCompanyByName(db: AppDatabase, companyName: string) {
-    const row = await db.first("SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies WHERE lower(name) = lower(?)", [companyName]);
+    const row = await db.first("SELECT id, name, tablet_code_updated_at, created_at FROM companies WHERE lower(name) = lower(?)", [companyName]);
     return row ? mapCompanyRecord(row) : null;
   },
 
@@ -71,37 +71,10 @@ export const systemService = {
     }
 
     const row = await db.first(
-      "SELECT id, name, encryption_enabled, tablet_code_updated_at, created_at FROM companies WHERE tablet_code_value = ? OR tablet_code_hash = ?",
+      "SELECT id, name, tablet_code_updated_at, created_at FROM companies WHERE tablet_code_value = ? OR tablet_code_hash = ?",
       [normalized, hashTabletCode(normalized)]
     );
     return row ? mapCompanyRecord(row) : null;
-  },
-
-  async getCompanySecurity(db: AppDatabase, companyName: string) {
-    const row = await db.first(
-      "SELECT name, encryption_enabled, encryption_kdf_algorithm, encryption_kdf_iterations, encryption_kdf_salt FROM companies WHERE lower(name) = lower(?)",
-      [companyName]
-    ) as
-      | {
-          name: string;
-          encryption_enabled: number;
-          encryption_kdf_algorithm: "pbkdf2-sha256" | null;
-          encryption_kdf_iterations: number | null;
-          encryption_kdf_salt: string | null;
-        }
-      | undefined;
-
-    if (!row) {
-      return null;
-    }
-
-    return {
-      companyName: row.name,
-      encryptionEnabled: Boolean(row.encryption_enabled),
-      kdfAlgorithm: row.encryption_kdf_algorithm,
-      kdfIterations: row.encryption_kdf_iterations,
-      kdfSalt: row.encryption_kdf_salt
-    };
   },
 
   async getTabletCodeStatus(db: AppDatabase, companyId: string) {

@@ -12,7 +12,6 @@ const companyLoginSchema = z.object({
   companyName: z.string().min(1),
   username: z.string().min(1),
   password: z.string().min(1),
-  encryptionKeyProof: z.string().optional()
 });
 
 const developerLoginSchema = z.object({
@@ -35,27 +34,7 @@ const companyRegistrationSchema = z
     adminPassword: z.string().min(6),
     adminFullName: z.string().optional(),
     invitationCode: z.string().min(4),
-    encryptionEnabled: z.boolean(),
-    encryptionKdfAlgorithm: z.enum(["pbkdf2-sha256"]).optional(),
-    encryptionKdfIterations: z.number().int().positive().optional(),
-    encryptionKdfSalt: z.string().optional(),
-    encryptionKeyVerifier: z.string().optional()
-  })
-  .superRefine((value, context) => {
-    if (!value.encryptionEnabled) {
-      return;
-    }
-
-    if (!value.encryptionKdfSalt) {
-      context.addIssue({ code: "custom", message: "Secure mode requires a KDF salt", path: ["encryptionKdfSalt"] });
-    }
-    if (!value.encryptionKdfIterations) {
-      context.addIssue({ code: "custom", message: "Secure mode requires KDF iterations", path: ["encryptionKdfIterations"] });
-    }
-    if (!value.encryptionKeyVerifier) {
-      context.addIssue({ code: "custom", message: "Secure mode requires an encryption verifier", path: ["encryptionKeyVerifier"] });
-    }
-});
+  });
 
 export const authRoutes = new Hono<AppRouteConfig>();
 
@@ -108,15 +87,6 @@ authRoutes.post("/tablet/login", async (c) => {
   }
   const companyDb = await createCompanyDatabase(c.get("config"), company.id);
   return c.json({ session: await authService.loginTabletUser(systemDb, companyDb, c.get("config"), body) });
-});
-
-authRoutes.get("/company-security", async (c) => {
-  const companyName = c.req.query("companyName");
-  if (!companyName) {
-    return c.json({ error: "Company name is required" }, 400);
-  }
-
-  return c.json(await authService.getCompanySecurity(c.get("systemDb"), companyName));
 });
 
 authRoutes.get("/me", authMiddleware, companyDbMiddleware, async (c) => {

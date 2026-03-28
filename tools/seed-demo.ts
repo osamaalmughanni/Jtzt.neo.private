@@ -587,11 +587,6 @@ function buildSnapshot(
   return {
     company: {
       name: companyName,
-      encryptionEnabled: false,
-      encryptionKdfAlgorithm: null,
-      encryptionKdfIterations: null,
-      encryptionKdfSalt: null,
-      encryptionKeyVerifier: null,
       tabletCodeValue: null,
       tabletCodeHash: null,
       tabletCodeUpdatedAt: null,
@@ -723,59 +718,6 @@ FROM monthly
 GROUP BY worker, cost_center
 ORDER BY total_worked_hours DESC, worker ASC`.trim();
 
-  const projectBudgetBurn = `
-WITH latest_contracts AS (
-  SELECT uc.user_id, uc.payment_per_hour
-  FROM user_contracts uc
-  INNER JOIN (
-    SELECT user_id, MAX(start_date) AS start_date
-    FROM user_contracts
-    GROUP BY user_id
-  ) latest ON latest.user_id = uc.user_id AND latest.start_date = uc.start_date
-),
-project_costs AS (
-  SELECT te.project_id,
-         SUM(CASE
-           WHEN te.entry_type = 'work' AND te.start_time IS NOT NULL AND te.end_time IS NOT NULL
-           THEN ((julianday(te.end_time) - julianday(te.start_time)) * 24.0) * COALESCE(lc.payment_per_hour, 0)
-           ELSE 0
-         END) AS cost
-  FROM time_entries te
-  LEFT JOIN latest_contracts lc ON lc.user_id = te.user_id
-  WHERE te.project_id IS NOT NULL
-    AND te.entry_date >= date('${yearStart}')
-    AND te.entry_date <= date('${yearEnd}')
-  GROUP BY te.project_id
-),
-project_clients AS (
-  SELECT entity_id AS project_id, MAX(value_text) AS client
-  FROM custom_field_values
-  WHERE entity_type = 'project' AND field_id = 'project_client'
-  GROUP BY entity_id
-),
-project_assigned_users AS (
-  SELECT project_id, COUNT(*) AS user_count FROM project_users GROUP BY project_id
-),
-project_assigned_tasks AS (
-  SELECT project_id, COUNT(*) AS task_count FROM project_tasks GROUP BY project_id
-)
-SELECT
-  p.name AS project,
-  COALESCE(pc.client, '') AS client,
-  ROUND(p.budget, 2) AS budget,
-  ROUND(COALESCE(costs.cost, 0), 2) AS labor_cost,
-  ROUND(ROUND(COALESCE(costs.cost, 0), 2) - ROUND(p.budget, 2), 2) AS variance,
-  CASE WHEN p.allow_all_users = 1 THEN 'all' ELSE 'selected' END AS user_scope,
-  CASE WHEN p.allow_all_tasks = 1 THEN 'all' ELSE 'selected' END AS task_scope,
-  COALESCE(pau.user_count, 0) AS assigned_users,
-  COALESCE(pat.task_count, 0) AS assigned_tasks
-FROM projects p
-LEFT JOIN project_costs costs ON costs.project_id = p.id
-LEFT JOIN project_clients pc ON pc.project_id = p.id
-LEFT JOIN project_assigned_users pau ON pau.project_id = p.id
-LEFT JOIN project_assigned_tasks pat ON pat.project_id = p.id
-ORDER BY variance DESC, p.name ASC`.trim();
-
   const costCenterLoad = `
 WITH user_cost_center AS (
   SELECT entity_id AS user_id, MAX(value_text) AS cost_center
@@ -868,7 +810,6 @@ ORDER BY hours DESC, worker ASC`.trim();
 
   return [
     { name: "Demo: Worker workload", description: "Wide worker workload output for the seeded Austrian year.", sqlText: workerLoad },
-    { name: "Demo: Project budget burn", description: "Compare project budgets against labor cost, assignments, and client metadata.", sqlText: projectBudgetBurn },
     { name: "Demo: Cost center load", description: "Wide monthly workload by user cost center.", sqlText: costCenterLoad },
     { name: "Demo: Task category workload", description: "Group work entries by task category and total hours.", sqlText: taskCategoryWorkload },
     { name: "Demo: Shift type workload", description: "Summarize work entries by custom shift type from time entries.", sqlText: shiftTypeWorkload },

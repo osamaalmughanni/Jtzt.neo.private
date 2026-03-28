@@ -45,12 +45,17 @@ import { getEntryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
 import { formatCompanyDate, formatCompanyDateRange } from "@/lib/locale-format";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_COMPANY_DATE_TIME_FORMAT,
+  DEFAULT_COMPANY_LOCALE,
+  DEFAULT_COMPANY_TIME_ZONE,
+} from "@shared/utils/company-locale";
 
 const defaultSettings: CompanySettings = {
   currency: "EUR",
-  locale: "en-GB",
-  timeZone: "Europe/Vienna",
-  dateTimeFormat: "g",
+  locale: DEFAULT_COMPANY_LOCALE,
+  timeZone: DEFAULT_COMPANY_TIME_ZONE,
+  dateTimeFormat: DEFAULT_COMPANY_DATE_TIME_FORMAT,
   firstDayOfWeek: 1,
   editDaysLimit: 30,
   insertDaysLimit: 30,
@@ -283,6 +288,7 @@ export function DashboardPage() {
   const [calendarDayStates, setCalendarDayStates] = useState<Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">>({});
 
   const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
+  const isWorkspaceMode = companySession?.actorType === "workspace";
   const selectedDate = useMemo(
     () => parseDayParam(searchParams.get("day")),
     [searchParams],
@@ -292,12 +298,11 @@ export function DashboardPage() {
       return companyIdentity?.user.id ?? null;
     }
     const rawValue = searchParams.get("user");
-    if (!rawValue) return companyIdentity?.user.id ?? null;
+    if (!rawValue) return isWorkspaceMode ? null : companyIdentity?.user.id ?? null;
     const parsed = Number(rawValue);
-    return Number.isNaN(parsed) ? (companyIdentity?.user.id ?? null) : parsed;
-  }, [companyIdentity?.user.id, isTabletMode, searchParams]);
+    return Number.isNaN(parsed) ? (isWorkspaceMode ? null : companyIdentity?.user.id ?? null) : parsed;
+  }, [companyIdentity?.user.id, isTabletMode, isWorkspaceMode, searchParams]);
 
-  const effectiveUserId = selectedUserId ?? companyIdentity?.user.id ?? null;
   const availableUsers = useMemo<CompanyUserListItem[]>(
     () =>
       users.length > 0
@@ -314,6 +319,7 @@ export function DashboardPage() {
           : [],
     [companyIdentity, users],
   );
+  const effectiveUserId = selectedUserId ?? (isWorkspaceMode ? availableUsers[0]?.id ?? null : companyIdentity?.user.id ?? null);
 
   const dayMinutes = useMemo(
     () => entries.reduce((sum, entry) => sum + entry.durationMinutes, 0),
@@ -490,10 +496,10 @@ export function DashboardPage() {
     entries: TimeEntryView[];
     summary: DashboardSummary;
   }>({
-    enabled: Boolean(companySession) && Boolean(effectiveUserId),
-    deps: [canSwitchUser, companySession?.token, effectiveUserId, selectedDayKey, t],
+    enabled: Boolean(companySession),
+    deps: [canSwitchUser, companySession?.token, selectedUserId, selectedDayKey, t],
     load: async () => {
-      if (!companySession || !effectiveUserId) {
+      if (!companySession) {
         return {
           settings: defaultSettings,
           users: [],
@@ -503,15 +509,20 @@ export function DashboardPage() {
       }
 
       try {
-        const [settingsResponse, usersResponse, entriesResponse, dashboardResponse] = await Promise.all([
-          api.getSettings(companySession.token),
-          canSwitchUser ? api.listActiveUsers(companySession.token) : Promise.resolve({ users: [] }),
+        const settingsResponse = await api.getSettings(companySession.token);
+        const usersResponse = canSwitchUser ? await api.listActiveUsers(companySession.token) : { users: [] };
+        const resolvedUserId =
+          canSwitchUser
+            ? selectedUserId ?? usersResponse.users[0]?.id ?? null
+            : companyIdentity?.user.id ?? null;
+
+        const [entriesResponse, dashboardResponse] = await Promise.all([
           api.listTimeEntries(companySession.token, {
             from: formatLocalDay(startOfDay(selectedDate)),
             to: formatLocalDay(endOfDay(selectedDate)),
-            targetUserId: canSwitchUser ? effectiveUserId : undefined,
+            targetUserId: resolvedUserId ?? undefined,
           }),
-          api.getDashboard(companySession.token, canSwitchUser ? effectiveUserId : undefined, selectedDayKey),
+          api.getDashboard(companySession.token, resolvedUserId ?? undefined, selectedDayKey),
         ]);
 
         return {

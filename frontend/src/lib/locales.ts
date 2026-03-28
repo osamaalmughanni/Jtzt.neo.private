@@ -17,6 +17,8 @@ export const resources = {
         manage: "Manage",
         create: "Create",
         delete: "Delete",
+        search: "Search...",
+        noResults: "No results found.",
         resetDb: "Reset DB",
         company: "Company",
         username: "Username",
@@ -171,18 +173,6 @@ export const resources = {
             name: "Austrian monthly overtime by worker",
             description: "Show monthly overtime, contract hours, and payroll impact per worker using Austrian 25%, 50%, and 100% surcharge logic."
           },
-          projectBudgetBurn: {
-            name: "Project budget burn",
-            description: "Compare project budget against labor cost calculated from the latest contract rate for each user."
-          },
-          taskDurationRank: {
-            name: "Task duration ranking",
-            description: "Rank tasks by total worked minutes in the selected company database."
-          },
-          userWorkloadLast30Days: {
-            name: "User workload last 30 days",
-            description: "Show total worked hours per active user for the last 30 days."
-          },
           yearlyVacationBalanceByWorker: {
             name: "Yearly vacation balance by worker",
             description: "Show the current year vacation entitlement, vacation taken, and remaining balance per worker in Austrian-style format."
@@ -248,43 +238,26 @@ export const resources = {
         adminAccessTokenPlaceholder: "Enter admin token",
         tabletCodeLabel: "Tablet code",
         tabletCodePlaceholder: "Enter tablet code",
-        encryptionKeyLabel: "Encryption key",
-        confirmEncryptionKeyLabel: "Confirm encryption key",
-        secureModeOn: "Secure mode on",
-        secureModeOff: "Secure mode off",
-        secureModeOnDescription:
-          "This company will require an encryption key at sign in. Jtzt never stores it. Lose it, and access is gone. This browser will then download one recovery JSON file with the admin credentials, key, and encrypted backup.",
-        secureModeOffDescription:
-          "This company will use standard mode. Sign in will require only the company name, username, and password.",
-        secureModePlaceholder: "Choose a strong passphrase",
-        secureModeConfirmPlaceholder: "Repeat the passphrase",
-        secureModeLoginPlaceholder: "Secure mode passphrase",
-        recoveryPackageSkippedTitle: "Recovery package skipped",
-        recoveryPackageSkippedDescription: "The company was created, but this browser could not generate the local recovery file.",
         signInFailed: "Sign in failed",
         signInAsAdmin: "Sign in as admin",
         tabletChecking: "Checking access...",
         tabletAccessFailed: "Tablet access failed",
-        tabletEncryptionRequiredDescription: "This company uses Secure Mode. Enter the encryption key before opening tablet PIN access.",
-        tabletSecureCompanyDescription: "This company uses Secure Mode. The encryption key is required before the shared tablet PIN screen can open.",
         tabletStandardCompanyDescription: "This company uses standard mode. Continue to the shared tablet PIN screen.",
         companyRegistrationFailed: "Company registration failed",
         createCompany: "Create company",
         creatingCompany: "Creating company...",
-        encryptionRequiredTitle: "Encryption key required",
-        encryptionRequiredDescription: "This company uses Secure Mode. Enter the encryption key to continue."
       },
       learn: {
         title: "Learn more",
         overviewTitle: "Jtzt overview",
         overviewBody:
-          "Jtzt is a compact company workspace built around tenant isolation, efficient local performance, and an optional secure access model.",
+          "Jtzt is a compact company workspace built around tenant isolation, efficient local performance, and direct access patterns.",
         fact1: "Jtzt keeps each company in its own SQLite database for clear isolation and easier operations.",
-        fact2: "Secure mode adds a client-held encryption key workflow for companies that want stricter access control.",
+        fact2: "System and company access stay separated so administration remains clear and manageable.",
         fact3: "The product is built for efficient internal usage, with low-overhead data access and compact interface patterns.",
         detailsTitle: "Company and platform details",
         detailsBody1:
-          "Each company can choose between standard access and a secure mode with a client-held encryption key workflow.",
+          "Each company uses standard workspace access with a single sign-in flow and clear tenant isolation.",
         detailsBody2:
           "The platform stays efficient by keeping the stack small, the interfaces compact, and the data paths direct.",
         companyTitle: "Company",
@@ -308,8 +281,6 @@ export const resources = {
         continueToTablet: "Continue",
         tabletChecking: "Checking access...",
         tabletAccessFailed: "Tablet access failed",
-        tabletEncryptionRequiredDescription: "This company uses Secure Mode. Enter the encryption key before opening tablet access.",
-        tabletSecureCompanyDescription: "This company uses Secure Mode. Enter the encryption key before moving to the shared tablet PIN.",
         tabletStandardCompanyDescription: "This company uses standard mode. Continue to the shared tablet PIN.",
         companyNamePlaceholder: "MusterGmbH",
         usernamePlaceholder: "anna.hofer",
@@ -324,7 +295,6 @@ export const resources = {
         noInvitations: "No invitation codes created yet.",
         activeInvitationCodes: "{{value}} active codes ready for registration.",
         createdAt: "Created {{value}}",
-        secureMode: "Secure mode",
         standardMode: "Standard mode",
         copyInvitationCode: "Copy code",
         activeInvitation: "Active",
@@ -463,7 +433,15 @@ export const resources = {
         unlocking: "Unlocking...",
         invalidPin: "PIN not recognized",
         inactivePin: "PIN inactive",
-        accessFailed: "Access failed"
+        accessFailed: "Access failed",
+        signOut: "Sign out",
+        captchaTitle: "Verify to sign out",
+        captchaDescription: "Type the characters shown below to leave tablet mode.",
+        captchaLabel: "Human verification",
+        captchaHint: "Case sensitive. Refresh if the text is hard to read.",
+        captchaPlaceholder: "Enter characters",
+        captchaRefresh: "Refresh",
+        captchaMismatch: "Characters do not match"
       },
       calendar: {
         prev: "Prev",
@@ -502,6 +480,8 @@ export const resources = {
         loading: "Loading entry...",
         deleteRecord: "Delete record",
         deleteDescription: "This record will be removed.",
+        thisYear: "This year",
+        days: "days",
         thisRangeStaysValid:
           "This range stays valid. Effective leave days: {{effective}}. Excluded: {{holidays}} public holiday{{holidaySuffix}} and {{weekends}} weekend day{{weekendSuffix}}.",
         employeesInsertLimit: "Employees can only add entries within the insert day limit.",
@@ -792,10 +772,20 @@ export const resources = {
         saveFailed: "Could not save settings",
         saved: "Settings saved",
         currency: "Currency",
+        localeGroupTitle: "Locale settings",
+        localeGroupDescription: "Set the defaults for language, date, time, and regional display.",
         locale: "Locale",
         timeZone: "Time zone",
         firstDayOfWeek: "First day of week",
         dateTimeFormat: "Date and time format",
+        dateTimeFormatHint: "Use a pattern like dd.MM.yyyy HH:mm. Invalid values fall back to the default format.",
+        rulesGroupTitle: "Rules and limits",
+        rulesGroupDescription: "Control how far users can edit or create records, and which record policies apply.",
+        timeGroupTitle: "Timing",
+        timeGroupDescription: "Control the tablet timeout and automatic break rules.",
+        overtimeGroupTitle: "Overtime",
+        overtimeGroupDescription: "Open the overtime configuration for policies, premiums, and payout rules.",
+        manageOvertime: "Manage overtime",
         editDaysLimit: "Edit days limit",
         insertDaysLimit: "Insert days limit",
         oneRecordPerDay: "One record per day",
@@ -903,6 +893,8 @@ export const resources = {
         manage: "Verwalten",
         create: "Erstellen",
         delete: "Löschen",
+        search: "Suchen...",
+        noResults: "Keine Ergebnisse gefunden.",
         resetDb: "DB zurücksetzen",
         company: "Firma",
         username: "Benutzername",
@@ -1053,18 +1045,6 @@ export const resources = {
             name: "Österreichische Monatsüberstunden je Mitarbeiter",
             description: "Monatliche Überstunden, Vertragsstunden und Gehaltsauswirkung je Mitarbeiter auf Basis der österreichischen 25%-, 50%- und 100%-Zuschlagslogik anzeigen."
           },
-          projectBudgetBurn: {
-            name: "Projektbudget-Verbrauch",
-            description: "Projektbudget mit den Personalkosten vergleichen, berechnet aus dem letzten Vertragsstundenlohn je Benutzer."
-          },
-          taskDurationRank: {
-            name: "Aufgabendauer-Rangliste",
-            description: "Aufgaben nach den gesamten gebuchten Minuten in der ausgewählten Firmendatenbank sortieren."
-          },
-          userWorkloadLast30Days: {
-            name: "Benutzerarbeitslast der letzten 30 Tage",
-            description: "Die gesamten Arbeitsstunden je aktivem Benutzer für die letzten 30 Tage anzeigen."
-          },
           yearlyVacationBalanceByWorker: {
             name: "Jährliche Urlaubsbilanz je Mitarbeiter",
             description: "Den Urlaubsanspruch, den bereits genommenen Urlaub und den Resturlaub je Mitarbeiter im aktuellen Jahr im österreichischen Format anzeigen."
@@ -1116,6 +1096,8 @@ export const resources = {
         companySignInDescription: "Auf einen bestehenden Firmenbereich zugreifen.",
         registerTitle: "Firma registrieren",
         registerDescription: "Einen neuen Firmenbereich mit erstem Admin erstellen.",
+        tabletTitle: "Tablet-Zugang",
+        tabletDescription: "Die geteilte Tablet-PIN für einen Firmenbereich öffnen.",
         adminTitle: "Admin-Anmeldung",
         adminDescription: "Systemzugang für die Plattformverwaltung.",
         tabletTab: "Tablet",
@@ -1130,26 +1112,11 @@ export const resources = {
         adminPasswordLabel: "Admin-Passwort",
         adminAccessTokenLabel: "Admin-Zugriffstoken",
         adminAccessTokenPlaceholder: "Admin-Token eingeben",
-        encryptionKeyLabel: "Verschlüsselungsschlüssel",
-        confirmEncryptionKeyLabel: "Verschlüsselungsschlüssel bestätigen",
-        secureModeOn: "Sicherer Modus an",
-        secureModeOff: "Sicherer Modus aus",
-        secureModeOnDescription:
-          "Für diese Firma ist bei der Anmeldung ein Verschlüsselungsschlüssel erforderlich. Jtzt speichert ihn nie. Geht er verloren, ist der Zugriff verloren. Danach lädt dieser Browser eine Recovery-JSON-Datei mit Admin-Zugangsdaten, Schlüssel und verschlüsseltem Backup herunter.",
-        secureModeOffDescription:
-          "Diese Firma verwendet den Standardmodus. Für die Anmeldung sind nur Firmenname, Benutzername und Passwort nötig.",
-        secureModePlaceholder: "Starke Passphrase wählen",
-        secureModeConfirmPlaceholder: "Passphrase wiederholen",
-        secureModeLoginPlaceholder: "Passphrase für den sicheren Modus",
-        recoveryPackageSkippedTitle: "Recovery-Paket übersprungen",
-        recoveryPackageSkippedDescription: "Die Firma wurde erstellt, aber dieser Browser konnte die lokale Recovery-Datei nicht erzeugen.",
         signInFailed: "Anmeldung fehlgeschlagen",
         signInAsAdmin: "Als Admin anmelden",
         companyRegistrationFailed: "Firmenregistrierung fehlgeschlagen",
         createCompany: "Firma erstellen",
         creatingCompany: "Firma wird erstellt...",
-        encryptionRequiredTitle: "Verschlüsselungsschlüssel erforderlich",
-        encryptionRequiredDescription: "Diese Firma nutzt den sicheren Modus. Geben Sie den Schlüssel ein, um fortzufahren."
       },
       learn: {
         title: "Mehr erfahren",
@@ -1185,8 +1152,6 @@ export const resources = {
         continueToTablet: "Weiter",
         tabletChecking: "Zugriff wird geprüft...",
         tabletAccessFailed: "Tablet-Zugriff fehlgeschlagen",
-        tabletEncryptionRequiredDescription: "Diese Firma verwendet den sicheren Modus. Gib den Verschlüsselungsschlüssel ein, bevor du den Tablet-Zugang öffnest.",
-        tabletSecureCompanyDescription: "Diese Firma verwendet den sicheren Modus. Gib den Verschlüsselungsschlüssel ein, bevor der geteilte Tablet-PIN geöffnet wird.",
         tabletStandardCompanyDescription: "Diese Firma verwendet den Standardmodus. Fahre mit dem geteilten Tablet-PIN fort.",
         companyNamePlaceholder: "MusterGmbH",
         usernamePlaceholder: "anna.hofer",
@@ -1201,7 +1166,6 @@ export const resources = {
         noInvitations: "Noch keine Einladungscodes erstellt.",
         activeInvitationCodes: "{{value}} aktive Codes bereit zur Registrierung.",
         createdAt: "Erstellt am {{value}}",
-        secureMode: "Sicherer Modus",
         standardMode: "Standardmodus",
         copyInvitationCode: "Code kopieren",
         activeInvitation: "Aktiv",
@@ -1342,7 +1306,15 @@ export const resources = {
         unlocking: "Wird entsperrt...",
         invalidPin: "PIN nicht erkannt",
         inactivePin: "PIN inaktiv",
-        accessFailed: "Zugriff fehlgeschlagen"
+        accessFailed: "Zugriff fehlgeschlagen",
+        signOut: "Abmelden",
+        captchaTitle: "Zum Abmelden verifizieren",
+        captchaDescription: "Gib die unten angezeigten Zeichen ein, um den Tablet-Modus zu verlassen.",
+        captchaLabel: "Menschliche Prüfung",
+        captchaHint: "Groß- und Kleinschreibung beachten. Bei schwer lesbarem Text neu laden.",
+        captchaPlaceholder: "Zeichen eingeben",
+        captchaRefresh: "Neu laden",
+        captchaMismatch: "Zeichen stimmen nicht überein"
       },
       calendar: {
         prev: "Zurück",
@@ -1381,6 +1353,8 @@ export const resources = {
         loading: "Eintrag wird geladen...",
         deleteRecord: "Eintrag löschen",
         deleteDescription: "Dieser Eintrag wird entfernt.",
+        thisYear: "Dieses Jahr",
+        days: "Tage",
         thisRangeStaysValid:
           "Dieser Zeitraum bleibt gültig. Effektive Abwesenheitstage: {{effective}}. Ausgenommen: {{holidays}} Feiertag{{holidaySuffix}} und {{weekends}} Wochenendtag{{weekendSuffix}}.",
         employeesInsertLimit: "Mitarbeiter können nur innerhalb des Einfüge-Limits Einträge anlegen.",
@@ -1671,10 +1645,20 @@ export const resources = {
         saveFailed: "Einstellungen konnten nicht gespeichert werden",
         saved: "Einstellungen gespeichert",
         currency: "Währung",
+        localeGroupTitle: "Regionseinstellungen",
+        localeGroupDescription: "Hier legst du die Vorgaben für Sprache, Datum, Uhrzeit und Anzeige fest.",
         locale: "Gebietsschema",
         timeZone: "Zeitzone",
         firstDayOfWeek: "Erster Wochentag",
         dateTimeFormat: "Datums- und Zeitformat",
+        dateTimeFormatHint: "Verwende ein Muster wie dd.MM.yyyy HH:mm. Ungültige Werte fallen auf das Standardformat zurück.",
+        rulesGroupTitle: "Regeln und Limits",
+        rulesGroupDescription: "Hier steuerst du, wie weit Benutzer Einträge bearbeiten oder erfassen können und welche Regeln gelten.",
+        timeGroupTitle: "Zeitverhalten",
+        timeGroupDescription: "Hier steuerst du das Tablet-Timeout und die automatische Pause.",
+        overtimeGroupTitle: "Überstunden",
+        overtimeGroupDescription: "Hier öffnest du die Überstundenkonfiguration für Regeln, Zuschläge und Auszahlungslogik.",
+        manageOvertime: "Überstunden verwalten",
         editDaysLimit: "Bearbeitungslimit in Tagen",
         insertDaysLimit: "Einfügelimit in Tagen",
         oneRecordPerDay: "Ein Eintrag pro Tag",

@@ -204,7 +204,7 @@ export const DateInput = forwardRef<
         }}
         className={cn(
           inputBaseClassName,
-          "min-w-0 flex-1 text-[clamp(0.9rem,1.4vw,1rem)]",
+          "min-w-0 flex-1 text-sm",
         )}
       />
       {showHelperButton ? (

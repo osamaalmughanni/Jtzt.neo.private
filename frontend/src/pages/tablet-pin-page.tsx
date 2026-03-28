@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Captcha } from "@/components/ui/captcha";
 import { TabletPinKey } from "@/components/ui/tablet-pin-key";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -17,6 +17,19 @@ const keypadRows = [
   ["7", "8", "9"],
   ["clear", "0", "back"]
 ] as const;
+const CAPTCHA_CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function createCaptchaChallenge(length = 6) {
+  const bytes = new Uint32Array(length);
+  crypto.getRandomValues(bytes);
+
+  let challenge = "";
+  for (let index = 0; index < length; index += 1) {
+    challenge += CAPTCHA_CHARSET[bytes[index] % CAPTCHA_CHARSET.length];
+  }
+
+  return challenge;
+}
 
 function getErrorMessage(error: unknown, t: (key: string) => string) {
   if (!(error instanceof Error)) return t("tabletPin.accessFailed");
@@ -34,8 +47,9 @@ export function TabletPinPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [errorState, setErrorState] = useState(false);
   const [signOutOpen, setSignOutOpen] = useState(false);
-  const [signOutCode, setSignOutCode] = useState("");
-  const [signOutError, setSignOutError] = useState("");
+  const [signOutCaptcha, setSignOutCaptcha] = useState("");
+  const [signOutCaptchaValue, setSignOutCaptchaValue] = useState("");
+  const [signOutCaptchaError, setSignOutCaptchaError] = useState("");
 
   useEffect(() => {
     if (companySession?.accessMode === "tablet") {
@@ -134,17 +148,24 @@ export function TabletPinPage() {
   }
 
   function handleSignOutConfirm() {
-    const normalizedValue = signOutCode.trim();
-    if (normalizedValue !== activeTabletAccess.code.trim()) {
-      setSignOutError("Tablet code does not match");
+    const normalizedValue = signOutCaptchaValue.trim().toUpperCase();
+    if (normalizedValue !== signOutCaptcha) {
+      setSignOutCaptchaError(t("tabletPin.captchaMismatch"));
       return;
     }
 
     clearTabletAccess();
-    setSignOutCode("");
-    setSignOutError("");
+    setSignOutCaptchaValue("");
+    setSignOutCaptchaError("");
     setSignOutOpen(false);
     navigate("/?mode=tablet", { replace: true });
+  }
+
+  function openSignOutDialog() {
+    setSignOutCaptcha(createCaptchaChallenge());
+    setSignOutCaptchaValue("");
+    setSignOutCaptchaError("");
+    setSignOutOpen(true);
   }
 
   return (
@@ -250,13 +271,9 @@ export function TabletPinPage() {
             variant="ghost"
             size="sm"
             className="h-7 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => {
-              setSignOutCode("");
-              setSignOutError("");
-              setSignOutOpen(true);
-            }}
+            onClick={openSignOutDialog}
           >
-            Sign out
+            {t("tabletPin.signOut")}
           </Button>
         </div>
         </div>
@@ -265,30 +282,31 @@ export function TabletPinPage() {
       <Dialog open={signOutOpen} onOpenChange={setSignOutOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Sign out of tablet mode</DialogTitle>
-            <DialogDescription>
-              Enter the tablet code to confirm sign out.
-            </DialogDescription>
+            <DialogTitle>{t("tabletPin.captchaTitle")}</DialogTitle>
+            <DialogDescription>{t("tabletPin.captchaDescription")}</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <Input
-              autoFocus
-              value={signOutCode}
-              onChange={(event) => {
-                setSignOutCode(event.target.value);
-                if (signOutError) {
-                  setSignOutError("");
-                }
+          <div className="flex flex-col gap-4">
+            <Captcha
+              challenge={signOutCaptcha}
+              value={signOutCaptchaValue}
+              onChange={setSignOutCaptchaValue}
+              onRefresh={() => {
+                setSignOutCaptcha(createCaptchaChallenge());
+                setSignOutCaptchaValue("");
+                setSignOutCaptchaError("");
               }}
-              placeholder="Tablet code"
+              label={t("tabletPin.captchaLabel")}
+              description={t("tabletPin.captchaHint")}
+              placeholder={t("tabletPin.captchaPlaceholder")}
+              refreshLabel={t("tabletPin.captchaRefresh")}
+              error={signOutCaptchaError}
             />
-            {signOutError ? <p className="text-sm text-destructive">{signOutError}</p> : null}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={() => setSignOutOpen(false)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button type="button" onClick={handleSignOutConfirm}>
-                Sign out
+                {t("tabletPin.signOut")}
               </Button>
             </div>
           </div>

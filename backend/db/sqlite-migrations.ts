@@ -5,14 +5,20 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { DatabaseKind } from "./app-database";
 
-const MIGRATION_TABLE = "jtzt_migrations";
+function getMigrationFolder(kind: DatabaseKind) {
+  return kind === "system" ? "system-migrations" : "company-migrations";
+}
+
+function getMigrationTable(kind: DatabaseKind) {
+  return kind === "system" ? "jtzt_system_migrations" : "jtzt_company_migrations";
+}
 
 type SqliteContext = Database.Database;
 
 class SqliteMigrationStorage implements UmzugStorage<SqliteContext> {
-  constructor(private readonly db: SqliteContext) {
+  constructor(private readonly db: SqliteContext, private readonly migrationTable: string) {
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS ${MIGRATION_TABLE} (
+      CREATE TABLE IF NOT EXISTS ${this.migrationTable} (
         name TEXT PRIMARY KEY,
         executed_at TEXT NOT NULL
       )
@@ -20,21 +26,21 @@ class SqliteMigrationStorage implements UmzugStorage<SqliteContext> {
   }
 
   async logMigration({ name }: { name: string }) {
-    this.db.prepare(`INSERT OR REPLACE INTO ${MIGRATION_TABLE} (name, executed_at) VALUES (?, ?)`).run(name, new Date().toISOString());
+    this.db.prepare(`INSERT OR REPLACE INTO ${this.migrationTable} (name, executed_at) VALUES (?, ?)`).run(name, new Date().toISOString());
   }
 
   async unlogMigration({ name }: { name: string }) {
-    this.db.prepare(`DELETE FROM ${MIGRATION_TABLE} WHERE name = ?`).run(name);
+    this.db.prepare(`DELETE FROM ${this.migrationTable} WHERE name = ?`).run(name);
   }
 
   async executed() {
-    const rows = this.db.prepare(`SELECT name FROM ${MIGRATION_TABLE} ORDER BY executed_at ASC, name ASC`).all() as Array<{ name: string }>;
+    const rows = this.db.prepare(`SELECT name FROM ${this.migrationTable} ORDER BY executed_at ASC, name ASC`).all() as Array<{ name: string }>;
     return rows.map((row) => row.name);
   }
 }
 
-async function loadFileBasedMigrations(db: SqliteContext) {
-  const migrationsDir = path.join(process.cwd(), "backend", "db", "migrations");
+async function loadFileBasedMigrations(db: SqliteContext, kind: DatabaseKind) {
+  const migrationsDir = path.join(process.cwd(), "backend", "db", getMigrationFolder(kind));
   if (!fs.existsSync(migrationsDir)) {
     return [] as Array<{
       name: string;
@@ -79,13 +85,9 @@ async function loadFileBasedMigrations(db: SqliteContext) {
 }
 
 export async function runSqliteMigrations(db: SqliteContext, kind: DatabaseKind) {
-  if (kind !== "company") {
-    return;
-  }
-
   const umzug = new Umzug({
-    migrations: await loadFileBasedMigrations(db),
-    storage: new SqliteMigrationStorage(db),
+    migrations: await loadFileBasedMigrations(db, kind),
+    storage: new SqliteMigrationStorage(db, getMigrationTable(kind)),
     context: db,
     logger: undefined,
   });

@@ -342,32 +342,15 @@ export const adminService = {
     if (existing) {
       throw new HTTPException(409, { message: "Company already exists" });
     }
-    if (input.encryptionEnabled && (!input.encryptionKdfSalt || !input.encryptionKdfIterations || !input.encryptionKeyVerifier)) {
-      throw new HTTPException(400, { message: "Secure mode metadata is incomplete" });
-    }
 
     const createdAt = new Date().toISOString();
     await systemDb.run(
       `INSERT INTO companies (
         id,
         name,
-        encryption_enabled,
-        encryption_kdf_algorithm,
-        encryption_kdf_iterations,
-        encryption_kdf_salt,
-        encryption_key_verifier,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        companyId,
-        input.name.trim(),
-        input.encryptionEnabled ? 1 : 0,
-        input.encryptionEnabled ? input.encryptionKdfAlgorithm ?? "pbkdf2-sha256" : null,
-        input.encryptionEnabled ? input.encryptionKdfIterations ?? null : null,
-        input.encryptionEnabled ? input.encryptionKdfSalt ?? null : null,
-        input.encryptionEnabled ? input.encryptionKeyVerifier ?? null : null,
-        createdAt
-      ]
+      ) VALUES (?, ?, ?)`,
+      [companyId, input.name.trim(), createdAt]
     );
 
     try {
@@ -399,13 +382,8 @@ export const adminService = {
       `INSERT INTO companies (
         id,
         name,
-        encryption_enabled,
-        encryption_kdf_algorithm,
-        encryption_kdf_iterations,
-        encryption_kdf_salt,
-        encryption_key_verifier,
         created_at
-      ) VALUES (?, ?, 0, NULL, NULL, NULL, NULL, ?)`,
+      ) VALUES (?, ?, ?)`,
       [companyId, input.name.trim(), createdAt]
     );
 
@@ -575,9 +553,6 @@ export const adminService = {
     if (!invitationCode) {
       throw new HTTPException(404, { message: "Invitation code not found" });
     }
-    if (invitationCode.used_at) {
-      throw new HTTPException(409, { message: "Used invitation codes cannot be deleted" });
-    }
 
     await systemDb.run("DELETE FROM invitation_codes WHERE id = ?", [input.invitationCodeId]);
   },
@@ -586,11 +561,6 @@ export const adminService = {
     const company = await systemDb.first(
       `SELECT
         name,
-        encryption_enabled,
-        encryption_kdf_algorithm,
-        encryption_kdf_iterations,
-        encryption_kdf_salt,
-        encryption_key_verifier,
         tablet_code_value,
         tablet_code_hash,
         tablet_code_updated_at,
@@ -601,11 +571,6 @@ export const adminService = {
     ) as
       | {
           name: string;
-          encryption_enabled: number;
-          encryption_kdf_algorithm: "pbkdf2-sha256" | null;
-          encryption_kdf_iterations: number | null;
-          encryption_kdf_salt: string | null;
-          encryption_key_verifier: string | null;
           tablet_code_value: string | null;
           tablet_code_hash: string | null;
           tablet_code_updated_at: string | null;
@@ -737,11 +702,6 @@ export const adminService = {
     return {
       company: {
         name: company.name,
-        encryptionEnabled: Boolean(company.encryption_enabled),
-        encryptionKdfAlgorithm: company.encryption_kdf_algorithm,
-        encryptionKdfIterations: company.encryption_kdf_iterations,
-        encryptionKdfSalt: company.encryption_kdf_salt,
-        encryptionKeyVerifier: company.encryption_key_verifier,
         tabletCodeValue: company.tablet_code_value,
         tabletCodeHash: company.tablet_code_hash,
         tabletCodeUpdatedAt: company.tablet_code_updated_at,

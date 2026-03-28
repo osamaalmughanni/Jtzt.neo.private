@@ -361,6 +361,10 @@ export function AdminCompaniesPage() {
     try {
       const response = await api.rotateDeveloperAccessToken(adminSession.token, { companyId });
       setWorkspaceKeyValue(response.token);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(response.token);
+        toast({ title: t("adminCompanies.workspaceKeyCopied") });
+      }
       toast({ title: t("adminCompanies.workspaceKeyRotated", { companyName }) });
       await reloadAdminData();
     } catch (error) {
@@ -420,7 +424,6 @@ export function AdminCompaniesPage() {
                     key={company.id}
                     title={company.name}
                     badges={[
-                      { label: company.encryptionEnabled ? t("adminCompanies.secureMode") : t("adminCompanies.standardMode") },
                       { label: t("adminCompanies.createdAt", { value: formatAdminDate(company.createdAt) }) },
                     ]}
                     manageLabel={t("common.manage")}
@@ -573,7 +576,6 @@ export function AdminCompaniesPage() {
                           <p className="text-xs text-muted-foreground">{t("adminCompanies.companySnapshotDescription")}</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline">{selectedCompany.encryptionEnabled ? t("adminCompanies.secureMode") : t("adminCompanies.standardMode")}</Badge>
                           <Badge variant="outline">{t("adminCompanies.createdAt", { value: formatAdminDate(selectedCompany.createdAt) })}</Badge>
                         </div>
                       </div>

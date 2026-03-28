@@ -8,6 +8,7 @@ import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { usePageResource } from "@/hooks/use-page-resource";
@@ -15,12 +16,18 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatCompanyDateTime } from "@/lib/locale-format";
 import { toast } from "@/lib/toast";
+import {
+  DEFAULT_COMPANY_DATE_TIME_FORMAT,
+  DEFAULT_COMPANY_LOCALE,
+  DEFAULT_COMPANY_TIME_ZONE,
+} from "@shared/utils/company-locale";
+import { buildCountryOptions, buildCurrencyOptions, buildLocaleOptions, buildTimeZoneOptions } from "@/lib/company-option-lists";
 
 const defaultSettings: CompanySettings = {
   currency: "EUR",
-  locale: "en-GB",
-  timeZone: "Europe/Vienna",
-  dateTimeFormat: "g",
+  locale: DEFAULT_COMPANY_LOCALE,
+  timeZone: DEFAULT_COMPANY_TIME_ZONE,
+  dateTimeFormat: DEFAULT_COMPANY_DATE_TIME_FORMAT,
   firstDayOfWeek: 1,
   editDaysLimit: 30,
   insertDaysLimit: 30,
@@ -46,7 +53,7 @@ const defaultTabletCode: TabletCodeStatus = {
 
 function getLocalePreview(locale: string) {
   const sampleDate = new Date("2026-03-15T13:21:00");
-  const normalizedLocale = locale.trim() || "en-GB";
+  const normalizedLocale = locale.trim() || DEFAULT_COMPANY_LOCALE;
 
   try {
     const decimalMark = new Intl.NumberFormat(normalizedLocale).formatToParts(3.14).find((part) => part.type === "decimal")?.value ?? ".";
@@ -67,12 +74,12 @@ function getDateTimeFormatPreview(locale: string, dateTimeFormat: string, timeZo
   try {
     return formatCompanyDateTime(sampleValue, locale, dateTimeFormat, timeZone);
   } catch {
-    return new Date(sampleValue).toLocaleString(locale || "en-GB", { timeZone });
+    return new Date(sampleValue).toLocaleString(locale || DEFAULT_COMPANY_LOCALE, { timeZone });
   }
 }
 
 export function SettingsMenuPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { companySession } = useAuth();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [tabletCodeStatus, setTabletCodeStatus] = useState<TabletCodeStatus>(defaultTabletCode);
@@ -107,6 +114,11 @@ export function SettingsMenuPage() {
   });
   const preview = useMemo(() => getLocalePreview(settings.locale), [settings.locale]);
   const dateTimePreview = useMemo(() => getDateTimeFormatPreview(settings.locale, settings.dateTimeFormat, settings.timeZone), [settings.dateTimeFormat, settings.locale, settings.timeZone]);
+  const uiLocale = i18n.resolvedLanguage ?? i18n.language ?? DEFAULT_COMPANY_LOCALE;
+  const localeOptions = useMemo(() => buildLocaleOptions(uiLocale), [uiLocale]);
+  const timeZoneOptions = useMemo(() => buildTimeZoneOptions(), []);
+  const countryOptions = useMemo(() => buildCountryOptions(uiLocale), [uiLocale]);
+  const currencyOptions = useMemo(() => buildCurrencyOptions(uiLocale), [uiLocale]);
   const firstDayOptions = [
     { value: "0", label: t("settings.sunday") },
     { value: "1", label: t("settings.monday") },
@@ -203,211 +215,259 @@ export function SettingsMenuPage() {
       >
       <FormPanel>
         <FormSection>
-          <FormFields>
-            <Field label={t("settings.currency")}>
-              <Input placeholder="EUR" maxLength={3} value={settings.currency} onChange={(event) => setSettings((current) => ({ ...current, currency: event.target.value.toUpperCase() }))} />
-            </Field>
-            <Field label={t("settings.locale")}>
-              <Input placeholder="en-GB" value={settings.locale} onChange={(event) => setSettings((current) => ({ ...current, locale: event.target.value }))} />
-            </Field>
-            <Field label={t("settings.timeZone")}>
-              <Input
-                placeholder="Europe/Vienna"
-                value={settings.timeZone}
-                onChange={(event) => setSettings((current) => ({ ...current, timeZone: event.target.value }))}
-              />
-            </Field>
-            <Field label={t("settings.firstDayOfWeek")}>
-              <FieldCombobox
-                label="first day"
-                value={String(settings.firstDayOfWeek)}
-                onValueChange={(value) => setSettings((current) => ({ ...current, firstDayOfWeek: Number(value) }))}
-                items={firstDayOptions}
-              />
-            </Field>
-            <Field label={t("settings.dateTimeFormat")}>
-              <Input
-                placeholder="g"
-                value={settings.dateTimeFormat}
-                onChange={(event) => setSettings((current) => ({ ...current, dateTimeFormat: event.target.value }))}
-              />
-            </Field>
-            <Field label={t("settings.editDaysLimit")}>
-              <Input placeholder="30" type="number" min="0" value={settings.editDaysLimit} onChange={(event) => setSettings((current) => ({ ...current, editDaysLimit: Number(event.target.value) }))} />
-            </Field>
-            <Field label={t("settings.insertDaysLimit")}>
-              <Input placeholder="30" type="number" min="0" value={settings.insertDaysLimit} onChange={(event) => setSettings((current) => ({ ...current, insertDaysLimit: Number(event.target.value) }))} />
-            </Field>
-            <Field label={t("settings.oneRecordPerDay")}>
-              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
-                <span className="text-sm text-foreground">
-                  {settings.allowOneRecordPerDay ? t("settings.enabled") : t("settings.disabled")}
-                </span>
-                <Switch
-                  checked={settings.allowOneRecordPerDay}
-                  onCheckedChange={(checked) =>
-                    setSettings((current) => ({
-                      ...current,
-                      allowOneRecordPerDay: checked,
-                    }))
-                  }
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <div className="flex flex-col gap-1.5 pb-4">
+              <p className="text-sm font-medium text-foreground">{t("settings.localeGroupTitle")}</p>
+              <p className="text-sm text-muted-foreground">{t("settings.localeGroupDescription")}</p>
+            </div>
+            <div className="flex flex-col gap-4">
+              <Field label={t("settings.currency")}>
+                <Combobox
+                  value={settings.currency}
+                  onValueChange={(value) => setSettings((current) => ({ ...current, currency: value.toUpperCase() }))}
+                  options={currencyOptions}
+                  placeholder="EUR"
+                  searchPlaceholder={t("common.search", { defaultValue: "Search..." })}
+                  emptyText={t("common.noResults", { defaultValue: "No results found." })}
+                  searchable
                 />
-              </div>
-            </Field>
-            <Field label={t("settings.allowIntersectingRecords")}>
-              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
-                <span className="text-sm text-foreground">
-                  {settings.allowIntersectingRecords ? t("settings.enabled") : t("settings.disabled")}
-                </span>
-                <Switch
-                  checked={settings.allowIntersectingRecords}
-                  onCheckedChange={(checked) =>
-                    setSettings((current) => ({
-                      ...current,
-                      allowIntersectingRecords: checked,
-                    }))
-                  }
+              </Field>
+              <Field label={t("settings.locale")}>
+                <Combobox
+                  value={settings.locale}
+                  onValueChange={(value) => setSettings((current) => ({ ...current, locale: value }))}
+                  options={localeOptions}
+                  placeholder={DEFAULT_COMPANY_LOCALE}
+                  searchPlaceholder={t("common.search", { defaultValue: "Search..." })}
+                  emptyText={t("common.noResults", { defaultValue: "No results found." })}
+                  searchable
                 />
-              </div>
-            </Field>
-            <Field label={t("settings.allowRecordsOnHolidays")}>
-              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
-                <span className="text-sm text-foreground">
-                  {settings.allowRecordsOnHolidays ? t("settings.enabled") : t("settings.disabled")}
-                </span>
-                <Switch
-                  checked={settings.allowRecordsOnHolidays}
-                  onCheckedChange={(checked) =>
-                    setSettings((current) => ({
-                      ...current,
-                      allowRecordsOnHolidays: checked,
-                    }))
-                  }
+              </Field>
+              <Field label={t("settings.timeZone")}>
+                <Combobox
+                  value={settings.timeZone}
+                  onValueChange={(value) => setSettings((current) => ({ ...current, timeZone: value }))}
+                  options={timeZoneOptions}
+                  placeholder={DEFAULT_COMPANY_TIME_ZONE}
+                  searchPlaceholder={t("common.search", { defaultValue: "Search..." })}
+                  emptyText={t("common.noResults", { defaultValue: "No results found." })}
+                  searchable
                 />
-              </div>
-            </Field>
-            <Field label={t("settings.allowFutureRecords")}>
-              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
-                <span className="text-sm text-foreground">
-                  {settings.allowFutureRecords ? t("settings.enabled") : t("settings.disabled")}
-                </span>
-                <Switch
-                  checked={settings.allowFutureRecords}
-                  onCheckedChange={(checked) =>
-                    setSettings((current) => ({
-                      ...current,
-                      allowFutureRecords: checked,
-                    }))
-                  }
+              </Field>
+              <Field label={t("settings.country")}>
+                <Combobox
+                  value={settings.country}
+                  onValueChange={(value) => setSettings((current) => ({ ...current, country: value.toUpperCase() }))}
+                  options={countryOptions}
+                  placeholder="AT"
+                  searchPlaceholder={t("common.search", { defaultValue: "Search..." })}
+                  emptyText={t("common.noResults", { defaultValue: "No results found." })}
+                  searchable
                 />
-              </div>
-            </Field>
-            <Field label={t("settings.country")}>
-              <Input placeholder="AT" maxLength={2} value={settings.country} onChange={(event) => setSettings((current) => ({ ...current, country: event.target.value.toUpperCase() }))} />
-            </Field>
-            <Field label={t("settings.tabletIdleTimeoutSeconds")}>
-              <Input
-                placeholder="10"
-                type="number"
-                min="0"
-                value={settings.tabletIdleTimeoutSeconds}
-                onChange={(event) =>
-                  setSettings((current) => ({
-                    ...current,
-                    tabletIdleTimeoutSeconds: Math.max(0, Number(event.target.value || 0)),
-                  }))
-                }
-              />
-            </Field>
-            <Field label={t("settings.autoBreakAfterHours")}>
-              <Input
-                placeholder="5"
-                type="number"
-                min="0"
-                step="0.25"
-                value={settings.autoBreakAfterMinutes / 60}
-                onChange={(event) =>
-                  setSettings((current) => ({
-                    ...current,
-                    autoBreakAfterMinutes: Math.max(0, Math.round(Number(event.target.value || 0) * 60)),
-                  }))
-                }
-              />
-            </Field>
-            <Field label={t("settings.autoBreakDurationMinutes")}>
-              <Input
-                placeholder="30"
-                type="number"
-                min="0"
-                value={settings.autoBreakDurationMinutes}
-                onChange={(event) =>
-                  setSettings((current) => ({
-                    ...current,
-                    autoBreakDurationMinutes: Math.max(0, Number(event.target.value || 0)),
-                  }))
-                }
-              />
-            </Field>
-            <Field label={t("settings.projectsEnabled")}>
-              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
-                <span className="text-sm text-foreground">
-                  {settings.projectsEnabled ? t("settings.enabled") : t("settings.disabled")}
-                </span>
-                <Switch
-                  checked={settings.projectsEnabled}
-                  onCheckedChange={(checked) =>
-                    setSettings((current) => ({
-                      ...current,
-                      projectsEnabled: checked,
-                      tasksEnabled: checked ? current.tasksEnabled : false,
-                    }))
-                  }
+              </Field>
+              <Field label={t("settings.firstDayOfWeek")}>
+                <FieldCombobox
+                  label={t("settings.firstDayOfWeek")}
+                  value={String(settings.firstDayOfWeek)}
+                  onValueChange={(value) => setSettings((current) => ({ ...current, firstDayOfWeek: Number(value) }))}
+                  items={firstDayOptions}
                 />
+              </Field>
+              <Field label={t("settings.dateTimeFormat")}>
+                <div className="flex flex-col gap-1.5">
+                  <Input
+                    placeholder={DEFAULT_COMPANY_DATE_TIME_FORMAT}
+                    value={settings.dateTimeFormat}
+                    onChange={(event) => setSettings((current) => ({ ...current, dateTimeFormat: event.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">{t("settings.dateTimeFormatHint")}</p>
+                </div>
+              </Field>
+            </div>
+            <div className="mt-4 rounded-2xl border border-border bg-muted/20 p-4 text-sm">
+              <div className="grid gap-x-4 gap-y-2 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]">
+                <span className="text-muted-foreground">{t("settings.language")}</span>
+                <span>{preview.language}</span>
+                <span className="text-muted-foreground">{t("settings.decimalMark")}</span>
+                <span>{preview.decimalMark}</span>
+                <span className="text-muted-foreground">{t("settings.dateFormat")}</span>
+                <span>{preview.dateFormat}</span>
+                <span className="text-muted-foreground">{t("settings.timeFormat")}</span>
+                <span>{preview.timeFormat}</span>
+                <span className="text-muted-foreground">{t("settings.dateTimePreview")}</span>
+                <span>{dateTimePreview}</span>
               </div>
-            </Field>
-            <Field label={t("settings.tasksEnabled")}>
-              <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
-                <span className="text-sm text-foreground">
-                  {settings.tasksEnabled ? t("settings.enabled") : t("settings.disabled")}
-                </span>
-                <Switch
-                  checked={settings.tasksEnabled}
-                  disabled={!settings.projectsEnabled}
-                  onCheckedChange={(checked) =>
-                    setSettings((current) => ({
-                      ...current,
-                      projectsEnabled: checked ? true : current.projectsEnabled,
-                      tasksEnabled: checked,
-                    }))
-                  }
-                />
-              </div>
-            </Field>
-          </FormFields>
+            </div>
+          </div>
         </FormSection>
 
         <FormSection>
-          <div className="rounded-2xl border border-border p-4 text-sm">
-            <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">{t("settings.language")}</span>
-              <span>{preview.language}</span>
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <div className="flex flex-col gap-1.5 pb-4">
+              <p className="text-sm font-medium text-foreground">{t("settings.rulesGroupTitle")}</p>
+              <p className="text-sm text-muted-foreground">{t("settings.rulesGroupDescription")}</p>
             </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">{t("settings.decimalMark")}</span>
-              <span>{preview.decimalMark}</span>
+            <FormFields>
+              <Field label={t("settings.editDaysLimit")}>
+                <Input placeholder="30" type="number" min="0" value={settings.editDaysLimit} onChange={(event) => setSettings((current) => ({ ...current, editDaysLimit: Number(event.target.value) }))} />
+              </Field>
+              <Field label={t("settings.insertDaysLimit")}>
+                <Input placeholder="30" type="number" min="0" value={settings.insertDaysLimit} onChange={(event) => setSettings((current) => ({ ...current, insertDaysLimit: Number(event.target.value) }))} />
+              </Field>
+              <Field label={t("settings.oneRecordPerDay")}>
+                <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                  <span className="text-sm text-foreground">
+                    {settings.allowOneRecordPerDay ? t("settings.enabled") : t("settings.disabled")}
+                  </span>
+                  <Switch
+                    checked={settings.allowOneRecordPerDay}
+                    onCheckedChange={(checked) =>
+                      setSettings((current) => ({
+                        ...current,
+                        allowOneRecordPerDay: checked,
+                      }))
+                    }
+                  />
+                </div>
+              </Field>
+              <Field label={t("settings.allowIntersectingRecords")}>
+                <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                  <span className="text-sm text-foreground">
+                    {settings.allowIntersectingRecords ? t("settings.enabled") : t("settings.disabled")}
+                  </span>
+                  <Switch
+                    checked={settings.allowIntersectingRecords}
+                    onCheckedChange={(checked) =>
+                      setSettings((current) => ({
+                        ...current,
+                        allowIntersectingRecords: checked,
+                      }))
+                    }
+                  />
+                </div>
+              </Field>
+              <Field label={t("settings.allowRecordsOnHolidays")}>
+                <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                  <span className="text-sm text-foreground">
+                    {settings.allowRecordsOnHolidays ? t("settings.enabled") : t("settings.disabled")}
+                  </span>
+                  <Switch
+                    checked={settings.allowRecordsOnHolidays}
+                    onCheckedChange={(checked) =>
+                      setSettings((current) => ({
+                        ...current,
+                        allowRecordsOnHolidays: checked,
+                      }))
+                    }
+                  />
+                </div>
+              </Field>
+              <Field label={t("settings.allowFutureRecords")}>
+                <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                  <span className="text-sm text-foreground">
+                    {settings.allowFutureRecords ? t("settings.enabled") : t("settings.disabled")}
+                  </span>
+                  <Switch
+                    checked={settings.allowFutureRecords}
+                    onCheckedChange={(checked) =>
+                      setSettings((current) => ({
+                        ...current,
+                        allowFutureRecords: checked,
+                      }))
+                    }
+                  />
+                </div>
+              </Field>
+              <Field label={t("settings.projectsEnabled")}>
+                <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                  <span className="text-sm text-foreground">
+                    {settings.projectsEnabled ? t("settings.enabled") : t("settings.disabled")}
+                  </span>
+                  <Switch
+                    checked={settings.projectsEnabled}
+                    onCheckedChange={(checked) =>
+                      setSettings((current) => ({
+                        ...current,
+                        projectsEnabled: checked,
+                        tasksEnabled: checked ? current.tasksEnabled : false,
+                      }))
+                    }
+                  />
+                </div>
+              </Field>
+              <Field label={t("settings.tasksEnabled")}>
+                <div className="flex h-10 items-center justify-between rounded-md border border-input bg-transparent px-3">
+                  <span className="text-sm text-foreground">
+                    {settings.tasksEnabled ? t("settings.enabled") : t("settings.disabled")}
+                  </span>
+                  <Switch
+                    checked={settings.tasksEnabled}
+                    disabled={!settings.projectsEnabled}
+                    onCheckedChange={(checked) =>
+                      setSettings((current) => ({
+                        ...current,
+                        projectsEnabled: checked ? true : current.projectsEnabled,
+                        tasksEnabled: checked,
+                      }))
+                    }
+                  />
+                </div>
+              </Field>
+            </FormFields>
+          </div>
+        </FormSection>
+
+        <FormSection>
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <div className="flex flex-col gap-1.5 pb-4">
+              <p className="text-sm font-medium text-foreground">{t("settings.timeGroupTitle")}</p>
+              <p className="text-sm text-muted-foreground">{t("settings.timeGroupDescription")}</p>
             </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">{t("settings.dateFormat")}</span>
-              <span>{preview.dateFormat}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">{t("settings.timeFormat")}</span>
-              <span>{preview.timeFormat}</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span className="text-muted-foreground">{t("settings.dateTimePreview")}</span>
-              <span>{dateTimePreview}</span>
-            </div>
+            <FormFields>
+              <Field label={t("settings.tabletIdleTimeoutSeconds")}>
+                <Input
+                  placeholder="10"
+                  type="number"
+                  min="0"
+                  value={settings.tabletIdleTimeoutSeconds}
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      tabletIdleTimeoutSeconds: Math.max(0, Number(event.target.value || 0)),
+                    }))
+                  }
+                />
+              </Field>
+              <Field label={t("settings.autoBreakAfterHours")}>
+                <Input
+                  placeholder="5"
+                  type="number"
+                  min="0"
+                  step="0.25"
+                  value={settings.autoBreakAfterMinutes / 60}
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      autoBreakAfterMinutes: Math.max(0, Math.round(Number(event.target.value || 0) * 60)),
+                    }))
+                  }
+                />
+              </Field>
+              <Field label={t("settings.autoBreakDurationMinutes")}>
+                <Input
+                  placeholder="30"
+                  type="number"
+                  min="0"
+                  value={settings.autoBreakDurationMinutes}
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      autoBreakDurationMinutes: Math.max(0, Number(event.target.value || 0)),
+                    }))
+                  }
+                />
+              </Field>
+            </FormFields>
           </div>
         </FormSection>
 
@@ -422,7 +482,7 @@ export function SettingsMenuPage() {
             <FormFields>
               <Field label={t("settings.tabletCode")}>
                 <Input
-                  placeholder="Enter tablet code"
+                  placeholder={t("auth.tabletCodePlaceholder")}
                   value={tabletCodeInput}
                   onChange={(event) => setTabletCodeInput(event.target.value)}
                 />
@@ -458,14 +518,16 @@ export function SettingsMenuPage() {
         </FormSection>
 
         <FormSection>
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-muted/20 p-4">
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium text-foreground">Overtime Management</p>
-              <p className="text-sm text-muted-foreground">Open the preset-driven overtime dashboard for country rules, premiums, payout choice, and overlap handling.</p>
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <div className="flex flex-col gap-1.5">
+              <p className="text-sm font-medium text-foreground">{t("settings.overtimeGroupTitle")}</p>
+              <p className="text-sm text-muted-foreground">{t("settings.overtimeGroupDescription")}</p>
             </div>
-            <Button asChild type="button" variant="outline">
-              <Link to="/settings/overtime">Manage Overtime</Link>
-            </Button>
+            <div className="mt-4">
+              <Button asChild type="button" variant="outline">
+                <Link to="/settings/overtime">{t("settings.manageOvertime")}</Link>
+              </Button>
+            </div>
           </div>
         </FormSection>
 

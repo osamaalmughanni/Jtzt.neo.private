@@ -5,18 +5,6 @@ const PRESET_TRANSLATION_KEYS: Record<string, { nameKey: string; descriptionKey:
     nameKey: "calculations.presets.austrianMonthlyOvertimeByWorker.name",
     descriptionKey: "calculations.presets.austrianMonthlyOvertimeByWorker.description",
   },
-  project_budget_burn: {
-    nameKey: "calculations.presets.projectBudgetBurn.name",
-    descriptionKey: "calculations.presets.projectBudgetBurn.description",
-  },
-  task_duration_rank: {
-    nameKey: "calculations.presets.taskDurationRank.name",
-    descriptionKey: "calculations.presets.taskDurationRank.description",
-  },
-  user_workload_last_30_days: {
-    nameKey: "calculations.presets.userWorkloadLast30Days.name",
-    descriptionKey: "calculations.presets.userWorkloadLast30Days.description",
-  },
   yearly_vacation_balance_by_worker: {
     nameKey: "calculations.presets.yearlyVacationBalanceByWorker.name",
     descriptionKey: "calculations.presets.yearlyVacationBalanceByWorker.description",

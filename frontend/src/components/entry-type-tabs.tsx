@@ -1,6 +1,5 @@
 import { Briefcase, ClockCounterClockwise, FirstAidKit, UmbrellaSimple } from "phosphor-react";
 import type { TimeEntryType } from "@shared/types/models";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -8,7 +7,6 @@ import { useTranslation } from "react-i18next";
 interface EntryTypeTabItem {
   value: TimeEntryType;
   label: string;
-  disabled?: boolean;
 }
 
 interface EntryTypeTabsProps {
@@ -18,18 +16,9 @@ interface EntryTypeTabsProps {
 }
 
 function getEntryTypeIcon(entryType: TimeEntryType) {
-  if (entryType === "work") {
-    return Briefcase;
-  }
-
-  if (entryType === "vacation") {
-    return UmbrellaSimple;
-  }
-
-  if (entryType === "time_off_in_lieu") {
-    return ClockCounterClockwise;
-  }
-
+  if (entryType === "work") return Briefcase;
+  if (entryType === "vacation") return UmbrellaSimple;
+  if (entryType === "time_off_in_lieu") return ClockCounterClockwise;
   return FirstAidKit;
 }
 
@@ -38,36 +27,38 @@ export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProp
   const entryStateUi = getEntryStateUi(t);
 
   return (
-    <Tabs value={value} onValueChange={(nextValue) => onValueChange(nextValue as TimeEntryType)}>
-      <div className="py-1">
-        <div className="-mx-1 overflow-x-auto px-1">
-          <TabsList className="h-auto w-max min-w-0 gap-2 rounded-2xl bg-transparent p-0 text-foreground">
-            {items.map((item) => {
-              const Icon = getEntryTypeIcon(item.value);
+    <div role="tablist" aria-label={t("recordEditor.entryType")} className="flex w-full min-w-0 gap-1 overflow-x-auto overflow-y-hidden">
+      {items.map((item) => {
+        const Icon = getEntryTypeIcon(item.value);
+        const isActive = value === item.value;
 
-              return (
-                <TabsTrigger
-                  key={item.value}
-                  value={item.value}
-                  disabled={item.disabled}
-                  className={cn(
-                    "group rounded-2xl border border-border bg-muted/60 px-3 py-2 text-muted-foreground shadow-none transition-all duration-200 ease-out",
-                    "data-[state=active]:px-4 data-[state=active]:shadow-sm disabled:pointer-events-none disabled:opacity-40",
-                    entryStateUi[item.value].activeTriggerClassName,
-                  )}
-                >
-                  <span className="flex items-center">
-                    <Icon size={18} weight="duotone" className="shrink-0" />
-                    <span className="ml-0 max-w-0 overflow-hidden whitespace-nowrap text-sm opacity-0 transition-all duration-200 ease-out group-data-[state=active]:ml-2 group-data-[state=active]:max-w-28 group-data-[state=active]:opacity-100">
-                      {item.label}
-                    </span>
-                  </span>
-                </TabsTrigger>
-              );
-            })}
-          </TabsList>
-        </div>
-      </div>
-    </Tabs>
+        return (
+          <button
+            key={item.value}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            aria-label={item.label}
+            title={item.label}
+            onClick={() => onValueChange(item.value)}
+            className={cn(
+              "inline-flex min-w-0 shrink-0 items-center justify-start rounded-md border px-2.5 py-2 text-sm font-medium leading-none outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              isActive ? "flex-none gap-1.5" : "flex-none gap-0.5",
+              isActive
+                ? cn(
+                    "shadow-none",
+                    entryStateUi[item.value].tabActiveClassName,
+                  )
+                : "border-border/70 bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+            )}
+          >
+            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
+              <Icon size={14} weight="duotone" className="shrink-0 opacity-80" />
+            </span>
+            {isActive ? <span className="min-w-0 whitespace-nowrap">{item.label}</span> : null}
+          </button>
+        );
+      })}
+    </div>
   );
 }

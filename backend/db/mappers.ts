@@ -16,6 +16,13 @@ import type {
   TimeEntryRecord,
   TimeEntryView
 } from "../../shared/types/models";
+import {
+  DEFAULT_COMPANY_DATE_TIME_FORMAT,
+  DEFAULT_COMPANY_LOCALE,
+  DEFAULT_COMPANY_TIME_ZONE,
+  normalizeCompanyDateTimeFormat,
+  normalizeCompanyLocale,
+} from "../../shared/utils/company-locale";
 import { diffCalendarDays, diffMinutes } from "../../shared/utils/time";
 import { normalizeOvertimeSettings } from "../../shared/utils/overtime";
 import { buildUserContract } from "../services/user-contract-schedule";
@@ -46,7 +53,6 @@ export function mapCompanyRecord(row: any): CompanyRecord {
   return {
     id: row.id,
     name: row.name,
-    encryptionEnabled: Boolean(row.encryption_enabled),
     tabletCodeUpdatedAt: row.tablet_code_updated_at ?? null,
     createdAt: row.created_at
   };
@@ -251,9 +257,9 @@ export function mapProjectTaskAssignment(row: any): ProjectTaskAssignmentRecord 
 export function mapCompanySettings(row: any): CompanySettings {
   return {
     currency: row.currency,
-    locale: row.locale,
-    timeZone: row.time_zone ?? "Europe/Vienna",
-    dateTimeFormat: row.date_time_format ?? "g",
+    locale: normalizeCompanyLocale(row.locale ?? DEFAULT_COMPANY_LOCALE),
+    timeZone: row.time_zone ?? DEFAULT_COMPANY_TIME_ZONE,
+    dateTimeFormat: normalizeCompanyDateTimeFormat(row.date_time_format ?? DEFAULT_COMPANY_DATE_TIME_FORMAT),
     firstDayOfWeek: row.first_day_of_week,
     editDaysLimit: row.edit_days_limit,
     insertDaysLimit: row.insert_days_limit,

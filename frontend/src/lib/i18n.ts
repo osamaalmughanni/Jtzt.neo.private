@@ -6,11 +6,6 @@ const LANGUAGE_STORAGE_KEY = "jtzt.language";
 const fallbackLanguage: AppLanguage = "en";
 
 function detectLanguage(): AppLanguage {
-  const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  if (stored === "en" || stored === "de") {
-    return stored;
-  }
-
   const browserLanguage = window.navigator.language.toLowerCase();
   if (browserLanguage.startsWith("de")) {
     return "de";
@@ -29,10 +24,10 @@ void i18n.use(initReactI18next).init({
 });
 
 void i18n.on("languageChanged", (language) => {
-  window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   document.documentElement.lang = language;
 });
 
+window.localStorage.removeItem(LANGUAGE_STORAGE_KEY);
 document.documentElement.lang = i18n.language;
 
 export { i18n };

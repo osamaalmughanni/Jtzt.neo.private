@@ -24,7 +24,6 @@ export interface CompanyLoginInput {
   companyName: string;
   username: string;
   password: string;
-  encryptionKeyProof?: string;
 }
 
 export interface DeveloperLoginInput {
@@ -102,6 +101,13 @@ export interface VacationBalanceResponse {
     availableDays: number;
   };
   requestedDays?: number;
+}
+
+export interface SickLeaveSummaryResponse {
+  summary: {
+    usedDays: number;
+    elapsedDays: number;
+  };
 }
 
 export interface CreateManualTimeEntryInput {
@@ -274,11 +280,6 @@ export interface CreateCompanyInput {
   adminUsername?: string;
   adminPassword?: string;
   adminFullName?: string;
-  encryptionEnabled?: boolean;
-  encryptionKdfAlgorithm?: "pbkdf2-sha256";
-  encryptionKdfIterations?: number;
-  encryptionKdfSalt?: string;
-  encryptionKeyVerifier?: string;
 }
 
 export interface RegisterCompanyInput {
@@ -287,11 +288,6 @@ export interface RegisterCompanyInput {
   adminPassword: string;
   adminFullName?: string;
   invitationCode: string;
-  encryptionEnabled: boolean;
-  encryptionKdfAlgorithm?: "pbkdf2-sha256";
-  encryptionKdfIterations?: number;
-  encryptionKdfSalt?: string;
-  encryptionKeyVerifier?: string;
 }
 
 export interface CreateCompanyAdminInput {
@@ -308,11 +304,6 @@ export interface DeleteCompanyInput {
 export interface CompanySnapshot {
   company: {
     name: string;
-    encryptionEnabled: boolean;
-    encryptionKdfAlgorithm: "pbkdf2-sha256" | null;
-    encryptionKdfIterations: number | null;
-    encryptionKdfSalt: string | null;
-    encryptionKeyVerifier: string | null;
     tabletCodeValue: string | null;
     tabletCodeHash: string | null;
     tabletCodeUpdatedAt: string | null;
@@ -637,14 +628,6 @@ export interface ApiErrorPayload {
   error: string;
 }
 
-export interface CompanySecurityResponse {
-  companyName: string;
-  encryptionEnabled: boolean;
-  kdfAlgorithm: "pbkdf2-sha256" | null;
-  kdfIterations: number | null;
-  kdfSalt: string | null;
-}
-
 export interface TabletAccessInput {
   code: string;
 }
@@ -656,10 +639,6 @@ export interface TabletLoginInput {
 
 export interface TabletAccessResponse {
   companyName: string;
-  encryptionEnabled: boolean;
-  kdfAlgorithm: "pbkdf2-sha256" | null;
-  kdfIterations: number | null;
-  kdfSalt: string | null;
 }
 
 export interface TabletCodeStatusResponse {

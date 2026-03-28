@@ -1,5 +1,12 @@
 import { HTTPException } from "hono/http-exception";
 import type { UpdateOvertimeSettingsInput, UpdateSettingsInput } from "../../shared/types/api";
+import {
+  DEFAULT_COMPANY_DATE_TIME_FORMAT,
+  DEFAULT_COMPANY_LOCALE,
+  DEFAULT_COMPANY_TIME_ZONE,
+  normalizeCompanyDateTimeFormat,
+  normalizeCompanyLocale,
+} from "../../shared/utils/company-locale";
 import { getLocalNowSnapshot, normalizeTimeZone } from "../../shared/utils/time";
 import { createDefaultOvertimeSettings, normalizeOvertimeSettings } from "../../shared/utils/overtime";
 import { getRemovedCustomFieldIds, normalizeCustomFields, stripRemovedCustomFieldValues } from "../../shared/utils/custom-fields";
@@ -8,7 +15,6 @@ import type { AppDatabase } from "../runtime/types";
 
 const HOLIDAY_CACHE_MAX_AGE_DAYS = 30;
 const CURRENT_YEAR_CACHE_MAX_AGE_DAYS = 7;
-export const DEFAULT_COMPANY_TIME_ZONE = "Europe/Vienna";
 
 async function ensureSettingsRow(db: AppDatabase, companyId: string) {
   await db.run(
@@ -38,9 +44,9 @@ async function ensureSettingsRow(db: AppDatabase, companyId: string) {
     [
       companyId,
       "EUR",
-      "en-GB",
+      DEFAULT_COMPANY_LOCALE,
       DEFAULT_COMPANY_TIME_ZONE,
-      "g",
+      DEFAULT_COMPANY_DATE_TIME_FORMAT,
       1,
       30,
       30,
@@ -105,6 +111,8 @@ export const settingsService = {
     );
     const nextCustomFields = normalizeCustomFields(input.customFields);
     const removedCustomFieldIds = getRemovedCustomFieldIds(previousCustomFields, nextCustomFields);
+    const nextLocale = normalizeCompanyLocale(input.locale);
+    const nextDateTimeFormat = normalizeCompanyDateTimeFormat(input.dateTimeFormat);
     const nextTimeZone = normalizeSettingsTimeZone(input.timeZone);
     const nextOvertimeJson = JSON.stringify(normalizeOvertimeSettings(input.overtime));
     const nextProjectsEnabled = Boolean(input.projectsEnabled);
@@ -116,11 +124,11 @@ export const settingsService = {
     await db.exec("BEGIN IMMEDIATE TRANSACTION");
     try {
       await db.run(
-        `UPDATE company_settings
-           SET
-             currency = ?,
-             locale = ?,
-             time_zone = ?,
+          `UPDATE company_settings
+             SET
+               currency = ?,
+               locale = ?,
+               time_zone = ?,
              date_time_format = ?,
              first_day_of_week = ?,
              edit_days_limit = ?,
@@ -140,9 +148,9 @@ export const settingsService = {
            WHERE company_id = ?`,
         [
           input.currency,
-          input.locale,
+          nextLocale,
           nextTimeZone,
-          input.dateTimeFormat,
+          nextDateTimeFormat,
           input.firstDayOfWeek,
           input.editDaysLimit,
           input.insertDaysLimit,
