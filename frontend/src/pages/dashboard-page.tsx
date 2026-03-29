@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Briefcase, CalendarBlank, CircleNotch, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, Stop, Trash, UmbrellaSimple, ClipboardText } from "phosphor-react";
 import { useTranslation } from "react-i18next";
@@ -288,6 +289,7 @@ function EntryRowChip({
   kind,
   label,
   toneClassName,
+  leadingIcon,
   active = false,
   button = false,
   onClick,
@@ -297,6 +299,7 @@ function EntryRowChip({
   kind: EntryRowChipKind;
   label?: string;
   toneClassName?: string;
+  leadingIcon?: ReactNode;
   active?: boolean;
   button?: boolean;
   onClick?: () => void;
@@ -305,7 +308,7 @@ function EntryRowChip({
 }) {
   const Icon = getEntryRowChipIcon(kind, active);
   const badgeClassName = cn(
-    "inline-flex h-8 shrink-0 items-center rounded-full border px-2.5 text-[12px] leading-5 transition-colors",
+    "inline-flex h-8 max-w-full min-w-0 flex-[0_1_auto] items-center gap-1 overflow-hidden rounded-full border px-2.5 text-[12px] leading-5 transition-colors",
     getEntryRowChipClasses(kind),
     toneClassName,
   );
@@ -327,7 +330,8 @@ function EntryRowChip({
 
   return (
     <Badge variant="outline" className={badgeClassName}>
-      {label ? <span className="min-w-0 whitespace-nowrap">{label}</span> : null}
+      {leadingIcon ? <span className="shrink-0">{leadingIcon}</span> : null}
+      {label ? <span className="min-w-0 truncate">{label}</span> : null}
     </Badge>
   );
 }
@@ -1333,7 +1337,16 @@ export function DashboardPage() {
                     key={entry.id}
                     className="grid grid-cols-[minmax(0,1fr),auto] items-center gap-2 px-0"
                   >
-                    <div className="min-w-0 flex items-center gap-2 overflow-hidden">
+                    <div className="min-w-0 flex flex-1 flex-nowrap items-center gap-2 overflow-hidden pr-1">
+                      {isActiveWorkEntry ? (
+                        <EntryRowChip
+                          kind="none"
+                          leadingIcon={
+                            <CircleNotch size={12} weight="bold" className="shrink-0 animate-spin text-current" />
+                          }
+                          toneClassName={entryStateUi[entry.entryType].badgeClassName}
+                        />
+                      ) : null}
                       <EntryRowChip
                         kind={entry.entryType}
                         active={isActiveWorkEntry}
@@ -1343,11 +1356,7 @@ export function DashboardPage() {
                       <EntryRowChip
                         kind="none"
                         label={entryMeta}
-                        toneClassName={
-                          isActiveWorkEntry
-                            ? "border-foreground/15 bg-destructive/10 text-destructive-foreground"
-                            : "border-border/70 bg-secondary/70 text-secondary-foreground"
-                        }
+                        toneClassName="border-border/70 bg-secondary/70 text-secondary-foreground"
                       />
                       {secondaryBadges.length > 0 ? (
                         <EntryRowChip
@@ -1357,7 +1366,7 @@ export function DashboardPage() {
                         />
                       ) : null}
                     </div>
-                    <div className="relative z-10 flex shrink-0 items-center justify-end gap-0.5 self-center">
+                    <div className="flex shrink-0 items-center justify-end gap-2 self-center">
                       <EntryRowChip
                         kind="delete"
                         button
