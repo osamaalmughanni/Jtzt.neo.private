@@ -25,7 +25,6 @@ import { getCustomFieldsForTarget } from "@shared/utils/custom-fields";
 import { AppConfirmDialog } from "@/components/app-confirm-dialog";
 import { CustomFieldField } from "@/components/custom-field-field";
 import { EntryTypeTabs } from "@/components/entry-type-tabs";
-import { LeaveStateBars } from "@/components/leave-state-bars";
 import { Field, FormActions, FormFields, FormPage, FormPanel, FormSection } from "@/components/form-layout";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
@@ -465,7 +464,19 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
       todayDay,
     ],
   );
-  const accessMessage = formatTimeEntryAccessMessage(accessResult, "recordEditor", t);
+  const accessMessageBlocks = useMemo(
+    () =>
+      accessResult.blocks.filter((block) =>
+        block.kind !== "project_required" &&
+        block.kind !== "task_required" &&
+        block.kind !== "custom_field_required",
+      ),
+    [accessResult.blocks],
+  );
+  const accessMessageWithoutFieldRequirements = useMemo(
+    () => formatTimeEntryAccessMessage({ allowed: accessMessageBlocks.length === 0, blocks: accessMessageBlocks }, "recordEditor", t),
+    [accessMessageBlocks, t],
+  );
   const entryTypeTabs: Array<{ value: TimeEntryType; label: string }> = [
     {
       value: "work",
@@ -498,10 +509,64 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
           requested: vacationRequestedDays.toFixed(2),
         })
       : null;
-  const blockingMessages = [dayLimitError, accessMessage, vacationError, timeOffInLieuError].filter(
+  const blockingMessages = [dayLimitError, accessMessageWithoutFieldRequirements, vacationError, timeOffInLieuError].filter(
     (value): value is string => Boolean(value),
   );
   const blockingError = blockingMessages[0] ?? null;
+  const entryTypeStatusMessage = useMemo(() => {
+    if (entryType === "vacation") {
+      return t("recordEditor.vacationSelectedStatus", {
+        available: Math.max(0, vacationBalance.availableDays).toFixed(2),
+        used: vacationBalance.usedDays.toFixed(2),
+        entitled: vacationBalance.entitledDays.toFixed(2),
+      });
+    }
+
+    if (entryType === "time_off_in_lieu") {
+      return t("recordEditor.timeOffInLieuSelectedStatus", {
+        available: (Math.max(0, timeOffInLieuBalance.availableMinutes) / 60).toFixed(1),
+        booked: (timeOffInLieuBalance.bookedMinutes / 60).toFixed(1),
+      });
+    }
+
+    if (entryType === "sick_leave") {
+      return t("recordEditor.sickLeaveSelectedStatus", {
+        used: sickLeaveUsedDays.toFixed(2),
+        elapsed: sickLeaveElapsedDays.toFixed(2),
+      });
+    }
+
+    const requiredParts = [
+      settings.projectsEnabled ? t("recordEditor.project") : null,
+      settings.tasksEnabled ? t("recordEditor.task") : null,
+      activeCustomFields.length > 0 ? t("recordEditor.customFields") : null,
+    ].filter((value): value is string => Boolean(value));
+
+    if (requiredParts.length === 0) {
+      return t("recordEditor.workSelectedStatusSimple");
+    }
+
+    return t("recordEditor.workSelectedStatus", {
+      items: requiredParts.join(", "),
+    });
+  }, [
+    activeCustomFields.length,
+    entryType,
+    settings.projectsEnabled,
+    settings.tasksEnabled,
+    sickLeaveElapsedDays,
+    sickLeaveUsedDays,
+    t,
+    timeOffInLieuBalance.availableMinutes,
+    timeOffInLieuBalance.bookedMinutes,
+    vacationBalance.availableDays,
+    vacationBalance.entitledDays,
+    vacationBalance.usedDays,
+  ]);
+  const entryTypeAndBlockingMessage = useMemo(
+    () => [entryTypeStatusMessage, blockingError].filter((value): value is string => Boolean(value)).join(" "),
+    [blockingError, entryTypeStatusMessage],
+  );
   useEffect(() => {
     if (companySettings) {
       setSettings(companySettings);
@@ -807,14 +872,6 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
             <EntryTypeTabs value={entryType} onValueChange={setEntryType} items={entryTypeTabs} />
           </FormSection>
 
-          <LeaveStateBars
-            locale={settings.locale}
-            entryType={entryType}
-            vacation={vacationBalance}
-            timeOffInLieu={timeOffInLieuBalance}
-            sickLeave={{ usedDays: sickLeaveUsedDays, elapsedDays: sickLeaveElapsedDays }}
-          />
-
           <FormSection>
             <FormFields>
               <EntryScheduleFields
@@ -902,8 +959,11 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
             </FormFields>
           </FormSection>
 
-          {blockingMessages.length > 0 ? (
-            <HintStack messages={blockingMessages} className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2" />
+          {entryTypeAndBlockingMessage ? (
+            <HintStack
+              messages={[entryTypeAndBlockingMessage]}
+              className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs leading-5"
+            />
           ) : null}
 
           <FormActions>

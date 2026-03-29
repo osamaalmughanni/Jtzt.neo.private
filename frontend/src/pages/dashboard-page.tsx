@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarBlank, CircleNotch, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, Prohibit, Stop, Trash, UmbrellaSimple } from "phosphor-react";
+import { Briefcase, CalendarBlank, CircleNotch, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, Stop, Trash, UmbrellaSimple, ClipboardText } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import type {
   CompanyCustomField,
@@ -153,23 +153,12 @@ function getHolidayDisplayName(holiday: PublicHolidayRecord | undefined) {
   return holiday.localName?.trim() || holiday.name?.trim() || null;
 }
 
-function getEntryHeadline(entry: TimeEntryView, getLabel: (entryType: TimeEntryView["entryType"]) => string) {
-  return getLabel(entry.entryType);
-}
-
 function formatDayCount(value: number) {
   const normalized = Math.max(0, value);
   const hasFraction = Math.abs(normalized % 1) > 0;
   const formatted = normalized.toFixed(hasFraction ? 1 : 0);
   const suffix = Math.abs(normalized - 1) < 0.01 ? "day" : "days";
   return `${formatted} ${suffix}`;
-}
-
-function getRecordEntryStatusClass(entryType: TimeEntryView["entryType"], isActiveWorkEntry: boolean) {
-  if (isActiveWorkEntry) {
-    return "border-emerald-500/25 bg-emerald-500/12 text-emerald-600 dark:text-emerald-400";
-  }
-  return "";
 }
 
 function hasRenderableCustomFieldValue(value: string | number | boolean | undefined) {
@@ -266,52 +255,80 @@ function calculateLiveWorkDurationMinutes(
   return Math.max(0, rawMinutes - settings.autoBreakDurationMinutes);
 }
 
-function RecordStatusIcon({
-  entryType,
-  active,
-  className,
-  label,
-}: {
-  entryType: TimeEntryView["entryType"];
-  active: boolean;
-  className: string;
-  label?: string;
-}) {
-  const Icon = active
-    ? CircleNotch
-    : entryType === "work"
-      ? Briefcase
-      : entryType === "vacation"
-        ? UmbrellaSimple
-        : entryType === "time_off_in_lieu"
-          ? ClockCounterClockwise
-        : FirstAidKit;
+type EntryRowChipKind = TimeEntryView["entryType"] | "none" | "edit" | "delete";
 
-  return (
-    <div
-      aria-hidden="true"
-      className={cn(
-        "inline-flex min-w-0 items-center gap-1 rounded-full border px-2 py-0 text-[11px] leading-5",
-        active ? getRecordEntryStatusClass(entryType, active) : className,
-      )}
-    >
-      <Icon size={12} weight={active ? "bold" : "fill"} className={cn("shrink-0", active ? "animate-spin" : undefined)} />
-      {label ? <span className="min-w-0 whitespace-nowrap">{label}</span> : null}
-    </div>
-  );
+function getEntryRowChipIcon(kind: EntryRowChipKind, active: boolean) {
+  if (kind === "none") return ClipboardText;
+  if (kind === "edit") return PencilSimple;
+  if (kind === "delete") return Trash;
+  if (active) return CircleNotch;
+  if (kind === "work") return Briefcase;
+  if (kind === "vacation") return UmbrellaSimple;
+  if (kind === "time_off_in_lieu") return ClockCounterClockwise;
+  return FirstAidKit;
 }
 
-function EmptyRecordIcon({ className }: { className?: string }) {
+function getEntryRowChipClasses(kind: EntryRowChipKind) {
+  if (kind === "none") {
+    return "border-border/60 bg-muted/40 text-muted-foreground";
+  }
+
+  if (kind === "edit") {
+    return "border-border/70 bg-transparent text-muted-foreground hover:bg-muted/50";
+  }
+
+  if (kind === "delete") {
+    return "border-border/70 bg-transparent text-muted-foreground hover:bg-muted/50";
+  }
+
+  return "";
+}
+
+function EntryRowChip({
+  kind,
+  label,
+  toneClassName,
+  active = false,
+  button = false,
+  onClick,
+  disabled,
+  ariaLabel,
+}: {
+  kind: EntryRowChipKind;
+  label?: string;
+  toneClassName?: string;
+  active?: boolean;
+  button?: boolean;
+  onClick?: () => void;
+  disabled?: boolean;
+  ariaLabel?: string;
+}) {
+  const Icon = getEntryRowChipIcon(kind, active);
+  const badgeClassName = cn(
+    "inline-flex h-8 shrink-0 items-center rounded-full border px-2.5 text-[12px] leading-5 transition-colors",
+    getEntryRowChipClasses(kind),
+    toneClassName,
+  );
+
+  if (button) {
+    return (
+      <Button
+        variant="ghost"
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        aria-label={ariaLabel}
+        className={cn("h-8 w-8 rounded-full p-0 text-muted-foreground/80 hover:bg-muted/50", disabled ? "opacity-60" : null)}
+      >
+        <Icon size={13} weight={active ? "bold" : "fill"} className={cn("shrink-0 text-current", active ? "animate-spin" : undefined)} />
+      </Button>
+    );
+  }
+
   return (
-    <div
-      aria-hidden="true"
-      className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-full bg-muted text-muted-foreground/80",
-        className,
-      )}
-    >
-      <Prohibit size={14} weight="bold" />
-    </div>
+    <Badge variant="outline" className={badgeClassName}>
+      {label ? <span className="min-w-0 whitespace-nowrap">{label}</span> : null}
+    </Badge>
   );
 }
 
@@ -409,7 +426,7 @@ export function DashboardPage() {
     },
   });
   const dashboardPageErrorRef = useRef<unknown>(null);
-  const dashboardPageIsSettled = dashboardPageResource.hasData && !dashboardPageResource.isLoading && !dashboardPageResource.isRefreshing;
+  const dashboardPageIsSettled = dashboardPageResource.hasData;
   const dashboardSnapshot =
     dashboardPageResource.data ?? {
       summary: defaultSummary,
@@ -1183,7 +1200,7 @@ export function DashboardPage() {
       />
       <PageLoadBoundary
         className="min-h-0 flex-none"
-        loading={!dashboardPageResource.hasData || dashboardPageResource.isRefreshing}
+        loading={!dashboardPageResource.hasData && !dashboardPageResource.error}
         skeleton={null}
       >
       <Stack gap="lg" className="min-h-full flex-1">
@@ -1296,7 +1313,6 @@ export function DashboardPage() {
                   entry.entryType === "work" &&
                   summary.activeEntry?.id === entry.id &&
                   !entry.endTime;
-                const entryHeadline = getEntryHeadline(entry, getEntryLabel);
                 const secondaryBadges = buildEntrySecondaryBadges(
                   entry,
                   projectData,
@@ -1318,69 +1334,55 @@ export function DashboardPage() {
                     className="grid grid-cols-[minmax(0,1fr),auto] items-center gap-2 px-0"
                   >
                     <div className="min-w-0 flex items-center gap-2 overflow-hidden">
-                      <RecordStatusIcon
-                        entryType={entry.entryType}
+                      <EntryRowChip
+                        kind={entry.entryType}
                         active={isActiveWorkEntry}
-                        className={entryStateUi[entry.entryType].recordStatusClassName}
+                        toneClassName={entryStateUi[entry.entryType].badgeClassName}
                         label={getEntryLabel(entry.entryType)}
                       />
-                      <p className="min-w-0 flex-1 truncate text-sm font-medium leading-4 text-foreground">
-                        {entryHeadline}
-                      </p>
-                      <Badge
-                        variant={isActiveWorkEntry ? "destructive" : "secondary"}
-                        className="shrink-0 whitespace-nowrap rounded-full px-2 py-0 text-[11px] leading-5"
-                      >
-                        {entryMeta}
-                      </Badge>
+                      <EntryRowChip
+                        kind="none"
+                        label={entryMeta}
+                        toneClassName={
+                          isActiveWorkEntry
+                            ? "border-foreground/15 bg-destructive/10 text-destructive-foreground"
+                            : "border-border/70 bg-secondary/70 text-secondary-foreground"
+                        }
+                      />
                       {secondaryBadges.length > 0 ? (
-                        <Badge
-                          variant="outline"
-                          className="min-w-0 shrink rounded-full px-2 py-0 text-[11px] leading-5 text-muted-foreground"
-                        >
-                          <span className="block truncate">
-                            {secondaryBadges.map((badge) => badge.label).join(" · ")}
-                          </span>
-                        </Badge>
+                        <EntryRowChip
+                          kind="none"
+                          label={secondaryBadges.map((badge) => badge.label).join(" · ")}
+                          toneClassName="border-border/70 bg-transparent text-muted-foreground"
+                        />
                       ) : null}
                     </div>
                     <div className="relative z-10 flex shrink-0 items-center justify-end gap-0.5 self-center">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 p-0 text-muted-foreground/80"
+                      <EntryRowChip
+                        kind="delete"
+                        button
                         disabled={!canDelete}
-                        onPointerDown={triggerHapticFeedback}
                         onClick={() => canDelete && setPendingDeleteEntry(entry)}
-                        aria-label={canDelete ? t("dashboard.deleteRecord") : t("dashboard.recordLocked")}
-                      >
-                        <Trash size={16} weight="bold" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 p-0 text-muted-foreground/80"
+                        ariaLabel={canDelete ? t("dashboard.deleteRecord") : t("dashboard.recordLocked")}
+                      />
+                      <EntryRowChip
+                        kind="edit"
+                        button
                         disabled={!canEdit}
-                        onPointerDown={triggerHapticFeedback}
                         onClick={() => canEdit && navigate(editHref)}
-                        aria-label={canEdit ? t("dashboard.editRecord") : t("dashboard.recordLocked")}
-                      >
-                        <PencilSimple size={16} weight="bold" />
-                      </Button>
+                        ariaLabel={canEdit ? t("dashboard.editRecord") : t("dashboard.recordLocked")}
+                      />
                     </div>
                   </div>
                 );
               })}
 
               {entries.length === 0 ? (
-                <div className="grid grid-cols-[auto,minmax(0,1fr)] items-center gap-2 px-0 text-muted-foreground transition-colors">
-                  <EmptyRecordIcon />
-                  <div className="min-w-0 flex items-center overflow-hidden">
-                    <p className="truncate text-sm font-medium leading-4 text-foreground/80">
-                      {t("dashboard.noRecords")}
-                    </p>
-                  </div>
-                </div>
+                <EntryRowChip
+                  kind="none"
+                  label={t("dashboard.noRecords")}
+                  toneClassName="border-border/60 bg-muted/40 text-muted-foreground"
+                />
               ) : null}
           </div>
         </div>

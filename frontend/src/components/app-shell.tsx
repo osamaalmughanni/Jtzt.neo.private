@@ -1,6 +1,5 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import type { Icon } from "phosphor-react";
 import { AppContentLane } from "@/components/app-content-lane";
 import { AppFooter } from "@/components/app-footer";
@@ -175,7 +174,7 @@ function ShellContent({
   menuTo?: string;
   scope: "company" | "admin" | "tablet";
 }) {
-  const { bottomBar, bottomBarKey, startLoading, stopLoading } = useAppHeaderState();
+  const { bottomBar, startLoading, stopLoading } = useAppHeaderState();
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const scrollContentRef = useRef<HTMLDivElement | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
@@ -320,22 +319,13 @@ function ShellContent({
           className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 h-36 bg-gradient-to-t from-background via-background/98 via-22% to-transparent transition-[opacity] duration-500 ease-&lsqb;cubic-bezier(0.22,1,0.36,1)&rsqb; ${isRouteChromePending || showBottomFade ? "opacity-100" : "opacity-0"}`}
         />
       </main>
-      <AnimatePresence mode="wait" initial={false}>
-        {bottomBar ? (
-          <motion.div
-            key={bottomBarKey ?? "bottom-bar"}
-            className="relative z-20 pt-2 pb-4"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-          >
-            <AppContentLane className="py-3">
-              {bottomBar}
-            </AppContentLane>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      {bottomBar ? (
+        <div className="relative z-20 pt-2 pb-4">
+          <AppContentLane className="py-3">
+            {bottomBar}
+          </AppContentLane>
+        </div>
+      ) : null}
       <div className="relative z-20 min-h-14 pt-1 pb-4">
         <div className="absolute inset-x-0 bottom-0">
           <AppContentLane>
