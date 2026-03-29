@@ -126,11 +126,7 @@ export function CalculationPreviewPage() {
           refreshing={resource.isRefreshing}
           skeleton={<PageLoadingState label={t("common.loading")} />}
         >
-          <FormPanel>
-            <div className="sr-only" aria-live="polite">
-              {t("common.loading")}
-            </div>
-          </FormPanel>
+          <FormPanel>{null}</FormPanel>
         </PageLoadBoundary>
       </FormPage>
     );
