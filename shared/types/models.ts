@@ -1,3 +1,17 @@
+import type { InferSelectModel } from "drizzle-orm";
+import type {
+  calculations,
+  companySettings,
+  companies,
+  developerAccessTokens,
+  invitationCodes,
+  projects,
+  tasks,
+  timeEntries,
+  userContracts,
+  users,
+} from "../../backend/db/schema";
+
 export type UserRole = "employee" | "manager" | "admin";
 export type TimeEntryType = "work" | "vacation" | "sick_leave" | "time_off_in_lieu";
 export type CustomFieldTargetScope = "time_entry" | "user" | "project" | "task";
@@ -66,46 +80,32 @@ export interface UserContractScheduleBlock {
   minutes: number;
 }
 
-export interface CompanyRecord {
-  id: string;
-  name: string;
-  tabletCodeUpdatedAt?: string | null;
-  createdAt: string;
-}
+type CompanyRow = InferSelectModel<typeof companies>;
+type InvitationCodeRow = InferSelectModel<typeof invitationCodes>;
+type DeveloperAccessTokenRow = InferSelectModel<typeof developerAccessTokens>;
+type CompanySettingsRow = InferSelectModel<typeof companySettings>;
+type UserRow = InferSelectModel<typeof users>;
+type UserContractRow = InferSelectModel<typeof userContracts>;
+type ProjectRow = InferSelectModel<typeof projects>;
+type TaskRow = InferSelectModel<typeof tasks>;
+type TimeEntryRow = InferSelectModel<typeof timeEntries>;
+type CalculationRow = InferSelectModel<typeof calculations>;
 
-export interface InvitationCodeRecord {
-  id: number;
-  code: string;
-  note: string | null;
-  createdAt: string;
-  usedAt: string | null;
-  usedByCompanyId: string | null;
+export type CompanyRecord = Pick<CompanyRow, "id" | "name" | "tabletCodeUpdatedAt" | "createdAt">;
+
+export interface InvitationCodeRecord extends Pick<InvitationCodeRow, "id" | "code" | "note" | "createdAt" | "usedAt" | "usedByCompanyId"> {
   usedByCompanyName: string | null;
 }
 
-export interface DeveloperAccessTokenRecord {
-  companyId: string;
+export interface DeveloperAccessTokenRecord extends Pick<DeveloperAccessTokenRow, "companyId" | "tokenHint" | "createdAt" | "rotatedAt"> {
   companyName: string;
-  tokenHint: string;
-  createdAt: string;
-  rotatedAt: string;
 }
 
-export interface AdminRecord {
-  id: number;
-  username: string;
-  createdAt: string;
-}
-
-export interface CompanyUser {
-  id: number;
-  username: string;
-  fullName: string;
-  passwordHash: string;
-  isActive?: boolean;
-  deletedAt?: string | null;
-  pinCode?: string;
-  email?: string | null;
+export interface CompanyUser extends Omit<UserRow, "customFieldValuesJson" | "isActive"> {
+  isActive: boolean;
+  deletedAt: string | null;
+  pinCode: string;
+  email: string | null;
   customFieldValues: Record<string, string | number | boolean>;
   role: UserRole;
   createdAt: string;
@@ -118,28 +118,17 @@ export interface UserContractScheduleDay {
   minutes: number;
 }
 
-export interface UserContract {
-  id: number;
-  userId: number;
+export interface UserContract extends Omit<UserContractRow, "hoursPerWeek" | "annualVacationDays"> {
   hoursPerWeek: number;
-  startDate: string;
-  endDate: string | null;
-  paymentPerHour: number;
   annualVacationDays: number;
   schedule: UserContractScheduleDay[];
-  createdAt: string;
 }
 
-export interface ProjectRecord {
-  id: number;
-  name: string;
-  description: string | null;
-  budget: number;
+export interface ProjectRecord extends Omit<ProjectRow, "isActive" | "allowAllUsers" | "allowAllTasks" | "customFieldValuesJson"> {
   isActive: boolean;
   allowAllUsers: boolean;
   allowAllTasks: boolean;
   customFieldValues: Record<string, string | number | boolean>;
-  createdAt: string;
 }
 
 export interface CalculationChartConfig {
@@ -150,17 +139,11 @@ export interface CalculationChartConfig {
   stacked: boolean;
 }
 
-export interface CalculationRecord {
-  id: number;
-  name: string;
-  description: string | null;
+export interface CalculationRecord extends Omit<CalculationRow, "chartType" | "chartCategoryColumn" | "chartValueColumn" | "chartSeriesColumn" | "chartStacked" | "isBuiltin" | "sqlText" | "outputMode" | "chartConfigJson"> {
   sqlText: string;
   outputMode: CalculationOutputMode;
   chartConfig: CalculationChartConfig;
   isBuiltin: boolean;
-  builtinKey: string | null;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface CalculationPresetRecord {
@@ -172,19 +155,14 @@ export interface CalculationPresetRecord {
   chartConfig: CalculationChartConfig;
 }
 
-export interface TimeEntryRecord {
-  id: number;
-  userId: number;
+export interface TimeEntryRecord extends Omit<TimeEntryRow, "entryType" | "startTime" | "endTime" | "notes" | "projectId" | "taskId" | "customFieldValuesJson"> {
   entryType: TimeEntryType;
-  entryDate: string;
-  endDate: string | null;
   startTime: string | null;
   endTime: string | null;
   notes: string | null;
   projectId: number | null;
   taskId: number | null;
   customFieldValues: Record<string, string | number | boolean>;
-  createdAt: string;
 }
 
 export interface AuthSession {
@@ -283,24 +261,24 @@ export interface TimeEntryView {
   createdAt: string;
 }
 
-export interface CompanySettings {
-  currency: string;
-  locale: string;
-  timeZone: string;
-  dateTimeFormat: string;
-  firstDayOfWeek: number;
+export interface CompanySettings extends Omit<CompanySettingsRow,
+  | "weekendDaysJson"
+  | "allowOneRecordPerDay"
+  | "allowIntersectingRecords"
+  | "allowRecordsOnHolidays"
+  | "allowRecordsOnWeekends"
+  | "allowFutureRecords"
+  | "projectsEnabled"
+  | "tasksEnabled"
+  | "overtimeSettingsJson"
+  | "customFieldsJson"
+> {
   weekendDays: number[];
-  editDaysLimit: number;
-  insertDaysLimit: number;
   allowOneRecordPerDay: boolean;
   allowIntersectingRecords: boolean;
   allowRecordsOnHolidays: boolean;
   allowRecordsOnWeekends: boolean;
   allowFutureRecords: boolean;
-  country: string;
-  tabletIdleTimeoutSeconds: number;
-  autoBreakAfterMinutes: number;
-  autoBreakDurationMinutes: number;
   projectsEnabled: boolean;
   tasksEnabled: boolean;
   customFields: CompanyCustomField[];
@@ -320,12 +298,9 @@ export interface PublicHolidayRecord {
   countryCode: string;
 }
 
-export interface TaskRecord {
-  id: number;
-  title: string;
+export interface TaskRecord extends Omit<TaskRow, "isActive" | "customFieldValuesJson"> {
   isActive: boolean;
   customFieldValues: Record<string, string | number | boolean>;
-  createdAt: string;
 }
 
 export interface ProjectUserAssignmentRecord {

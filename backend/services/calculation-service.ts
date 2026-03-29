@@ -14,7 +14,7 @@ import type {
 } from "../../shared/types/api";
 import { calculations } from "../db/schema";
 import { mapCalculation } from "../db/mappers";
-import type { AppDatabase } from "../runtime/types";
+import type { NodeDatabase } from "../runtime/types";
 import { loadBuiltinCalculationPresets } from "./calculation-preset-loader";
 import { settingsService } from "./settings-service";
 
@@ -67,7 +67,7 @@ function normalizeChartConfig(config: CalculationChartConfig): CalculationChartC
   };
 }
 
-async function previewSql(db: AppDatabase, sqlText: string, limit = 50) {
+async function previewSql(db: NodeDatabase, sqlText: string, limit = 50) {
   const previewSqlText = `SELECT * FROM (${normalizeSql(sqlText)}) AS calculation_preview LIMIT ${limit}`;
   return db.sqlite.prepare(previewSqlText).all() as PreviewRow[];
 }
@@ -101,12 +101,12 @@ function hydrateBuiltinCalculation(calculation: CalculationRecord, presetsByKey:
 }
 
 export const calculationService = {
-  async listPresets(db: AppDatabase, companyId: string): Promise<CalculationPresetRecord[]> {
+  async listPresets(db: NodeDatabase, companyId: string): Promise<CalculationPresetRecord[]> {
     const settings = await settingsService.getSettings(db, companyId);
     return await loadBuiltinCalculationPresets(settings);
   },
 
-  async listCalculations(db: AppDatabase, companyId: string) {
+  async listCalculations(db: NodeDatabase, companyId: string) {
     const settings = await settingsService.getSettings(db, companyId);
     const presets = await loadBuiltinCalculationPresets(settings);
     const presetsByKey = new Map(presets.map((preset) => [preset.key, preset]));
@@ -138,7 +138,7 @@ export const calculationService = {
     };
   },
 
-  async getCalculation(db: AppDatabase, companyId: string, calculationId: number) {
+  async getCalculation(db: NodeDatabase, companyId: string, calculationId: number) {
     const calculation = await db.orm.select({
       id: calculations.id,
       name: calculations.name,
@@ -167,7 +167,7 @@ export const calculationService = {
     return hydrateBuiltinCalculation(normalizeCalculationRow(calculation), presetsByKey);
   },
 
-  async validateSql(db: AppDatabase, sqlText: string) {
+  async validateSql(db: NodeDatabase, sqlText: string) {
     const issues = validateReadOnlySql(sqlText);
 
     if (issues.some((issue) => issue.level === "error")) {
@@ -198,7 +198,7 @@ export const calculationService = {
     }
   },
 
-  async createCalculation(db: AppDatabase, companyId: string, input: CreateCalculationInput) {
+  async createCalculation(db: NodeDatabase, companyId: string, input: CreateCalculationInput) {
     const normalizedChartConfig = normalizeChartConfig(input.chartConfig);
     const validation = await this.validateSql(db, input.sqlText);
     if (!validation.valid) {
@@ -226,7 +226,7 @@ export const calculationService = {
     return Number(result[0]?.id);
   },
 
-  async updateCalculation(db: AppDatabase, companyId: string, input: UpdateCalculationInput) {
+  async updateCalculation(db: NodeDatabase, companyId: string, input: UpdateCalculationInput) {
     const current = await this.getCalculation(db, companyId, input.calculationId);
     if (current.isBuiltin) {
       throw new HTTPException(400, { message: "Built-in calculations cannot be edited" });
@@ -256,7 +256,7 @@ export const calculationService = {
     }).where(eq(calculations.id, input.calculationId)).run();
   },
 
-  async deleteCalculation(db: AppDatabase, companyId: string, calculationId: number) {
+  async deleteCalculation(db: NodeDatabase, companyId: string, calculationId: number) {
     const current = await this.getCalculation(db, companyId, calculationId);
     if (current.isBuiltin) {
       throw new HTTPException(400, { message: "Built-in calculations cannot be deleted" });
@@ -265,7 +265,7 @@ export const calculationService = {
     await db.orm.delete(calculations).where(eq(calculations.id, calculationId)).run();
   },
 
-  async createFromPreset(db: AppDatabase, companyId: string, input: CreateCalculationFromPresetInput) {
+  async createFromPreset(db: NodeDatabase, companyId: string, input: CreateCalculationFromPresetInput) {
     const settings = await settingsService.getSettings(db, companyId);
     const preset = (await loadBuiltinCalculationPresets(settings)).find((item) => item.key === input.presetKey) ?? null;
     if (!preset) {

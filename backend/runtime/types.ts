@@ -2,9 +2,14 @@ import type Database from "better-sqlite3";
 export type SqlValue = string | number | null;
 
 export interface AppDatabase {
-  sqlite: Database.Database;
   orm: any;
 }
+
+export interface NodeSqliteDatabase {
+  sqlite: Database.Database;
+}
+
+export type NodeDatabase = AppDatabase & NodeSqliteDatabase;
 
 export interface RuntimeConfig {
   appEnv: string;

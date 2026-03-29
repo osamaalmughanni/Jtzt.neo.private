@@ -3,12 +3,12 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { hardenSchemaForDatabase, type DatabaseKind } from "./app-database";
+import { type DatabaseKind } from "./database-kind";
 import { runSqliteMigrations } from "./drizzle-migrations";
 import { companies } from "./schema/system";
 import * as companySchema from "./schema/company";
 import * as systemSchema from "./schema/system";
-import type { AppDatabase } from "../runtime/types";
+import type { NodeDatabase } from "../runtime/types";
 
 const nodeConnections = new Map<string, Database.Database>();
 
@@ -39,18 +39,17 @@ export function closeNodeDatabaseConnection(databasePath: string) {
   connection.close();
 }
 
-export async function createNodeDatabase(databasePath: string, kind: DatabaseKind): Promise<AppDatabase> {
+export async function createNodeDatabase(databasePath: string, kind: DatabaseKind): Promise<NodeDatabase> {
   const connection = initializeSqliteConnection(databasePath, kind);
   const orm = kind === "system"
-    ? (drizzle(connection, { schema: systemSchema }) as unknown as AppDatabase["orm"])
-    : (drizzle(connection, { schema: companySchema }) as unknown as AppDatabase["orm"]);
+    ? (drizzle(connection, { schema: systemSchema }) as unknown as NodeDatabase["orm"])
+    : (drizzle(connection, { schema: companySchema }) as unknown as NodeDatabase["orm"]);
   let schemaReadyPromise: Promise<void> | null = null;
 
   async function ensureSchemaReady() {
     if (!schemaReadyPromise) {
       schemaReadyPromise = (async () => {
         await runSqliteMigrations(connection, kind);
-        hardenSchemaForDatabase(connection, kind);
       })().catch((error) => {
         schemaReadyPromise = null;
         throw error;
@@ -63,8 +62,8 @@ export async function createNodeDatabase(databasePath: string, kind: DatabaseKin
   await ensureSchemaReady();
 
   return {
-    sqlite: connection,
     orm,
+    sqlite: connection,
   };
 }
 
@@ -87,7 +86,7 @@ export async function destroyCompanyDatabase(config: { nodeCompanySqliteDir: str
 
 export async function cleanupOrphanCompanyDatabases(
   config: { nodeCompanySqliteDir: string },
-  systemDb: AppDatabase,
+  systemDb: NodeDatabase,
 ) {
   await fsp.mkdir(config.nodeCompanySqliteDir, { recursive: true });
   const rows = await systemDb.orm.select({ id: companies.id }).from(companies) as Array<{ id: string }>;

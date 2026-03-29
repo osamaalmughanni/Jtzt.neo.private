@@ -6,7 +6,7 @@ import { HTTPException } from "hono/http-exception";
 import { eq } from "drizzle-orm";
 import { runSqliteMigrations } from "../db/drizzle-migrations";
 import { companies } from "../db/schema";
-import type { AppDatabase, SqlValue } from "../runtime/types";
+import type { NodeDatabase, SqlValue } from "../runtime/types";
 import { systemService } from "./system-service";
 
 const MIGRATION_PACKAGE_KEY = "jtzt-company-sqlite-migration";
@@ -106,11 +106,11 @@ function quoteIdentifier(value: string) {
   return `"${value.replace(/"/g, "\"\"")}"`;
 }
 
-function runAll<T extends Record<string, unknown>>(db: AppDatabase, query: string, params: SqlValue[] = []) {
+function runAll<T extends Record<string, unknown>>(db: NodeDatabase, query: string, params: SqlValue[] = []) {
   return db.sqlite.prepare(query).all(...params) as T[];
 }
 
-function runWrite(db: AppDatabase, query: string, params: SqlValue[] = []) {
+function runWrite(db: NodeDatabase, query: string, params: SqlValue[] = []) {
   return db.sqlite.prepare(query).run(...params);
 }
 
@@ -281,7 +281,7 @@ function parseColumnsFromCreateTableSql(createTableSql: string) {
   return { columns, foreignKeys };
 }
 
-async function readTablesFromDatabase(db: AppDatabase) {
+async function readTablesFromDatabase(db: NodeDatabase) {
   const rows = runAll<{ name: string; sql: string | null }>(db,
     "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC",
   );
@@ -523,24 +523,24 @@ async function readUploadedPackage(file: File) {
   }
 }
 
-async function loadMigrationTables(db: AppDatabase) {
+async function loadMigrationTables(db: NodeDatabase) {
   return buildIncludedTableOrder(await readTablesFromDatabase(db));
 }
 
-async function exportTableRows(db: AppDatabase, table: MigrationTable) {
+async function exportTableRows(db: NodeDatabase, table: MigrationTable) {
   const columnNames = getPackageColumns(table).map((column) => column.name);
   const sql = `SELECT ${columnNames.map(quoteIdentifier).join(", ")} FROM ${quoteIdentifier(table.name)}${buildOrderByClause(table)}`;
   const rows = runAll<Record<string, unknown>>(db, sql, []);
   return rows;
 }
 
-async function clearImportedTables(db: AppDatabase, orderedTables: MigrationTable[]) {
+async function clearImportedTables(db: NodeDatabase, orderedTables: MigrationTable[]) {
   for (const table of orderedTables.slice().reverse()) {
     runWrite(db, `DELETE FROM ${quoteIdentifier(table.name)}`);
   }
 }
 
-async function runInTransaction(db: AppDatabase, work: () => Promise<void>) {
+async function runInTransaction(db: NodeDatabase, work: () => Promise<void>) {
   db.sqlite.exec("BEGIN IMMEDIATE");
   try {
     await work();
@@ -556,7 +556,7 @@ async function runInTransaction(db: AppDatabase, work: () => Promise<void>) {
 }
 
 async function importTableData(
-  db: AppDatabase,
+  db: NodeDatabase,
   orderedTables: MigrationTable[],
   packageDb: BetterSqliteDatabase,
 ) {
@@ -1159,7 +1159,7 @@ export const adminSqliteMigrationService = {
     }
   },
 
-  async exportCompany(systemDb: AppDatabase, companyDb: AppDatabase, companyId: string) {
+  async exportCompany(systemDb: NodeDatabase, companyDb: NodeDatabase, companyId: string) {
     const company = await systemDb.orm.select({
       name: companies.name,
       api_key_hash: companies.apiKeyHash,
@@ -1243,8 +1243,8 @@ export const adminSqliteMigrationService = {
   },
 
   async createCompanyFromSQLite(
-    systemDb: AppDatabase,
-    companyDb: AppDatabase,
+    systemDb: NodeDatabase,
+    companyDb: NodeDatabase,
     input: { file: File; name?: string },
     companyId = crypto.randomUUID(),
   ) {
@@ -1362,8 +1362,8 @@ export const adminSqliteMigrationService = {
   },
 
   async replaceCompanyFromSQLite(
-    systemDb: AppDatabase,
-    companyDb: AppDatabase,
+    systemDb: NodeDatabase,
+    companyDb: NodeDatabase,
     input: { companyId: string; companyName?: string; file: File },
   ) {
     const company = await systemService.getCompanyById(systemDb, input.companyId);

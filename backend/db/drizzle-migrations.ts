@@ -4,7 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import type { DatabaseKind } from "./app-database";
+import type { DatabaseKind } from "./database-kind";
 
 const DRIZZLE_MIGRATIONS_TABLE = "__drizzle_migrations";
 

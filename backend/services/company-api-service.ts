@@ -14,7 +14,7 @@ import type {
   CompanyApiTableSchema,
 } from "../../shared/types/api";
 import { companies } from "../db/schema";
-import type { AppDatabase, SqlValue } from "../runtime/types";
+import type { NodeDatabase, SqlValue } from "../runtime/types";
 
 const API_KEY_PREFIX = "jtzt_";
 const EXCLUDED_TABLES = new Set(["admins", "companies", "invitation_codes", "sqlite_sequence"]);
@@ -50,15 +50,15 @@ function toSqlValues(values: Array<string | number | boolean | null>): SqlValue[
   return values.map(normalizeSqlValue);
 }
 
-function runAll<T extends Record<string, unknown>>(db: AppDatabase, query: string, params: SqlValue[] = []) {
+function runAll<T extends Record<string, unknown>>(db: NodeDatabase, query: string, params: SqlValue[] = []) {
   return db.sqlite.prepare(query).all(...params) as T[];
 }
 
-function runFirst<T extends Record<string, unknown>>(db: AppDatabase, query: string, params: SqlValue[] = []) {
+function runFirst<T extends Record<string, unknown>>(db: NodeDatabase, query: string, params: SqlValue[] = []) {
   return (db.sqlite.prepare(query).get(...params) as T | undefined) ?? null;
 }
 
-function runWrite(db: AppDatabase, query: string, params: SqlValue[] = []) {
+function runWrite(db: NodeDatabase, query: string, params: SqlValue[] = []) {
   const result = db.sqlite.prepare(query).run(...params);
   return {
     changes: result.changes,
@@ -66,7 +66,7 @@ function runWrite(db: AppDatabase, query: string, params: SqlValue[] = []) {
   };
 }
 
-async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTableSchema[]> {
+async function readCompanyScopedTables(db: NodeDatabase): Promise<CompanyApiTableSchema[]> {
   const tables = runAll<{ name: string }>(db,
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC",
   );
@@ -368,7 +368,7 @@ function buildMarkdownDocs(docs: Omit<CompanyApiDocsResponse["docs"], "markdown"
 }
 
 export const companyApiService = {
-  async getApiKeyStatus(db: AppDatabase, companyId: string) {
+  async getApiKeyStatus(db: NodeDatabase, companyId: string) {
     const row = await db.orm.select({
       api_key_hash: companies.apiKeyHash,
       api_key_created_at: companies.apiKeyCreatedAt,
@@ -383,7 +383,7 @@ export const companyApiService = {
     };
   },
 
-  async rotateApiKey(db: AppDatabase, companyId: string) {
+  async rotateApiKey(db: NodeDatabase, companyId: string) {
     const apiKey = buildApiKey();
     const createdAt = new Date().toISOString();
     const result = await db.orm.update(companies).set({
@@ -403,12 +403,12 @@ export const companyApiService = {
     };
   },
 
-  async getCompanyByApiKey(db: AppDatabase, apiKey: string) {
+  async getCompanyByApiKey(db: NodeDatabase, apiKey: string) {
     const hash = hashApiKey(apiKey.trim());
     return db.orm.select({ id: companies.id, name: companies.name }).from(companies).where(eq(companies.apiKeyHash, hash)).get();
   },
 
-  async getSchema(db: AppDatabase): Promise<CompanyApiSchemaResponse> {
+  async getSchema(db: NodeDatabase): Promise<CompanyApiSchemaResponse> {
     try {
       const tables = await readCompanyScopedTables(db);
       return {
@@ -420,7 +420,7 @@ export const companyApiService = {
     }
   },
 
-  async queryTable(db: AppDatabase, companyId: string, input: CompanyApiQueryInput): Promise<CompanyApiQueryResponse> {
+  async queryTable(db: NodeDatabase, companyId: string, input: CompanyApiQueryInput): Promise<CompanyApiQueryResponse> {
     const tables = await readCompanyScopedTables(db);
     const table = ensureTableAvailable(tables, input.table);
 
@@ -450,7 +450,7 @@ export const companyApiService = {
     };
   },
 
-  async mutateTable(db: AppDatabase, companyId: string, input: CompanyApiMutationInput): Promise<CompanyApiMutationResponse> {
+  async mutateTable(db: NodeDatabase, companyId: string, input: CompanyApiMutationInput): Promise<CompanyApiMutationResponse> {
     const tables = await readCompanyScopedTables(db);
     const table = ensureTableAvailable(tables, input.table);
     const tableName = quoteIdentifier(table.name);
@@ -507,7 +507,7 @@ export const companyApiService = {
     };
   },
 
-  async getGeneratedDocs(db: AppDatabase): Promise<CompanyApiDocsResponse["docs"]> {
+  async getGeneratedDocs(db: NodeDatabase): Promise<CompanyApiDocsResponse["docs"]> {
     try {
       const tables = await readCompanyScopedTables(db);
       const docsWithoutMarkdown: Omit<CompanyApiDocsResponse["docs"], "markdown"> = {

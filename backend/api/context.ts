@@ -1,10 +1,10 @@
 import type { SessionTokenPayload } from "../auth/jwt";
-import type { AppDatabase, RuntimeConfig } from "../runtime/types";
+import type { NodeDatabase, RuntimeConfig } from "../runtime/types";
 
 export interface AppVariables {
   session: SessionTokenPayload;
-  systemDb: AppDatabase;
-  db: AppDatabase;
+  systemDb: NodeDatabase;
+  db: NodeDatabase;
   config: RuntimeConfig;
   externalCompany: {
     id: string;
