@@ -6,14 +6,13 @@ import android.net.Uri;
 import android.os.Bundle;
 
 public class LauncherActivity extends Activity {
-    private static final String KIOSK_EXIT_HOST = "app.jtzt.com";
     private static final String KIOSK_EXIT_PATH = "/native/exit";
 
     private boolean isKioskExitRequest() {
         Uri data = getIntent() == null ? null : getIntent().getData();
         return data != null
                 && "https".equals(data.getScheme())
-                && KIOSK_EXIT_HOST.equals(data.getHost())
+                && SessionStore.matchesConfiguredHome(this, data)
                 && KIOSK_EXIT_PATH.equals(data.getPath());
     }
 

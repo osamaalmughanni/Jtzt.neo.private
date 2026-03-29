@@ -101,7 +101,7 @@ export function TabletPinPage() {
         code: activeTabletAccess.code,
         pinCode: nextPinCode,
       });
-      await loginCompany(response.session);
+      await loginCompany(response.session, { persist: false });
       navigate("/dashboard", { replace: true });
     } catch (error) {
       setPinCode("");

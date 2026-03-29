@@ -87,6 +87,11 @@ function readSession(key: string): StoredSession | null {
       return null;
     }
 
+    if (key === COMPANY_SESSION_KEY && session.accessMode === "tablet") {
+      clearStorageValue(key);
+      return null;
+    }
+
     return session;
   } catch {
     clearStorageValue(key);

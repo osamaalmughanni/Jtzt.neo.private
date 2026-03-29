@@ -64,8 +64,8 @@ android {
         applicationId "com.jtzt.app"
         minSdkVersion 21
         targetSdkVersion 35
-        versionCode 260871909
-        versionName "2026.03.28-1909"
+        versionCode 260881340
+        versionName "2026.03.29-1340"
 
         // The name for the application
         resValue "string", "appName", twaManifest.name

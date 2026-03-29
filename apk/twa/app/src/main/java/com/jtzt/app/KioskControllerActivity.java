@@ -3,16 +3,17 @@ package com.jtzt.app;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -20,9 +21,11 @@ import android.widget.TextView;
 import com.jtzt.app.android.AndroidUiController;
 import com.jtzt.app.android.KioskModeController;
 
-import java.util.Locale;
-
 public class KioskControllerActivity extends Activity {
+    private TextView domainStatus;
+    private EditText domainInput;
+    private Button domainSaveButton;
+    private Button domainResetButton;
     private TextView deviceState;
     private TextView launcherStatus;
     private TextView lockdownHint;
@@ -65,6 +68,35 @@ public class KioskControllerActivity extends Activity {
         subtitle.setTextColor(0xFFB0B0B0);
         subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         subtitle.setGravity(Gravity.CENTER);
+
+        TextView domainTitle = new TextView(this);
+        domainTitle.setText("Custom domain");
+        domainTitle.setTextColor(0xFFFFFFFF);
+        domainTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        domainTitle.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        TextView domainDescription = new TextView(this);
+        domainDescription.setText("Stored locally on this device. Change the home origin, then return to Jtzt.");
+        domainDescription.setTextColor(0xFFB0B0B0);
+        domainDescription.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        domainDescription.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        domainInput = buildTextInput("https://app.jtzt.com/");
+
+        domainStatus = new TextView(this);
+        domainStatus.setTextColor(0xFFE0E0E0);
+        domainStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        domainStatus.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        domainSaveButton = new Button(this);
+        domainSaveButton.setText("Save domain");
+        domainSaveButton.setAllCaps(false);
+        domainSaveButton.setOnClickListener(v -> applyDomainSetting());
+
+        domainResetButton = new Button(this);
+        domainResetButton.setText("Reset default");
+        domainResetButton.setAllCaps(false);
+        domainResetButton.setOnClickListener(v -> resetDomainSetting());
 
         deviceState = new TextView(this);
         deviceState.setTextColor(0xFFFFFFFF);
@@ -128,8 +160,23 @@ public class KioskControllerActivity extends Activity {
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         subtitleParams.topMargin = dp(8);
         root.addView(subtitle, subtitleParams);
+        LinearLayout.LayoutParams domainTitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        domainTitleParams.topMargin = dp(18);
+        root.addView(domainTitle, domainTitleParams);
+        LinearLayout.LayoutParams domainDescriptionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        domainDescriptionParams.topMargin = dp(4);
+        root.addView(domainDescription, domainDescriptionParams);
+        LinearLayout.LayoutParams domainInputParams = fullWidthParams(dp(12));
+        root.addView(domainInput, domainInputParams);
+        LinearLayout.LayoutParams domainStatusParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        domainStatusParams.topMargin = dp(8);
+        root.addView(domainStatus, domainStatusParams);
+        LinearLayout.LayoutParams domainSaveParams = fullWidthParams(dp(8));
+        root.addView(domainSaveButton, domainSaveParams);
+        LinearLayout.LayoutParams domainResetParams = fullWidthParams(dp(8));
+        root.addView(domainResetButton, domainResetParams);
         LinearLayout.LayoutParams deviceStateParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        deviceStateParams.topMargin = dp(14);
+        deviceStateParams.topMargin = dp(18);
         root.addView(deviceState, deviceStateParams);
         LinearLayout.LayoutParams launcherStatusParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         launcherStatusParams.topMargin = dp(8);
@@ -204,6 +251,7 @@ public class KioskControllerActivity extends Activity {
     private void returnToKiosk() {
         Intent intent = new Intent(this, KioskWebViewActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        intent.setData(Uri.parse(SessionStore.getLaunchUrl(this)));
         startActivity(intent);
         finish();
     }
@@ -213,6 +261,9 @@ public class KioskControllerActivity extends Activity {
         boolean isDeviceOwner = DevicePolicyHelper.isDeviceOwner(this);
         boolean isLockTaskActive = DevicePolicyHelper.isLockTaskActive(this);
         boolean isDefaultHome = HomeRoleHelper.isDefaultHome(this);
+        String configuredHomeUrl = SessionStore.getConfiguredHomeUrl(this);
+        domainInput.setText(configuredHomeUrl);
+        domainStatus.setText("Active domain: " + configuredHomeUrl);
         textZoomInput.setText(String.valueOf(SessionStore.getWebViewTextZoom(this)));
 
         if (isDeviceOwner) {
@@ -247,6 +298,31 @@ public class KioskControllerActivity extends Activity {
         } else {
             exitButton.setText("Exit Jtzt");
         }
+    }
+
+    private void applyDomainSetting() {
+        String rawValue = readInput(domainInput);
+        if (rawValue.isEmpty()) {
+            showDomainError("Enter a domain or full https URL.");
+            return;
+        }
+
+        try {
+            String normalized = SessionStore.setConfiguredHomeUrl(this, rawValue);
+            domainInput.setText(normalized);
+            domainStatus.setText("Active domain: " + normalized);
+            returnToKiosk();
+        } catch (IllegalArgumentException exception) {
+            showDomainError(exception.getMessage());
+        }
+    }
+
+    private void resetDomainSetting() {
+        SessionStore.resetConfiguredHomeUrl(this);
+        String configuredHomeUrl = SessionStore.getConfiguredHomeUrl(this);
+        domainInput.setText(configuredHomeUrl);
+        domainStatus.setText("Active domain: " + configuredHomeUrl);
+        returnToKiosk();
     }
 
     private void showDedicatedSetupDialog() {
@@ -297,6 +373,14 @@ public class KioskControllerActivity extends Activity {
                 .show();
     }
 
+    private void showDomainError(String message) {
+        new AlertDialog.Builder(this)
+                .setTitle("Invalid domain")
+                .setMessage(message)
+                .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                .show();
+    }
+
     private LinearLayout.LayoutParams fullWidthParams(int topMarginDp) {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -316,6 +400,16 @@ public class KioskControllerActivity extends Activity {
         input.setHintTextColor(0xFF7A7A7A);
         input.setTextColor(0xFFFFFFFF);
         input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        return input;
+    }
+
+    private EditText buildTextInput(String hint) {
+        EditText input = new EditText(this);
+        input.setHint(hint);
+        input.setHintTextColor(0xFF7A7A7A);
+        input.setTextColor(0xFFFFFFFF);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        input.setSingleLine(true);
         return input;
     }
 

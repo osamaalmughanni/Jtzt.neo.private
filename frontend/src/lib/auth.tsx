@@ -19,7 +19,7 @@ interface AuthContextValue {
   tabletAccess: StoredTabletAccess | null;
   isTabletMode: boolean;
   loading: boolean;
-  loginCompany: (session: StoredSession) => Promise<void>;
+  loginCompany: (session: StoredSession, options?: { persist?: boolean }) => Promise<void>;
   loginAdmin: (session: StoredSession) => Promise<void>;
   setTabletAccess: (access: StoredTabletAccess) => void;
   clearTabletAccess: () => void;
@@ -176,8 +176,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tabletAccess,
       isTabletMode: companySession?.accessMode === "tablet",
       loading,
-      async loginCompany(session) {
-        sessionStorage.setCompanySession(session);
+      async loginCompany(session, options) {
+        if (options?.persist !== false) {
+          sessionStorage.setCompanySession(session);
+        }
         setCompanySession(session);
         try {
           setCompanyIdentity(await api.getCompanyMe(session.token));

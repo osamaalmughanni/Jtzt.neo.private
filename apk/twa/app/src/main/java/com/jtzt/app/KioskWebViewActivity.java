@@ -22,7 +22,6 @@ import com.jtzt.app.android.AndroidUiController;
 import com.jtzt.app.android.KioskModeController;
 
 public class KioskWebViewActivity extends Activity {
-    private static final String HOME_URL = "https://app.jtzt.com/";
     private static final String KIOSK_EXIT_PATH = "/native/exit";
     private static final int MANAGE_TAP_THRESHOLD = 10;
     private static final long MANAGE_TAP_WINDOW_MS = 400L;
@@ -105,8 +104,7 @@ public class KioskWebViewActivity extends Activity {
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
         } else {
-            String startUrl = SessionStore.getLastUrl(this);
-            webView.loadUrl(startUrl == null ? HOME_URL : startUrl);
+            webView.loadUrl(SessionStore.getLaunchUrl(this));
         }
 
         registerBackHandler();
@@ -176,8 +174,8 @@ public class KioskWebViewActivity extends Activity {
             startActivity(new Intent(this, KioskControllerActivity.class));
             return;
         }
-        if (webView != null && uri != null) {
-            webView.loadUrl(uri.toString());
+        if (webView != null) {
+            webView.loadUrl(uri == null ? SessionStore.getLaunchUrl(this) : uri.toString());
         }
     }
 
@@ -203,7 +201,7 @@ public class KioskWebViewActivity extends Activity {
             return true;
         }
 
-        if ("https".equals(uri.getScheme()) && "app.jtzt.com".equals(uri.getHost())) {
+        if (SessionStore.matchesConfiguredHome(this, uri)) {
             if (KIOSK_EXIT_PATH.equals(uri.getPath())) {
                 openExitGate();
                 return true;
