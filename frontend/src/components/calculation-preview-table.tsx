@@ -68,7 +68,7 @@ export function CalculationPreviewTable({
       <div
         className={
           fullHeight
-            ? "relative min-h-0 w-full min-w-0 flex-1 overflow-auto rounded-2xl border border-border bg-background max-h-[calc(100dvh-18rem)]"
+            ? "relative min-h-0 w-full min-w-0 flex-1 overflow-auto rounded-2xl border border-border bg-background"
             : "relative min-h-0 w-full min-w-0 overflow-auto rounded-2xl border border-border bg-background"
         }
       >

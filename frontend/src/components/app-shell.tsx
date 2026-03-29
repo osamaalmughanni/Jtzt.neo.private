@@ -310,9 +310,9 @@ function ShellContent({
           className="app-scroll-area flex min-h-0 flex-1 flex-col overflow-x-visible overflow-y-auto overscroll-contain"
         >
           <RouteReveal routeKey={locationKey} className="flex flex-col">
-            <AppContentLane ref={scrollContentRef} className="flex flex-col pt-4 pb-4">
-              <Outlet />
-            </AppContentLane>
+          <AppContentLane ref={scrollContentRef} className="flex flex-col pt-4 pb-4">
+            <Outlet />
+          </AppContentLane>
           </RouteReveal>
         </div>
         <div

@@ -154,9 +154,9 @@ export function CalculationPreviewPage() {
   }
 
   return (
-    <FormPage className="h-full min-h-0">
+    <FormPage>
       <PageLoadBoundary
-        className="min-h-0 flex-1"
+        className="min-h-0"
         gap="md"
         intro={
           <PageIntro>
@@ -186,8 +186,8 @@ export function CalculationPreviewPage() {
         refreshing={resource.isRefreshing || validating}
         skeleton={<PageLoadingState label={t("common.loading")} />}
       >
-        <AppFullBleed className="flex min-h-0 flex-1 min-w-0 xl:px-12 2xl:px-16">
-          <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col gap-5 overflow-hidden">
+        <AppFullBleed className="flex min-h-0 min-w-0 xl:px-12 2xl:px-16">
+          <div className="flex min-h-0 w-full min-w-0 flex-col gap-5">
             {validation.issues.length > 0 ? (
               <div className="flex flex-col gap-2 rounded-2xl border border-border bg-muted/20 p-4">
                 {validation.issues.map((issue, index) => (
@@ -204,7 +204,6 @@ export function CalculationPreviewPage() {
               rows={validation.rows}
               emptyLabel={t("calculations.noPreviewRows")}
               searchPlaceholder={t("calculations.previewSearchPlaceholder")}
-              fullHeight
             />
           </div>
         </AppFullBleed>

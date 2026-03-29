@@ -54,6 +54,19 @@ function translateEntryType(value: string, t: ReturnType<typeof useTranslation>[
   }
 }
 
+function translateRole(value: string, t: ReturnType<typeof useTranslation>["t"]) {
+  switch (value.toLowerCase()) {
+    case "admin":
+      return t("users.adminRole");
+    case "manager":
+      return t("users.managerRole");
+    case "employee":
+      return t("users.employeeRole");
+    default:
+      return value;
+  }
+}
+
 function formatCellValue(
   value: string | number | null,
   columnKey: string,
@@ -80,6 +93,7 @@ function formatCellValue(
     }
   }
   if (columnKey === "type" && typeof value === "string") return translateEntryType(value, t);
+  if (columnKey === "role" && typeof value === "string") return translateRole(value, t);
   if (kind === "duration" && typeof value === "number") return formatMinutes(value);
   if (kind === "currency" && typeof value === "number") {
     try {
@@ -118,6 +132,14 @@ function getOvertimeSegmentLabel(kind: "base" | "standard_overtime" | "employee_
   return t("reports.overtimeBreak");
 }
 
+function getOvertimeStateLabel(state: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]>["state"], t: ReturnType<typeof useTranslation>["t"]) {
+  if (state === "daily_overtime") return t("reports.overtimeDailyState");
+  if (state === "weekly_overtime") return t("reports.overtimeWeeklyState");
+  if (state === "employee_choice") return t("reports.overtimeEmployeeChoiceState");
+  if (state === "needs_review") return t("reports.overtimeNeedsReviewState");
+  return t("reports.overtimeBaseOnlyState");
+}
+
 function formatOvertimeSegmentTooltip(
   kind: "base" | "standard_overtime" | "employee_choice" | "break",
   minutes: number,
@@ -130,6 +152,7 @@ function formatOvertimeSegmentTooltip(
 }
 
 function OvertimeStateBadge({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
+  const { t } = useTranslation();
   const className = meta.reviewState === "needs_review"
     ? "border-0 bg-destructive text-destructive-foreground"
     : meta.state === "employee_choice"
@@ -139,7 +162,7 @@ function OvertimeStateBadge({ meta }: { meta: NonNullable<ReportResponse["report
         : meta.state === "daily_overtime"
           ? "border border-border bg-secondary text-secondary-foreground"
           : "border border-border bg-muted text-foreground";
-  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}>{meta.stateLabel}</span>;
+  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${className}`}>{getOvertimeStateLabel(meta.state, t)}</span>;
 }
 
 function OvertimeTimelineCell({ meta }: { meta: NonNullable<ReportResponse["report"]["rowMeta"][number]["overtime"]> }) {
@@ -570,7 +593,7 @@ export function ReportsPreviewPage() {
         skeleton={<PageLoadingState label={t("reports.creating")} minHeightClassName="min-h-[28rem]" />}
       >
         <AppFullBleed className="flex min-h-0 flex-1 min-w-0 xl:px-12 2xl:px-16">
-          <FormPanel className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col gap-5 overflow-hidden">
+          <div className="flex min-h-0 w-full min-w-0 flex-col gap-5">
             {report ? (
               <>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -590,7 +613,7 @@ export function ReportsPreviewPage() {
                   </div>
                 </div>
 
-                <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "gantt" | "overtime" | "vacation")} className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+                <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "gantt" | "overtime" | "vacation")} className="flex min-h-0 min-w-0 flex-col gap-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <TabsList className="h-9">
                       <TabsTrigger value="table">{t("reports.table")}</TabsTrigger>
@@ -608,15 +631,15 @@ export function ReportsPreviewPage() {
                     </div>
                   </div>
 
-                  <TabsContent value="table" className="mt-0 min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
-                    <div className="relative min-h-0 w-full min-w-0 flex-1 overflow-auto rounded-2xl border border-border bg-background">
-                      <Table className="w-full min-w-full table-auto border-separate border-spacing-0 text-sm">
+                  <TabsContent value="table" className="mt-0 min-h-0 min-w-0 flex flex-col">
+                    <div className="relative min-h-0 w-full min-w-0 overflow-auto rounded-2xl border border-border bg-background">
+                      <Table className="w-full text-sm">
                         <TableHeader>
-                          <TableRow className="h-11 border-b border-border bg-muted/40 hover:bg-muted/40">
+                          <TableRow className="bg-muted/40">
                             {resolvedColumns.map((column) => (
                               <TableHead
                                 key={column.key}
-                                className="min-w-[10rem] whitespace-normal break-words border-b border-border bg-muted/40 px-4 py-3 text-left font-medium leading-5 text-foreground align-middle"
+                                className="whitespace-normal break-words"
                               >
                                 {getReportColumnLabel(column, t)}
                               </TableHead>
@@ -627,9 +650,9 @@ export function ReportsPreviewPage() {
                           {rowsWithMeta.map(({ row, meta }, index) => {
                             const rowType = typeof row.type === "string" ? row.type : null;
                             return (
-                              <TableRow key={index} className="border-b border-border/70 last:border-b-0">
+                              <TableRow key={index}>
                                 {resolvedColumns.map((column) => (
-                                  <TableCell key={column.key} className="min-w-[10rem] px-4 py-3 text-muted-foreground align-middle">
+                                  <TableCell key={column.key} className="text-muted-foreground">
                                     {column.kind === "overtime_state" && meta.overtime ? (
                                       <OvertimeStateBadge meta={meta.overtime} />
                                     ) : column.kind === "overtime_timeline" && meta.overtime ? (
@@ -660,13 +683,13 @@ export function ReportsPreviewPage() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="gantt" className="mt-0 min-h-0 flex flex-1 flex-col overflow-hidden">
-                    <div className="flex w-full min-h-0 flex-1 flex-col gap-4 rounded-2xl border border-border p-4">
+                  <TabsContent value="gantt" className="mt-0 min-h-0 flex flex-col">
+                    <div className="flex w-full min-h-0 flex-col gap-4 rounded-2xl border border-border bg-background p-4">
                       <p className="text-sm text-muted-foreground">Responsive timeline with condensed lanes for readable large reports.</p>
                       {timelineUsers.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{t("reports.noTimeline")}</p>
                       ) : (
-                        <div className="min-h-0 w-full flex-1 overflow-auto rounded-2xl border border-border bg-background">
+                        <div className="w-full overflow-x-auto rounded-2xl border border-border bg-background">
                           <div
                             className="relative"
                             style={{ minWidth: GANTT_LEFT_COLUMN_WIDTH + timelineWidth }}
@@ -705,7 +728,7 @@ export function ReportsPreviewPage() {
                                     <div className="flex shrink-0 flex-col justify-center gap-2 border-r border-border bg-background px-4 py-4" style={{ width: GANTT_LEFT_COLUMN_WIDTH }}>
                                       <div className="flex flex-col gap-1">
                                         <p className="truncate text-sm font-medium text-foreground">{user.userName}</p>
-                                        <p className="text-xs text-muted-foreground">{user.role}</p>
+                                    <p className="text-xs text-muted-foreground">{translateRole(user.role, t)}</p>
                                       </div>
                                       <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
                                         {(["work", "vacation", "time_off_in_lieu", "sick_leave"] as const)
@@ -784,13 +807,12 @@ export function ReportsPreviewPage() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="overtime" className="mt-0 min-h-0 flex flex-1 flex-col overflow-hidden">
-                    <div className="flex h-full w-full min-h-0 flex-col gap-4 rounded-2xl border border-border p-4">
+                  <TabsContent value="overtime" className="mt-0 min-h-0 flex flex-col">
+                    <div className="flex w-full min-h-0 flex-col gap-4 rounded-2xl border border-border bg-background p-4">
                       {overtimePreviewRows.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{t("reports.noOvertimePreview")}</p>
                       ) : (
-                        <div className="min-h-0 flex-1 overflow-auto">
-                          <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-4">
                           {overtimePreviewRows.map(({ row, meta, index }) =>
                             meta.overtime ? (
                               <OvertimePreviewCard
@@ -802,14 +824,13 @@ export function ReportsPreviewPage() {
                               />
                             ) : null,
                           )}
-                          </div>
                         </div>
                       )}
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="vacation" className="mt-0 min-h-0 flex flex-1 flex-col overflow-hidden">
-                    <div className="flex w-full min-h-0 flex-1 flex-col gap-4 rounded-2xl border border-border p-4">
+                  <TabsContent value="vacation" className="mt-0 min-h-0 flex flex-col">
+                    <div className="flex w-full min-h-0 flex-col gap-4 rounded-2xl border border-border bg-background p-4">
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                         <div className="rounded-2xl border border-border bg-background p-4">
                           <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationUsers")}</p>
@@ -827,14 +848,13 @@ export function ReportsPreviewPage() {
                       {vacationOverviewRows.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{t("reports.noVacationPreview")}</p>
                       ) : (
-                        <div className="min-h-0 flex-1 overflow-auto">
-                          <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-4">
                             {vacationOverviewRows.map((row) => (
                               <div key={`vacation-${row.userId}`} className="flex flex-col gap-4 rounded-2xl border border-border bg-background p-4">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                   <div className="flex flex-col gap-1">
                                     <p className="text-sm font-medium text-foreground">{row.userName}</p>
-                                    <p className="text-xs text-muted-foreground">{row.role}</p>
+                                    <p className="text-xs text-muted-foreground">{translateRole(row.role, t)}</p>
                                   </div>
                                   <div className="flex flex-wrap items-center gap-2 text-xs">
                                     <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-foreground">
@@ -918,7 +938,6 @@ export function ReportsPreviewPage() {
                                 </div>
                               </div>
                             ))}
-                          </div>
                         </div>
                       )}
                     </div>
@@ -926,7 +945,7 @@ export function ReportsPreviewPage() {
                 </Tabs>
               </>
             ) : null}
-          </FormPanel>
+          </div>
         </AppFullBleed>
       </PageLoadBoundary>
     </FormPage>
