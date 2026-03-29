@@ -2,9 +2,8 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { companySchema, systemSchema } from "./schema";
 import { hardenSchemaForDatabase, type DatabaseKind } from "./app-database";
-import { runSqliteMigrations } from "./sqlite-migrations";
+import { runSqliteMigrations } from "./drizzle-migrations";
 import type { AppDatabase, RunResult, SqlStatement, SqlValue } from "../runtime/types";
 
 const nodeConnections = new Map<string, Database.Database>();
@@ -13,7 +12,7 @@ function normalizeParams(params?: SqlValue[]) {
   return params ?? [];
 }
 
-export function initializeSqliteConnection(databasePath: string, schema: string, kind: DatabaseKind): Database.Database {
+export function initializeSqliteConnection(databasePath: string, kind: DatabaseKind): Database.Database {
   const existing = nodeConnections.get(databasePath);
   if (existing) {
     return existing;
@@ -26,7 +25,6 @@ export function initializeSqliteConnection(databasePath: string, schema: string,
   db.pragma("synchronous = NORMAL");
   db.pragma("temp_store = MEMORY");
   db.pragma("cache_size = -20000");
-  db.exec(schema);
   nodeConnections.set(databasePath, db);
   return db;
 }
@@ -41,8 +39,8 @@ export function closeNodeDatabaseConnection(databasePath: string) {
   connection.close();
 }
 
-export async function createNodeDatabase(databasePath: string, schema: string, kind: DatabaseKind): Promise<AppDatabase> {
-  const connection = initializeSqliteConnection(databasePath, schema, kind);
+export async function createNodeDatabase(databasePath: string, kind: DatabaseKind): Promise<AppDatabase> {
+  const connection = initializeSqliteConnection(databasePath, kind);
   let schemaReadyPromise: Promise<void> | null = null;
 
   async function ensureSchemaReady() {
@@ -103,12 +101,12 @@ export async function createNodeDatabase(databasePath: string, schema: string, k
 }
 
 export async function createSystemDatabase(config: { nodeSystemSqlitePath: string }) {
-  return createNodeDatabase(config.nodeSystemSqlitePath, systemSchema, "system");
+  return createNodeDatabase(config.nodeSystemSqlitePath, "system");
 }
 
 export async function createCompanyDatabase(config: { nodeCompanySqliteDir: string }, companyId: string) {
   const databasePath = path.join(config.nodeCompanySqliteDir, `${companyId}.sqlite`);
-  return createNodeDatabase(databasePath, companySchema, "company");
+  return createNodeDatabase(databasePath, "company");
 }
 
 export async function destroyCompanyDatabase(config: { nodeCompanySqliteDir: string }, companyId: string) {

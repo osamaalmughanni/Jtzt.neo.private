@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { HTTPException } from "hono/http-exception";
-import { companySchema } from "../db/schema";
+import { runSqliteMigrations } from "../db/drizzle-migrations";
 import type { AppDatabase, SqlValue } from "../runtime/types";
 import { systemService } from "./system-service";
 
@@ -271,43 +271,28 @@ function parseColumnsFromCreateTableSql(createTableSql: string) {
   return { columns, foreignKeys };
 }
 
-function parseTablesFromSchemaSql(schemaSql: string) {
-  const tables: MigrationTable[] = [];
-  const pattern = /CREATE TABLE IF NOT EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/gi;
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(schemaSql)) !== null) {
-    const tableName = match[1];
-    if (EXCLUDED_TABLES.has(tableName)) {
-      continue;
-    }
-
-    const statementStart = match.index;
-    let statementEnd = schemaSql.indexOf(";\n", statementStart);
-    if (statementEnd === -1) {
-      statementEnd = schemaSql.indexOf(";", statementStart);
-    }
-    if (statementEnd === -1) {
-      statementEnd = schemaSql.length;
-    }
-
-    const createTableSql = schemaSql.slice(statementStart, statementEnd);
-    const { columns, foreignKeys } = parseColumnsFromCreateTableSql(createTableSql);
-    tables.push({
-      name: tableName,
-      columns,
-      foreignKeys,
-      primaryKeyColumns: columns.filter((column) => column.primaryKey).map((column) => column.name),
-    });
-  }
-
-  return tables;
-}
-
 async function readTablesFromDatabase(db: AppDatabase) {
   const rows = await db.all<{ name: string; sql: string | null }>(
     "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC",
   );
+
+  return rows
+    .filter((row) => row.sql && !EXCLUDED_TABLES.has(row.name))
+    .map((row) => {
+      const { columns, foreignKeys } = parseColumnsFromCreateTableSql(row.sql as string);
+      return {
+        name: row.name,
+        columns,
+        foreignKeys,
+        primaryKeyColumns: columns.filter((column) => column.primaryKey).map((column) => column.name),
+      } satisfies MigrationTable;
+    });
+}
+
+function readTablesFromBetterSqlite(db: BetterSqliteDatabase) {
+  const rows = db.prepare(
+    "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC",
+  ).all() as Array<{ name: string; sql: string | null }>;
 
   return rows
     .filter((row) => row.sql && !EXCLUDED_TABLES.has(row.name))
@@ -408,8 +393,8 @@ function buildPackageSchemaDocument(tables: MigrationTable[]) {
       singleFile: true,
       fileExtension: ".sqlite",
       packageTableName: MIGRATION_METADATA_TABLE,
-      schemaSource: "backend/db/schema.ts",
-      systemSchemaSource: "backend/db/schema.ts",
+      schemaSource: "backend/db/schema/company.ts",
+      systemSchemaSource: "backend/db/schema/system.ts",
     },
     packageMetadata: {
       tableName: MIGRATION_METADATA_TABLE,
@@ -1155,9 +1140,16 @@ async function validatePackageDatabaseSchema(packageDb: BetterSqliteDatabase, or
 
 export const adminSqliteMigrationService = {
   async getSchema() {
-    const tables = parseTablesFromSchemaSql(companySchema);
-    const schema = buildPackageSchemaDocument(tables);
-    return schema;
+    const { default: Database } = await import("better-sqlite3");
+    const db = new Database(":memory:") as BetterSqliteDatabase;
+    db.pragma("foreign_keys = ON");
+
+    try {
+      await runSqliteMigrations(db as any, "company");
+      return buildPackageSchemaDocument(readTablesFromBetterSqlite(db));
+    } finally {
+      db.close();
+    }
   },
 
   async exportCompany(systemDb: AppDatabase, companyDb: AppDatabase, companyId: string) {

@@ -1,0 +1,1254 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "b230f06c-2f18-475a-9b11-6f8094c7efaa",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "calculations": {
+      "name": "calculations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sql_text": {
+          "name": "sql_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "output_mode": {
+          "name": "output_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'both'"
+        },
+        "chart_type": {
+          "name": "chart_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'bar'"
+        },
+        "chart_category_column": {
+          "name": "chart_category_column",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "chart_value_column": {
+          "name": "chart_value_column",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "chart_series_column": {
+          "name": "chart_series_column",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "chart_config_json": {
+          "name": "chart_config_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "chart_stacked": {
+          "name": "chart_stacked",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "is_builtin": {
+          "name": "is_builtin",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "builtin_key": {
+          "name": "builtin_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "calculations_output_mode_check": {
+          "name": "calculations_output_mode_check",
+          "value": "\"calculations\".\"output_mode\" IN ('table', 'chart', 'both')"
+        },
+        "calculations_chart_type_check": {
+          "name": "calculations_chart_type_check",
+          "value": "\"calculations\".\"chart_type\" IN ('bar', 'line', 'area', 'pie')"
+        }
+      }
+    },
+    "company_settings": {
+      "name": "company_settings",
+      "columns": {
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'EUR'"
+        },
+        "locale": {
+          "name": "locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'de-AT'"
+        },
+        "time_zone": {
+          "name": "time_zone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'Europe/Vienna'"
+        },
+        "date_time_format": {
+          "name": "date_time_format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'dd.MM.yyyy HH:mm'"
+        },
+        "first_day_of_week": {
+          "name": "first_day_of_week",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "weekend_days_json": {
+          "name": "weekend_days_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[6,7]'"
+        },
+        "edit_days_limit": {
+          "name": "edit_days_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 30
+        },
+        "insert_days_limit": {
+          "name": "insert_days_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 30
+        },
+        "allow_one_record_per_day": {
+          "name": "allow_one_record_per_day",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "allow_intersecting_records": {
+          "name": "allow_intersecting_records",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "allow_records_on_holidays": {
+          "name": "allow_records_on_holidays",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "allow_records_on_weekends": {
+          "name": "allow_records_on_weekends",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "allow_future_records": {
+          "name": "allow_future_records",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'AT'"
+        },
+        "tablet_idle_timeout_seconds": {
+          "name": "tablet_idle_timeout_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 10
+        },
+        "auto_break_after_minutes": {
+          "name": "auto_break_after_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 300
+        },
+        "auto_break_duration_minutes": {
+          "name": "auto_break_duration_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 30
+        },
+        "projects_enabled": {
+          "name": "projects_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "tasks_enabled": {
+          "name": "tasks_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "overtime_settings_json": {
+          "name": "overtime_settings_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "custom_fields_json": {
+          "name": "custom_fields_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "project_tasks": {
+      "name": "project_tasks",
+      "columns": {
+        "project_id": {
+          "name": "project_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_project_tasks_task": {
+          "name": "idx_project_tasks_task",
+          "columns": [
+            "task_id",
+            "project_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "project_tasks_project_id_projects_id_fk": {
+          "name": "project_tasks_project_id_projects_id_fk",
+          "tableFrom": "project_tasks",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_tasks_task_id_tasks_id_fk": {
+          "name": "project_tasks_task_id_tasks_id_fk",
+          "tableFrom": "project_tasks",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "project_tasks_project_id_task_id_pk": {
+          "columns": [
+            "project_id",
+            "task_id"
+          ],
+          "name": "project_tasks_project_id_task_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "project_users": {
+      "name": "project_users",
+      "columns": {
+        "project_id": {
+          "name": "project_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_project_users_user": {
+          "name": "idx_project_users_user",
+          "columns": [
+            "user_id",
+            "project_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "project_users_project_id_projects_id_fk": {
+          "name": "project_users_project_id_projects_id_fk",
+          "tableFrom": "project_users",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "project_users_user_id_users_id_fk": {
+          "name": "project_users_user_id_users_id_fk",
+          "tableFrom": "project_users",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "project_users_project_id_user_id_pk": {
+          "columns": [
+            "project_id",
+            "user_id"
+          ],
+          "name": "project_users_project_id_user_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "projects": {
+      "name": "projects",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "budget": {
+          "name": "budget",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "allow_all_users": {
+          "name": "allow_all_users",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "allow_all_tasks": {
+          "name": "allow_all_tasks",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "custom_field_values_json": {
+          "name": "custom_field_values_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_projects_active": {
+          "name": "idx_projects_active",
+          "columns": [
+            "is_active",
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "public_holiday_cache": {
+      "name": "public_holiday_cache",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "country_code": {
+          "name": "country_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "year": {
+          "name": "year",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload_json": {
+          "name": "payload_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_public_holiday_cache_country_year": {
+          "name": "idx_public_holiday_cache_country_year",
+          "columns": [
+            "country_code",
+            "year"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "tasks": {
+      "name": "tasks",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "custom_field_values_json": {
+          "name": "custom_field_values_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_tasks_active": {
+          "name": "idx_tasks_active",
+          "columns": [
+            "is_active",
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "time_entries": {
+      "name": "time_entries",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "entry_type": {
+          "name": "entry_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'work'"
+        },
+        "entry_date": {
+          "name": "entry_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "start_time": {
+          "name": "start_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "end_time": {
+          "name": "end_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "custom_field_values_json": {
+          "name": "custom_field_values_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_time_entries_user_day": {
+          "name": "idx_time_entries_user_day",
+          "columns": [
+            "user_id",
+            "entry_date",
+            "end_date"
+          ],
+          "isUnique": false
+        },
+        "idx_time_entries_user_type_day": {
+          "name": "idx_time_entries_user_type_day",
+          "columns": [
+            "user_id",
+            "entry_type",
+            "entry_date",
+            "end_date"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "time_entries_user_id_users_id_fk": {
+          "name": "time_entries_user_id_users_id_fk",
+          "tableFrom": "time_entries",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "time_entries_project_id_projects_id_fk": {
+          "name": "time_entries_project_id_projects_id_fk",
+          "tableFrom": "time_entries",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "time_entries_task_id_tasks_id_fk": {
+          "name": "time_entries_task_id_tasks_id_fk",
+          "tableFrom": "time_entries",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "time_entries_entry_type_check": {
+          "name": "time_entries_entry_type_check",
+          "value": "\"time_entries\".\"entry_type\" IN ('work', 'vacation', 'sick_leave', 'time_off_in_lieu')"
+        }
+      }
+    },
+    "user_contract_schedule_blocks": {
+      "name": "user_contract_schedule_blocks",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "contract_id": {
+          "name": "contract_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "weekday": {
+          "name": "weekday",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "block_order": {
+          "name": "block_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "start_time": {
+          "name": "start_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "end_time": {
+          "name": "end_time",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "minutes": {
+          "name": "minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "idx_user_contract_schedule_blocks_contract": {
+          "name": "idx_user_contract_schedule_blocks_contract",
+          "columns": [
+            "contract_id",
+            "weekday",
+            "block_order"
+          ],
+          "isUnique": false
+        },
+        "user_contract_schedule_blocks_contract_weekday_order_unique": {
+          "name": "user_contract_schedule_blocks_contract_weekday_order_unique",
+          "columns": [
+            "contract_id",
+            "weekday",
+            "block_order"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "user_contract_schedule_blocks_contract_id_user_contracts_id_fk": {
+          "name": "user_contract_schedule_blocks_contract_id_user_contracts_id_fk",
+          "tableFrom": "user_contract_schedule_blocks",
+          "tableTo": "user_contracts",
+          "columnsFrom": [
+            "contract_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "user_contract_schedule_blocks_weekday_check": {
+          "name": "user_contract_schedule_blocks_weekday_check",
+          "value": "\"user_contract_schedule_blocks\".\"weekday\" BETWEEN 1 AND 7"
+        }
+      }
+    },
+    "user_contracts": {
+      "name": "user_contracts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hours_per_week": {
+          "name": "hours_per_week",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "payment_per_hour": {
+          "name": "payment_per_hour",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "annual_vacation_days": {
+          "name": "annual_vacation_days",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 25
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_user_contracts_user": {
+          "name": "idx_user_contracts_user",
+          "columns": [
+            "user_id",
+            "start_date"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "user_contracts_user_id_users_id_fk": {
+          "name": "user_contracts_user_id_users_id_fk",
+          "tableFrom": "user_contracts",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "users": {
+      "name": "users",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "username": {
+          "name": "username",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "full_name": {
+          "name": "full_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pin_code": {
+          "name": "pin_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'0000'"
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "custom_field_values_json": {
+          "name": "custom_field_values_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_users_name": {
+          "name": "idx_users_name",
+          "columns": [
+            "full_name"
+          ],
+          "isUnique": false
+        },
+        "idx_users_username": {
+          "name": "idx_users_username",
+          "columns": [
+            "username"
+          ],
+          "isUnique": true,
+          "where": "\"users\".\"deleted_at\" IS NULL"
+        },
+        "idx_users_pin_code": {
+          "name": "idx_users_pin_code",
+          "columns": [
+            "pin_code"
+          ],
+          "isUnique": true,
+          "where": "\"users\".\"deleted_at\" IS NULL"
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "users_role_check": {
+          "name": "users_role_check",
+          "value": "\"users\".\"role\" IN ('employee', 'manager', 'admin')"
+        }
+      }
+    }
+  },
+  "views": {
+    "custom_field_values": {
+      "columns": {
+        "entity_type": {
+          "name": "entity_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "entry_type": {
+          "name": "entry_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "field_id": {
+          "name": "field_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "value_raw": {
+          "name": "value_raw",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "value_type": {
+          "name": "value_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "value_number": {
+          "name": "value_number",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "value_boolean": {
+          "name": "value_boolean",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "name": "custom_field_values",
+      "isExisting": false,
+      "definition": "\n  SELECT\n    'user' AS entity_type,\n    id AS entity_id,\n    NULL AS entry_type,\n    json_each.key AS field_id,\n    json_each.value AS value_raw,\n    json_each.type AS value_type,\n    CASE\n      WHEN json_each.type IN ('integer', 'real') THEN CAST(json_each.value AS REAL)\n      ELSE NULL\n    END AS value_number,\n    CASE\n      WHEN json_each.type = 'true' THEN 1\n      WHEN json_each.type = 'false' THEN 0\n      ELSE NULL\n    END AS value_boolean\n  FROM users, json_each(users.custom_field_values_json)\n  UNION ALL\n  SELECT\n    'project' AS entity_type,\n    id AS entity_id,\n    NULL AS entry_type,\n    json_each.key AS field_id,\n    json_each.value AS value_raw,\n    json_each.type AS value_type,\n    CASE\n      WHEN json_each.type IN ('integer', 'real') THEN CAST(json_each.value AS REAL)\n      ELSE NULL\n    END AS value_number,\n    CASE\n      WHEN json_each.type = 'true' THEN 1\n      WHEN json_each.type = 'false' THEN 0\n      ELSE NULL\n    END AS value_boolean\n  FROM projects, json_each(projects.custom_field_values_json)\n  UNION ALL\n  SELECT\n    'task' AS entity_type,\n    id AS entity_id,\n    NULL AS entry_type,\n    json_each.key AS field_id,\n    json_each.value AS value_raw,\n    json_each.type AS value_type,\n    CASE\n      WHEN json_each.type IN ('integer', 'real') THEN CAST(json_each.value AS REAL)\n      ELSE NULL\n    END AS value_number,\n    CASE\n      WHEN json_each.type = 'true' THEN 1\n      WHEN json_each.type = 'false' THEN 0\n      ELSE NULL\n    END AS value_boolean\n  FROM tasks, json_each(tasks.custom_field_values_json)\n  UNION ALL\n  SELECT\n    'time_entry' AS entity_type,\n    id AS entity_id,\n    entry_type,\n    json_each.key AS field_id,\n    json_each.value AS value_raw,\n    json_each.type AS value_type,\n    CASE\n      WHEN json_each.type IN ('integer', 'real') THEN CAST(json_each.value AS REAL)\n      ELSE NULL\n    END AS value_number,\n    CASE\n      WHEN json_each.type = 'true' THEN 1\n      WHEN json_each.type = 'false' THEN 0\n      ELSE NULL\n    END AS value_boolean\n  FROM time_entries, json_each(time_entries.custom_field_values_json)\n"
+    },
+    "holidays": {
+      "columns": {
+        "country_code": {
+          "name": "country_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "year": {
+          "name": "year",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "local_name": {
+          "name": "local_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "country_code_from_payload": {
+          "name": "country_code_from_payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "name": "holidays",
+      "isExisting": false,
+      "definition": "\n  SELECT\n    public_holiday_cache.country_code,\n    public_holiday_cache.year,\n    CAST(json_extract(json_each.value, '$.date') AS TEXT) AS date,\n    CAST(json_extract(json_each.value, '$.localName') AS TEXT) AS local_name,\n    CAST(json_extract(json_each.value, '$.name') AS TEXT) AS name,\n    CAST(json_extract(json_each.value, '$.countryCode') AS TEXT) AS country_code_from_payload\n  FROM public_holiday_cache\n  JOIN company_settings\n    ON UPPER(COALESCE(company_settings.country, '')) = public_holiday_cache.country_code\n  JOIN json_each(public_holiday_cache.payload_json)\n  WHERE json_extract(json_each.value, '$.date') IS NOT NULL\n"
+    }
+  },
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

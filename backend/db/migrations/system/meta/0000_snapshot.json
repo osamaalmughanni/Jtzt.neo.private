@@ -1,0 +1,273 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "6461a83e-5c61-41dd-9e74-f66bd7479821",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "companies": {
+      "name": "companies",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "api_key_hash": {
+          "name": "api_key_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "api_key_created_at": {
+          "name": "api_key_created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tablet_code_value": {
+          "name": "tablet_code_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tablet_code_hash": {
+          "name": "tablet_code_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tablet_code_updated_at": {
+          "name": "tablet_code_updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_companies_name_lower": {
+          "name": "idx_companies_name_lower",
+          "columns": [
+            "lower(\"name\")"
+          ],
+          "isUnique": true
+        },
+        "idx_companies_api_key_hash": {
+          "name": "idx_companies_api_key_hash",
+          "columns": [
+            "api_key_hash"
+          ],
+          "isUnique": true,
+          "where": "\"companies\".\"api_key_hash\" IS NOT NULL"
+        },
+        "idx_companies_tablet_code_hash": {
+          "name": "idx_companies_tablet_code_hash",
+          "columns": [
+            "tablet_code_hash"
+          ],
+          "isUnique": true,
+          "where": "\"companies\".\"tablet_code_hash\" IS NOT NULL"
+        },
+        "idx_companies_tablet_code_value": {
+          "name": "idx_companies_tablet_code_value",
+          "columns": [
+            "tablet_code_value"
+          ],
+          "isUnique": true,
+          "where": "\"companies\".\"tablet_code_value\" IS NOT NULL"
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "developer_access_tokens": {
+      "name": "developer_access_tokens",
+      "columns": {
+        "company_id": {
+          "name": "company_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_hint": {
+          "name": "token_hint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rotated_at": {
+          "name": "rotated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_developer_access_tokens_token_hash": {
+          "name": "idx_developer_access_tokens_token_hash",
+          "columns": [
+            "token_hash"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "developer_access_tokens_company_id_companies_id_fk": {
+          "name": "developer_access_tokens_company_id_companies_id_fk",
+          "tableFrom": "developer_access_tokens",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "invitation_codes": {
+      "name": "invitation_codes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "used_by_company_id": {
+          "name": "used_by_company_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "invitation_codes_code_unique": {
+          "name": "invitation_codes_code_unique",
+          "columns": [
+            "code"
+          ],
+          "isUnique": true
+        },
+        "idx_invitation_codes_status": {
+          "name": "idx_invitation_codes_status",
+          "columns": [
+            "used_at",
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "invitation_codes_used_by_company_id_companies_id_fk": {
+          "name": "invitation_codes_used_by_company_id_companies_id_fk",
+          "tableFrom": "invitation_codes",
+          "tableTo": "companies",
+          "columnsFrom": [
+            "used_by_company_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {
+      "idx_companies_name_lower": {
+        "columns": {
+          "lower(\"name\")": {
+            "isExpression": true
+          }
+        }
+      }
+    }
+  }
+}

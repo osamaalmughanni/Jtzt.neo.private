@@ -33,6 +33,8 @@ docs/
 ```bash
 npm install
 npm run dev
+npm run db:generate
+npm run db:migrate
 ```
 
 - Frontend runs on `http://localhost:5173`
