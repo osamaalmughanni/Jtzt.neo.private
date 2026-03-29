@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { HTTPException } from "hono/http-exception";
 import { eq } from "drizzle-orm";
+import { is } from "drizzle-orm";
 import { z } from "zod";
 import type {
   CompanyApiDocsResponse,
@@ -13,8 +14,10 @@ import type {
   CompanyApiSchemaResponse,
   CompanyApiTableSchema,
 } from "../../shared/types/api";
+import { companySchema } from "../../shared/db/schema/company";
 import { companies } from "../db/schema";
 import type { NodeDatabase, SqlValue } from "../runtime/types";
+import { getTableConfig, SQLiteTable } from "drizzle-orm/sqlite-core";
 
 const API_KEY_PREFIX = "jtzt_";
 const EXCLUDED_TABLES = new Set(["admins", "companies", "invitation_codes", "sqlite_sequence"]);
@@ -117,6 +120,39 @@ async function readCompanyScopedTables(db: NodeDatabase): Promise<CompanyApiTabl
   }
 
   return result;
+}
+
+function readDrizzleCompanySchemaTables(): CompanyApiTableSchema[] {
+  const schemaTables = Object.values(companySchema).filter((entry) => is(entry, SQLiteTable)) as SQLiteTable[];
+
+  return schemaTables.map((table) => {
+    const config = getTableConfig(table);
+    const columns: CompanyApiSchemaColumn[] = config.columns.map((column) => ({
+      name: column.name,
+      type: column.getSQLType().toUpperCase(),
+      nullable: !column.notNull,
+      primaryKey: Boolean(column.primary),
+      example: null,
+    }));
+
+    const preferredOrderColumn =
+      columns.find((column) => column.name === "created_at")?.name ??
+      columns.find((column) => column.primaryKey)?.name ??
+      columns[0]?.name;
+
+    return {
+      name: config.name,
+      columns,
+      defaultOrderBy: preferredOrderColumn
+        ? [
+            {
+              column: preferredOrderColumn,
+              direction: preferredOrderColumn === "created_at" ? "desc" : "asc",
+            },
+          ]
+        : [],
+    };
+  });
 }
 
 const scalarValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -315,6 +351,8 @@ function buildMarkdownDocs(docs: Omit<CompanyApiDocsResponse["docs"], "markdown"
   const sections = [
     "# Company API",
     "",
+    "Generated from the shared Drizzle schema.",
+    "",
     "## Authentication",
     `- Header: \`${docs.auth.header}\``,
     `- Format: \`${docs.auth.format}\``,
@@ -507,9 +545,9 @@ export const companyApiService = {
     };
   },
 
-  async getGeneratedDocs(db: NodeDatabase): Promise<CompanyApiDocsResponse["docs"]> {
+  async getGeneratedDocs(_db: NodeDatabase): Promise<CompanyApiDocsResponse["docs"]> {
     try {
-      const tables = await readCompanyScopedTables(db);
+      const tables = readDrizzleCompanySchemaTables();
       const docsWithoutMarkdown: Omit<CompanyApiDocsResponse["docs"], "markdown"> = {
         auth: {
           header: "X-API-Key",

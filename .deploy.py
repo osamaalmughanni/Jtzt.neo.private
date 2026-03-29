@@ -19,7 +19,7 @@ Commands this script runs (remote):
   systemctl enable jtzt
   systemctl stop jtzt
   cp -a /var/lib/jtzt/. /var/backups/jtzt/<release_id>/
-  node /tmp/jtzt-schema-refresh.mjs
+  node <release>/dist/backend/server.js migrate
   ln -sfn /opt/jtzt/releases/<release_id> /opt/jtzt/current
   systemctl start jtzt
   curl -fsS <health_url>
@@ -439,6 +439,23 @@ def print_cleanup_report(env: dict[str, str], release: str | None = None, *, rem
     print("")
 
 
+def print_migration_report(env: dict[str, str], release: str | None = None, *, remote_text: str | None = None) -> None:
+    print("")
+    print(green(bold("JTZT MIGRATION REPORT")))
+    print(cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+    if release:
+        print(f"{bold('Release')}      {release}")
+    print(f"{bold('System DB')}    {env['NODE_SYSTEM_SQLITE_PATH']}")
+    print(f"{bold('Company DBs')}  {env['NODE_COMPANY_SQLITE_DIR']}")
+    print(f"{bold('Backups')}      {env['DEPLOY_BACKUP_DIR']}")
+    print("")
+    if remote_text:
+        print(remote_text.rstrip())
+        print("")
+    print(cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+    print("")
+
+
 def summarize_remote_firewall(env: dict[str, str]) -> None:
     remote_run(
         env,
@@ -508,7 +525,7 @@ def print_command_plan() -> None:
     print("systemctl enable caddy")
     print("systemctl stop jtzt")
     print("cp -a /var/lib/jtzt/. /var/backups/jtzt/<release_id>/")
-    print("node <release>/schema-refresh.mjs")
+    print("node <release>/dist/backend/server.js migrate")
     print("ln -sfn /opt/jtzt/releases/<release_id> /opt/jtzt/current")
     print("systemctl start jtzt")
     print("systemctl restart caddy")
@@ -607,6 +624,45 @@ def upload_release(env: dict[str, str], release: str) -> str:
         if archive_path.exists():
             archive_path.unlink()
     return release_dir
+
+
+def resolve_current_release(env: dict[str, str]) -> tuple[str, str]:
+    result = remote_run(env, f"readlink -f {env['DEPLOY_BASE_DIR']}/current", capture_output=True)
+    release_dir = (result.stdout or "").strip()
+    if not release_dir:
+        fail("could not resolve current release on the remote host")
+    release = Path(release_dir).name
+    return release, release_dir
+
+
+def run_release_migrations(env: dict[str, str], release: str, release_dir: str, *, emit: bool = True) -> str | None:
+    result = remote_run(
+        env,
+        f"""
+set -euo pipefail
+lock_dir=/var/lock/jtzt-deploy.lock
+if ! mkdir "$lock_dir" 2>/dev/null; then
+  echo "deploy already in progress" >&2
+  exit 1
+fi
+trap 'rmdir "$lock_dir"' EXIT INT TERM
+systemctl stop {env['DEPLOY_SERVICE']}
+systemctl reset-failed {env['DEPLOY_SERVICE']} || true
+mkdir -p {env['DEPLOY_BACKUP_DIR']}/{release}
+cp -a {env['DEPLOY_SHARED_DIR']}/. {env['DEPLOY_BACKUP_DIR']}/{release}/
+cd {release_dir}
+set -a
+. {env['DEPLOY_ENV_PATH']}
+set +a
+node dist/backend/server.js migrate
+""".strip(),
+        capture_output=True,
+    )
+    if emit and result.stdout:
+        print_migration_report(env, release=release, remote_text=result.stdout)
+    if result.stderr:
+        print(result.stderr, file=sys.stderr)
+    return result.stdout or ""
 
 
 def install_remote_deps(env: dict[str, str], release_dir: str) -> None:
@@ -813,30 +869,19 @@ def deploy(env: dict[str, str]) -> None:
     install_remote_deps(env, release_dir)
     sync_public_assets(env, release_dir)
     try:
-        deploy_script = f"""
+        run_release_migrations(env, release, release_dir)
+        remote_run(
+            env,
+            f"""
 set -euo pipefail
-lock_dir=/var/lock/jtzt-deploy.lock
-if ! mkdir "$lock_dir" 2>/dev/null; then
-  echo "deploy already in progress" >&2
-  exit 1
-fi
-trap 'rmdir "$lock_dir"' EXIT INT TERM
-systemctl stop {env['DEPLOY_SERVICE']}
-systemctl reset-failed {env['DEPLOY_SERVICE']} || true
-mkdir -p {env['DEPLOY_BACKUP_DIR']}/{release}
-cp -a {env['DEPLOY_SHARED_DIR']}/. {env['DEPLOY_BACKUP_DIR']}/{release}/
-cd {release_dir}
-set -a
-. {env['DEPLOY_ENV_PATH']}
-set +a
 base={env['DEPLOY_BASE_DIR']}
 if [ -L "$base/current" ]; then
   ln -sfn "$(readlink "$base/current")" "$base/previous"
 fi
 ln -sfn {release_dir} "$base/current"
 systemctl start {env['DEPLOY_SERVICE']}
-"""
-        remote_run(env, deploy_script)
+""".strip(),
+        )
         wait_for_remote_health(env)
         wait_for_public_website(env)
         cleanup_text = prune_releases(env, keep=3, emit=False)
@@ -853,6 +898,31 @@ systemctl start {env['DEPLOY_SERVICE']}
             rollback(env)
         except Exception:
             info("rollback failed; manual intervention required")
+        raise
+
+
+def migrate(env: dict[str, str]) -> None:
+    ensure_local_tools()
+    validate_env(env)
+    ensure_remote_prereqs(env)
+    ensure_remote_firewall(env)
+    release, release_dir = resolve_current_release(env)
+    try:
+        run_release_migrations(env, release, release_dir)
+        remote_run(env, f"systemctl start {env['DEPLOY_SERVICE']}")
+        wait_for_remote_health(env)
+        wait_for_public_website(env)
+        info(f"migration complete: {release}")
+    except Exception:
+        info("migration failed")
+        try:
+            collect_remote_diagnostics(env, "MIGRATION FAILURE DIAGNOSTICS")
+        except Exception as diagnostic_error:
+            info(f"diagnostics collection failed: {diagnostic_error}")
+        try:
+            rollback(env)
+        except Exception:
+            info("rollback after migration failure failed; manual intervention required")
         raise
 
 
@@ -1048,7 +1118,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Jtzt Hetzner deployment helper")
     parser.add_argument(
         "command",
-        choices=["doctor", "bootstrap", "build", "typecheck", "deploy", "status", "rollback", "logs", "diagnose", "full", "size-report", "prune-releases"],
+        choices=["doctor", "bootstrap", "build", "typecheck", "deploy", "migrate", "status", "rollback", "logs", "diagnose", "full", "size-report", "prune-releases"],
         nargs="?",
         default="full",
     )
@@ -1079,6 +1149,10 @@ def main() -> None:
         if args.command == "deploy":
             build_assets()
             deploy(build_release_env(env, allow_generate=False))
+            pause_on_success()
+            return
+        if args.command == "migrate":
+            migrate(build_release_env(env, allow_generate=False))
             pause_on_success()
             return
         if args.command == "status":
