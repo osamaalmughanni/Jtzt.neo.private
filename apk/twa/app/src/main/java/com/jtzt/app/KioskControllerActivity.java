@@ -338,6 +338,8 @@ public class KioskControllerActivity extends Activity {
         if (updateStatus != null) {
             if (updateStatus.getTag() instanceof String) {
                 updateStatus.setText((String) updateStatus.getTag());
+            } else if (!SessionStore.getLastUpdateCheckSummary(this).trim().isEmpty()) {
+                updateStatus.setText(SessionStore.getLastUpdateCheckSummary(this));
             } else {
                 updateStatus.setText("Installed APK: " + ApkUpdateManager.getInstalledVersionCode(this) + " (" + ApkUpdateManager.getInstalledVersionName(this) + ") | Tap Check version to compare.");
             }
@@ -444,7 +446,9 @@ public class KioskControllerActivity extends Activity {
                 if (result.manifest.sha256 != null && !result.manifest.sha256.trim().isEmpty()) {
                     summary += " • SHA-256 " + shortHash(result.manifest.sha256);
                 }
-                runOnUiThread(() -> setUpdateStatus(buildUpdateSummary(result)));
+                ApkUpdateManager.UpdateSummary updateSummary = ApkUpdateManager.buildUpdateSummary(this, result);
+                SessionStore.setLastUpdateCheck(this, System.currentTimeMillis(), updateSummary.summary);
+                runOnUiThread(() -> setUpdateStatus(updateSummary.summary));
             } catch (Exception exception) {
                 runOnUiThread(() -> showUpdateError(exception.getMessage() == null ? "Could not check APK version." : exception.getMessage()));
             } finally {
@@ -460,6 +464,7 @@ public class KioskControllerActivity extends Activity {
             return;
         }
 
+        SessionStore.persist(this, SessionStore.getConfiguredHomeUrl(this));
         setUpdateBusy(true);
         setUpdateStatus("Downloading verified APK...");
         new Thread(() -> {

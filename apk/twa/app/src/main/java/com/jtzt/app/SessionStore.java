@@ -19,6 +19,8 @@ public final class SessionStore {
     private static final String KEY_WEBVIEW_TEXT_ZOOM = "webview_text_zoom";
     private static final String KEY_SITE_URL = "site_url";
     private static final String KEY_UPDATE_URL = "update_url";
+    private static final String KEY_LAST_UPDATE_CHECK_AT = "last_update_check_at";
+    private static final String KEY_LAST_UPDATE_CHECK_SUMMARY = "last_update_check_summary";
     private static final String HOME_URL = "https://app.jtzt.com/";
     private static final String DEFAULT_UPDATE_URL = "https://app.jtzt.com/jtzt.manifest";
     private static final int DEFAULT_TEXT_ZOOM = 100;
@@ -170,6 +172,23 @@ public final class SessionStore {
                 .edit()
                 .putString(KEY_UPDATE_URL, DEFAULT_UPDATE_URL)
                 .commit();
+    }
+
+    public static void setLastUpdateCheck(Context context, long checkedAtMillis, @Nullable String summary) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putLong(KEY_LAST_UPDATE_CHECK_AT, checkedAtMillis)
+                .putString(KEY_LAST_UPDATE_CHECK_SUMMARY, summary == null ? "" : summary)
+                .commit();
+    }
+
+    public static long getLastUpdateCheckAt(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_LAST_UPDATE_CHECK_AT, 0L);
+    }
+
+    public static String getLastUpdateCheckSummary(Context context) {
+        String stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LAST_UPDATE_CHECK_SUMMARY, "");
+        return stored == null ? "" : stored;
     }
 
     private static int clampPercent(int percent, int fallback) {

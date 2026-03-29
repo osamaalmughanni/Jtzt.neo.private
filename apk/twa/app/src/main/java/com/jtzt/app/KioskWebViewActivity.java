@@ -28,6 +28,7 @@ public class KioskWebViewActivity extends Activity {
     private static final String KIOSK_EXIT_PATH = "/native/exit";
     private static final int MANAGE_TAP_THRESHOLD = 10;
     private static final long MANAGE_TAP_WINDOW_MS = 400L;
+    private static final long UPDATE_CHECK_COOLDOWN_MS = 6L * 60L * 60L * 1000L;
 
     private WebView webView;
     private OnBackInvokedCallback backInvokedCallback;
@@ -127,6 +128,7 @@ public class KioskWebViewActivity extends Activity {
         setContentView(root);
 
         applyTextZoom();
+        maybeCheckForUpdateInBackground();
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
             Uri restoredUri = webView.getUrl() == null ? null : Uri.parse(webView.getUrl());
@@ -147,6 +149,7 @@ public class KioskWebViewActivity extends Activity {
         AndroidUiController.applyFullscreen(this);
         KioskModeController.enter(this);
         applyTextZoom();
+        maybeCheckForUpdateInBackground();
     }
 
     @Override
@@ -300,6 +303,24 @@ public class KioskWebViewActivity extends Activity {
         int textZoom = SessionStore.getWebViewTextZoom(this);
         WebSettings settings = webView.getSettings();
         settings.setTextZoom(textZoom);
+    }
+
+    private void maybeCheckForUpdateInBackground() {
+        long lastCheckAt = SessionStore.getLastUpdateCheckAt(this);
+        long now = System.currentTimeMillis();
+        if (now - lastCheckAt < UPDATE_CHECK_COOLDOWN_MS) {
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                ApkUpdateManager.UpdateCheckResult result = ApkUpdateManager.checkForUpdate(this, SessionStore.getConfiguredUpdateUrl(this));
+                ApkUpdateManager.UpdateSummary summary = ApkUpdateManager.buildUpdateSummary(this, result);
+                SessionStore.setLastUpdateCheck(this, System.currentTimeMillis(), summary.summary);
+            } catch (Exception ignored) {
+                // Keep kiosk flow unchanged if update check fails.
+            }
+        }).start();
     }
 
     private void showLoadFailureDialog() {

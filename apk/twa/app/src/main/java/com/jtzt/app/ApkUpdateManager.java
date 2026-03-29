@@ -77,6 +77,16 @@ public final class ApkUpdateManager {
         }
     }
 
+    public static final class UpdateSummary {
+        public final boolean updateAvailable;
+        public final String summary;
+
+        public UpdateSummary(boolean updateAvailable, String summary) {
+            this.updateAvailable = updateAvailable;
+            this.summary = summary;
+        }
+    }
+
     private ApkUpdateManager() {
     }
 
@@ -166,6 +176,36 @@ public final class ApkUpdateManager {
         );
     }
 
+    public static UpdateSummary buildUpdateSummary(Activity activity, UpdateCheckResult result) {
+        StringBuilder summary = new StringBuilder();
+        summary.append("Installed ")
+                .append(result.installedVersionCode)
+                .append(" (")
+                .append(safeText(result.installedVersionName))
+                .append(") | Remote ")
+                .append(result.manifest.versionCode)
+                .append(" (")
+                .append(safeText(result.manifest.versionName))
+                .append(")");
+
+        summary.append(result.updateAvailable ? " | New version available" : " | Up to date");
+
+        if (result.manifest.sha256 != null && !result.manifest.sha256.trim().isEmpty()) {
+            String remoteHash = result.manifest.sha256.trim();
+            summary.append(" | Remote hash ")
+                    .append(shortHash(remoteHash));
+        }
+
+        if (result.installedSha256 != null && !result.installedSha256.trim().isEmpty()) {
+            String installedHash = result.installedSha256.trim();
+            summary.append(" | Installed hash ")
+                    .append(shortHash(installedHash));
+            summary.append(result.hashMatches ? " | Hash verified" : " | Hash differs");
+        }
+
+        return new UpdateSummary(result.updateAvailable, summary.toString());
+    }
+
     public static File downloadVerifiedApk(Activity activity, UpdateManifest manifest) throws IOException {
         if (manifest.sha256 == null || manifest.sha256.trim().isEmpty()) {
             throw new IllegalArgumentException("Update manifest must include sha256.");
@@ -198,7 +238,6 @@ public final class ApkUpdateManager {
         installIntent.setDataAndType(contentUri, APK_MIME_TYPE);
         installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        installIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
         activity.startActivity(installIntent);
     }
 
@@ -361,5 +400,17 @@ public final class ApkUpdateManager {
             }
             return output.toString("UTF-8");
         }
+    }
+
+    private static String safeText(String value) {
+        return value == null || value.trim().isEmpty() ? "-" : value.trim();
+    }
+
+    private static String shortHash(String hash) {
+        String normalized = hash == null ? "" : hash.trim();
+        if (normalized.length() <= 12) {
+            return normalized;
+        }
+        return normalized.substring(0, 12) + "...";
     }
 }
