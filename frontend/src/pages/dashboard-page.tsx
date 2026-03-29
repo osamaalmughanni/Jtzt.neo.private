@@ -1254,8 +1254,8 @@ export function DashboardPage() {
       />
       <PageLoadBoundary
         className="min-h-0 flex-none"
-        loading={dashboardLoading}
-        refreshing={false}
+        loading={dashboardLoading && entries.length === 0}
+        refreshing={dashboardLoading && entries.length > 0}
         skeleton={null}
       >
       <Stack gap="lg" className="min-h-full flex-1">
