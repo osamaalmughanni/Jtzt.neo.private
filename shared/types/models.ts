@@ -1,16 +1,15 @@
-import type { InferSelectModel } from "drizzle-orm";
 import type {
-  calculations,
-  companySettings,
-  companies,
-  developerAccessTokens,
-  invitationCodes,
-  projects,
-  tasks,
-  timeEntries,
-  userContracts,
-  users,
-} from "../../backend/db/schema";
+  CalculationRow,
+  CompanyRow,
+  CompanySettingsRow,
+  DeveloperAccessTokenRow,
+  InvitationCodeRow,
+  ProjectRow,
+  TaskRow,
+  TimeEntryRow,
+  UserContractRow,
+  UserRow,
+} from "../db/types";
 
 export type UserRole = "employee" | "manager" | "admin";
 export type TimeEntryType = "work" | "vacation" | "sick_leave" | "time_off_in_lieu";
@@ -79,17 +78,6 @@ export interface UserContractScheduleBlock {
   endTime: string;
   minutes: number;
 }
-
-type CompanyRow = InferSelectModel<typeof companies>;
-type InvitationCodeRow = InferSelectModel<typeof invitationCodes>;
-type DeveloperAccessTokenRow = InferSelectModel<typeof developerAccessTokens>;
-type CompanySettingsRow = InferSelectModel<typeof companySettings>;
-type UserRow = InferSelectModel<typeof users>;
-type UserContractRow = InferSelectModel<typeof userContracts>;
-type ProjectRow = InferSelectModel<typeof projects>;
-type TaskRow = InferSelectModel<typeof tasks>;
-type TimeEntryRow = InferSelectModel<typeof timeEntries>;
-type CalculationRow = InferSelectModel<typeof calculations>;
 
 export type CompanyRecord = Pick<CompanyRow, "id" | "name" | "tabletCodeUpdatedAt" | "createdAt">;
 

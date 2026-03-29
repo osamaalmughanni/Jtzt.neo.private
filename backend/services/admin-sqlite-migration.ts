@@ -403,8 +403,8 @@ function buildPackageSchemaDocument(tables: MigrationTable[]) {
       singleFile: true,
       fileExtension: ".sqlite",
       packageTableName: MIGRATION_METADATA_TABLE,
-      schemaSource: "backend/db/schema/company.ts",
-      systemSchemaSource: "backend/db/schema/system.ts",
+      schemaSource: "shared/db/schema/company.ts",
+      systemSchemaSource: "shared/db/schema/system.ts",
     },
     packageMetadata: {
       tableName: MIGRATION_METADATA_TABLE,

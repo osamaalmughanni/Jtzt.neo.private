@@ -458,8 +458,6 @@ def release_paths() -> list[Path]:
     return [
         ROOT / "dist" / "backend",
         ROOT / "dist" / "frontend",
-        ROOT / "backend" / "db" / "system-migrations",
-        ROOT / "backend" / "db" / "company-migrations",
         ROOT / "package.json",
         ROOT / "package-lock.json",
     ]

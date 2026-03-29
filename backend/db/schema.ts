@@ -1,2 +1,2 @@
-export * from "./schema/company";
-export * from "./schema/system";
+export * from "../../shared/db/schema/company";
+export * from "../../shared/db/schema/system";
