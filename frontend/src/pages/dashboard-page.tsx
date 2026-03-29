@@ -429,14 +429,25 @@ export function DashboardPage() {
       });
     },
   });
+  const [dashboardDisplayDate, setDashboardDisplayDate] = useState(() => parseDayParam(searchParams.get("day")));
+  const [dashboardDisplaySnapshot, setDashboardDisplaySnapshot] = useState<DashboardPageSnapshotResponse | null>(null);
   const dashboardPageErrorRef = useRef<unknown>(null);
-  const dashboardPageIsSettled = dashboardPageResource.hasData;
+  useEffect(() => {
+    if (dashboardPageResource.status !== "ready" || !dashboardPageResource.data) {
+      return;
+    }
+
+    setDashboardDisplayDate(selectedDate);
+    setDashboardDisplaySnapshot(dashboardPageResource.data);
+  }, [dashboardPageResource.data, dashboardPageResource.status, selectedDate]);
+  const dashboardPageIsSettled = dashboardDisplaySnapshot !== null;
+  const dashboardVisibleDayKey = formatLocalDay(dashboardDisplayDate);
   const dashboardSnapshot =
-    dashboardPageResource.data ?? {
+    dashboardDisplaySnapshot ?? dashboardPageResource.data ?? {
       summary: defaultSummary,
       entries: [],
       calendar: {
-        month: formatLocalDay(startOfMonth(selectedDate)),
+        month: formatLocalDay(startOfMonth(dashboardDisplayDate)),
         holidays: [],
         dayStates: {},
       },
@@ -465,17 +476,17 @@ export function DashboardPage() {
   const previousSelectedDayKeyRef = useRef(selectedDayKey);
   const companyTimeZone = companySettings?.timeZone ?? settings.timeZone;
   const todayDay = getLocalNowSnapshot(new Date(), companyTimeZone).localDay;
-  const selectedDayPastDistance = getPastDayDistance(selectedDayKey, todayDay);
-  const selectedDayFutureDistance = getFutureDayDistance(selectedDayKey, todayDay);
-  const isNowContext = isToday(selectedDate, companyTimeZone);
+  const selectedDayPastDistance = getPastDayDistance(dashboardVisibleDayKey, todayDay);
+  const selectedDayFutureDistance = getFutureDayDistance(dashboardVisibleDayKey, todayDay);
+  const isNowContext = isToday(dashboardDisplayDate, companyTimeZone);
   const calendarHolidays = dashboardSnapshot.calendar.holidays;
   const holidayDateSet = useMemo(() => new Set(calendarHolidays.map((holiday) => holiday.date)), [calendarHolidays]);
-  const selectedDayIsWeekend = isWeekendDay(selectedDayKey, settings.weekendDays);
+  const selectedDayIsWeekend = isWeekendDay(dashboardVisibleDayKey, settings.weekendDays);
   const selectedHoliday = useMemo(
-    () => calendarHolidays.find((holiday) => holiday.date === selectedDayKey),
-    [calendarHolidays, selectedDayKey]
+    () => calendarHolidays.find((holiday) => holiday.date === dashboardVisibleDayKey),
+    [calendarHolidays, dashboardVisibleDayKey]
   );
-  const selectedDayIsHoliday = holidayDateSet.has(selectedDayKey);
+  const selectedDayIsHoliday = holidayDateSet.has(dashboardVisibleDayKey);
   const calendarHolidayDates = useMemo(
     () => calendarHolidays.map((holiday) => holiday.date),
     [calendarHolidays],
@@ -495,7 +506,7 @@ export function DashboardPage() {
   const allowedEntryTypes = getAllowedEntryTypesForDay({
     role: companyIdentity?.user.role,
     settings,
-    day: selectedDayKey,
+    day: dashboardVisibleDayKey,
     todayDay,
     isHoliday: selectedDayIsHoliday,
     isWeekend: selectedDayIsWeekend,
@@ -505,8 +516,8 @@ export function DashboardPage() {
     role: companyIdentity?.user.role,
     settings,
     entryType: "work",
-    startDate: selectedDayKey,
-    endDate: selectedDayKey,
+    startDate: dashboardVisibleDayKey,
+    endDate: dashboardVisibleDayKey,
     todayDay,
     hasHolidayInRange: selectedDayIsHoliday,
     hasWeekendInRange: selectedDayIsWeekend,
@@ -516,8 +527,8 @@ export function DashboardPage() {
     role: companyIdentity?.user.role,
     settings,
     entryType: allowedEntryTypes.vacation.allowed ? "vacation" : allowedEntryTypes.timeOffInLieu.allowed ? "time_off_in_lieu" : "work",
-    startDate: selectedDayKey,
-    endDate: selectedDayKey,
+    startDate: dashboardVisibleDayKey,
+    endDate: dashboardVisibleDayKey,
     todayDay,
     hasHolidayInRange: selectedDayIsHoliday,
     hasWeekendInRange: selectedDayIsWeekend,
@@ -537,8 +548,8 @@ export function DashboardPage() {
         role: companyIdentity?.user.role,
         settings,
         entryType: "work",
-        startDate: selectedDayKey,
-        endDate: selectedDayKey,
+        startDate: dashboardVisibleDayKey,
+        endDate: dashboardVisibleDayKey,
         todayDay,
         hasHolidayInRange: selectedDayIsHoliday,
         hasWeekendInRange: selectedDayIsWeekend,
@@ -549,7 +560,7 @@ export function DashboardPage() {
       selectedDayHasAnyEntry,
       selectedDayIsHoliday,
       selectedDayIsWeekend,
-      selectedDayKey,
+      dashboardVisibleDayKey,
       settings,
       todayDay,
     ],
@@ -571,21 +582,21 @@ export function DashboardPage() {
       ? t("dashboard.insertLimitDetailed", {
           limit: settings.insertDaysLimit,
           days: selectedDayPastDistance,
-          date: formatCompanyDate(selectedDayKey, settings.locale),
+          date: formatCompanyDate(dashboardVisibleDayKey, settings.locale),
         })
       : futurePlannedLeaveOnly
       ? t("dashboard.futureVacationOnly", {
-          date: formatCompanyDate(selectedDayKey, settings.locale),
+          date: formatCompanyDate(dashboardVisibleDayKey, settings.locale),
           days: selectedDayFutureDistance,
         })
       : selectedDayWorkPolicy.reason === "holiday_work_blocked"
       ? t("dashboard.holidayWorkBlocked", {
-          date: formatCompanyDate(selectedDayKey, settings.locale),
-          holiday: getHolidayDisplayName(selectedHoliday) ?? formatCompanyDate(selectedDayKey, settings.locale),
+          date: formatCompanyDate(dashboardVisibleDayKey, settings.locale),
+          holiday: getHolidayDisplayName(selectedHoliday) ?? formatCompanyDate(dashboardVisibleDayKey, settings.locale),
         })
       : selectedDayWorkPolicy.reason === "weekend_work_blocked"
       ? t("dashboard.weekendWorkBlocked", {
-          date: formatCompanyDate(selectedDayKey, settings.locale),
+          date: formatCompanyDate(dashboardVisibleDayKey, settings.locale),
         })
       : !settings.allowIntersectingRecords && selectedDayHasWorkEntry
       ? t("dashboard.workDayAlreadyBooked")
@@ -1238,7 +1249,7 @@ export function DashboardPage() {
                 aria-label={t("calendar.openDatePicker")}
               >
                 <CompanyDateDisplay
-                  day={formatLocalDay(selectedDate)}
+                  day={dashboardVisibleDayKey}
                   className="gap-0.5"
                   dateClassName="text-3xl font-semibold leading-none tracking-[-0.05em] sm:text-4xl"
                   weekdayClassName="text-xs font-medium leading-none tracking-[-0.01em] sm:text-sm"
@@ -1312,7 +1323,7 @@ export function DashboardPage() {
                     ),
                 }).allowed;
                 const canDelete = canEdit;
-                const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
+                const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${dashboardVisibleDayKey}`;
                 const isActiveWorkEntry =
                   entry.entryType === "work" &&
                   summary.activeEntry?.id === entry.id &&
