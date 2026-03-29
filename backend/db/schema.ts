@@ -324,26 +324,4 @@ CREATE TABLE IF NOT EXISTS calculations (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS calculation_versions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  calculation_id INTEGER NOT NULL,
-  version_number INTEGER NOT NULL,
-  name TEXT NOT NULL,
-  description TEXT,
-  sql_text TEXT NOT NULL,
-  output_mode TEXT NOT NULL,
-  chart_type TEXT NOT NULL,
-  chart_category_column TEXT,
-  chart_value_column TEXT,
-  chart_series_column TEXT,
-  chart_config_json TEXT NOT NULL DEFAULT '{}',
-  chart_stacked INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (calculation_id) REFERENCES calculations(id) ON DELETE CASCADE,
-  UNIQUE(calculation_id, version_number)
-);
-
-CREATE INDEX IF NOT EXISTS idx_calculation_versions_calculation
-ON calculation_versions (calculation_id, version_number DESC);
 `;

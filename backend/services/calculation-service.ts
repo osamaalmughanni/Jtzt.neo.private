@@ -3,7 +3,6 @@ import type {
   CalculationPresetRecord,
   CalculationRecord,
   CalculationOutputMode,
-  CalculationChartType,
   CalculationChartConfig,
 } from "../../shared/types/models";
 import type {
@@ -170,9 +169,8 @@ export const calculationService = {
     return hydrateBuiltinCalculation(normalizeCalculationRow(calculation), presetsByKey);
   },
 
-  async validateSql(db: AppDatabase, sqlText: string, chartConfig: CalculationChartConfig) {
+  async validateSql(db: AppDatabase, sqlText: string) {
     const issues = validateReadOnlySql(sqlText);
-    void chartConfig;
 
     if (issues.some((issue) => issue.level === "error")) {
       return {
@@ -204,7 +202,7 @@ export const calculationService = {
 
   async createCalculation(db: AppDatabase, companyId: string, input: CreateCalculationInput) {
     const normalizedChartConfig = normalizeChartConfig(input.chartConfig);
-    const validation = await this.validateSql(db, input.sqlText, normalizedChartConfig);
+    const validation = await this.validateSql(db, input.sqlText);
     if (!validation.valid) {
       throw new HTTPException(400, {
         message: validation.issues.find((issue) => issue.level === "error")?.message ?? "Invalid calculation",
@@ -246,41 +244,8 @@ export const calculationService = {
         ]
       );
 
-      const calculationId = Number(result.lastRowId);
-      await db.run(
-        `INSERT INTO calculation_versions (
-           calculation_id,
-           version_number,
-           name,
-           description,
-           sql_text,
-           output_mode,
-           chart_type,
-           chart_category_column,
-           chart_value_column,
-           chart_series_column,
-           chart_config_json,
-           chart_stacked,
-           created_at
-         ) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          calculationId,
-          input.name.trim(),
-          normalizeText(input.description),
-          normalizeSql(input.sqlText),
-          input.outputMode,
-          normalizedChartConfig.type,
-          normalizedChartConfig.categoryColumn,
-          normalizedChartConfig.valueColumn,
-          normalizedChartConfig.seriesColumn,
-          JSON.stringify(normalizedChartConfig),
-          normalizedChartConfig.stacked ? 1 : 0,
-          createdAt,
-        ]
-      );
-
       await db.exec("COMMIT");
-      return calculationId;
+      return Number(result.lastRowId);
     } catch (error) {
       await db.exec("ROLLBACK");
       throw error;
@@ -294,7 +259,7 @@ export const calculationService = {
     }
 
     const normalizedChartConfig = normalizeChartConfig(input.chartConfig);
-    const validation = await this.validateSql(db, input.sqlText, normalizedChartConfig);
+    const validation = await this.validateSql(db, input.sqlText);
     if (!validation.valid) {
       throw new HTTPException(400, {
         message: validation.issues.find((issue) => issue.level === "error")?.message ?? "Invalid calculation",
@@ -321,44 +286,6 @@ export const calculationService = {
           normalizedChartConfig.stacked ? 1 : 0,
           updatedAt,
           input.calculationId,
-        ]
-      );
-
-      const lastVersion = await db.first<{ version_number: number }>(
-        "SELECT COALESCE(MAX(version_number), 0) AS version_number FROM calculation_versions WHERE calculation_id = ?",
-        [input.calculationId]
-      );
-      const nextVersion = (lastVersion?.version_number ?? 0) + 1;
-      await db.run(
-        `INSERT INTO calculation_versions (
-           calculation_id,
-           version_number,
-           name,
-           description,
-           sql_text,
-           output_mode,
-           chart_type,
-           chart_category_column,
-           chart_value_column,
-           chart_series_column,
-           chart_config_json,
-           chart_stacked,
-           created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          input.calculationId,
-          nextVersion,
-          input.name.trim(),
-          normalizeText(input.description),
-          normalizeSql(input.sqlText),
-          input.outputMode,
-          normalizedChartConfig.type,
-          normalizedChartConfig.categoryColumn,
-          normalizedChartConfig.valueColumn,
-          normalizedChartConfig.seriesColumn,
-          JSON.stringify(normalizedChartConfig),
-          normalizedChartConfig.stacked ? 1 : 0,
-          updatedAt,
         ]
       );
 

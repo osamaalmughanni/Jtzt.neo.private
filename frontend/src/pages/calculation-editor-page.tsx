@@ -162,11 +162,10 @@ export function CalculationEditorPage({ mode }: { mode: "create" | "edit" }) {
 
     let active = true;
     setValidating(true);
-    const timeout = window.setTimeout(() => {
-      void api
+      const timeout = window.setTimeout(() => {
+        void api
         .validateCalculation(companySession.token, {
           sqlText: form.sqlText,
-          chartConfig: form.chartConfig,
         })
         .then((response) => {
           if (!active) return;

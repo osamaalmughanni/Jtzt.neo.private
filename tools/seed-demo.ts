@@ -827,7 +827,7 @@ async function seedCalculations(companyDb: Awaited<ReturnType<typeof createCompa
   await companyDb.exec("BEGIN IMMEDIATE TRANSACTION");
   try {
     for (const calculation of buildCalculationSql(year)) {
-      const result = await companyDb.run(
+      await companyDb.run(
         `INSERT INTO calculations (
            company_id,
            name,
@@ -857,39 +857,6 @@ async function seedCalculations(companyDb: Awaited<ReturnType<typeof createCompa
           JSON.stringify(chartConfig),
           chartConfig.stacked ? 1 : 0,
           createdAt,
-          createdAt,
-        ]
-      );
-
-      const calculationId = Number(result.lastRowId);
-      await companyDb.run(
-        `INSERT INTO calculation_versions (
-           calculation_id,
-           version_number,
-           name,
-           description,
-           sql_text,
-           output_mode,
-           chart_type,
-           chart_category_column,
-           chart_value_column,
-           chart_series_column,
-           chart_config_json,
-           chart_stacked,
-           created_at
-         ) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          calculationId,
-          calculation.name,
-          calculation.description,
-          calculation.sqlText,
-          "table",
-          chartConfig.type,
-          chartConfig.categoryColumn,
-          chartConfig.valueColumn,
-          chartConfig.seriesColumn,
-          JSON.stringify(chartConfig),
-          chartConfig.stacked ? 1 : 0,
           createdAt,
         ]
       );

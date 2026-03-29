@@ -34,7 +34,6 @@ export async function up({ context: db }) {
     "project_users",
     "project_tasks",
     "calculations",
-    "calculation_versions",
   ];
 
   const tablesWithCompanyId = tables.filter((table) => hasColumn(db, table, "company_id"));

@@ -560,7 +560,7 @@ export const api = {
     });
   },
 
-  validateCalculation(token: string, input: { sqlText: string; chartConfig: CreateCalculationInput["chartConfig"] }) {
+  validateCalculation(token: string, input: { sqlText: string }) {
     return request<CalculationValidationResponse>("/api/calculations/validate", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },

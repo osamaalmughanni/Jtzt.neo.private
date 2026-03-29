@@ -226,5 +226,6 @@ settingsRoutes.get("/api-access/docs", requireCompanyAdmin, async (c) => {
     return c.json({ error: "Company login required" }, 403);
   }
 
+  c.header("Cache-Control", "no-store");
   return c.json({ docs: await companyApiService.getGeneratedDocs(c.get("db")) });
 });

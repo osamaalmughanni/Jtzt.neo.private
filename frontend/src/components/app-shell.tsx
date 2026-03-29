@@ -23,7 +23,7 @@ export function AppShell({ mode }: AppShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const locationKey = location.pathname;
-  const { companyIdentity, companySession, lockTablet, logoutAdmin } = useAuth();
+  const { companyIdentity, companySession, logoutAdmin } = useAuth();
   const { settings, loading: settingsLoading } = useCompanySettings();
   const shouldBlockCompanyShell = mode === "company" && companySession && (!settings || settingsLoading);
   const [tabletIdleTimeoutSeconds, setTabletIdleTimeoutSeconds] = useState(10);
@@ -39,6 +39,11 @@ export function AppShell({ mode }: AppShellProps) {
         ? "/menu"
         : "/menu";
   const scope = mode === "company" && companySession?.accessMode === "tablet" ? "tablet" : mode;
+
+  const transitionToTabletPin = useCallback(() => {
+    navigate("/tablet/pin", { replace: true, state: { lockTablet: true } });
+  }, [navigate]);
+
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
@@ -72,8 +77,7 @@ export function AppShell({ mode }: AppShellProps) {
             label: "Lock tablet",
             icon: LockSimple,
             onClick: () => {
-              lockTablet();
-              navigate("/tablet/pin", { replace: true });
+              transitionToTabletPin();
             }
           }
         ]
@@ -107,8 +111,7 @@ export function AppShell({ mode }: AppShellProps) {
         window.clearTimeout(idleTimerRef.current);
       }
       idleTimerRef.current = window.setTimeout(() => {
-        lockTablet();
-        navigate("/tablet/pin", { replace: true });
+        transitionToTabletPin();
       }, timeoutMs);
     };
 
@@ -127,7 +130,7 @@ export function AppShell({ mode }: AppShellProps) {
         window.removeEventListener(eventName, restartTimer);
       }
     };
-  }, [companySession, lockTablet, navigate, tabletIdleTimeoutSeconds]);
+  }, [companySession, tabletIdleTimeoutSeconds, transitionToTabletPin]);
 
   if (shouldBlockCompanyShell) {
     return <AppRouteLoadingState />;

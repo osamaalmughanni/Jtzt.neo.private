@@ -302,7 +302,6 @@ export function ApiAccessPage() {
                                 <th className="pb-3 pr-4 font-medium">Type</th>
                                 <th className="pb-3 pr-4 font-medium">Nullable</th>
                                 <th className="pb-3 pr-4 font-medium">Primary</th>
-                                <th className="pb-3 font-medium">Example</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -312,9 +311,6 @@ export function ApiAccessPage() {
                                   <td className="py-3 pr-4 text-muted-foreground">{column.type}</td>
                                   <td className="py-3 pr-4 text-muted-foreground">{column.nullable ? "Yes" : "No"}</td>
                                   <td className="py-3 pr-4 text-muted-foreground">{column.primaryKey ? "Yes" : "No"}</td>
-                                  <td className="py-3 font-mono text-xs text-muted-foreground">
-                                    {column.example === null ? "null" : String(column.example)}
-                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -453,7 +449,7 @@ function buildMarkdownDocument(
       const lines = table.columns
         .map(
           (column) =>
-            `| ${column.name} | ${column.type} | ${column.nullable ? "Yes" : "No"} | ${column.primaryKey ? "Yes" : "No"} | ${column.example === null ? "null" : String(column.example)} |`,
+            `| ${column.name} | ${column.type} | ${column.nullable ? "Yes" : "No"} | ${column.primaryKey ? "Yes" : "No"} |`,
         )
         .join("\n");
 
@@ -462,8 +458,8 @@ function buildMarkdownDocument(
         "",
         table.defaultOrderBy.length > 0 ? `Default sort: \`${table.defaultOrderBy.map((item) => `${item.column} ${item.direction}`).join(", ")}\`` : "",
         "",
-        "| Column | Type | Nullable | Primary | Example |",
-        "| --- | --- | --- | --- | --- |",
+        "| Column | Type | Nullable | Primary |",
+        "| --- | --- | --- | --- |",
         lines,
       ]
         .filter(Boolean)
@@ -490,7 +486,7 @@ function buildMarkdownDocument(
     "",
     docs.query.operators.map((operator) => `- \`${operator}\``).join("\n"),
     "",
-    queryExample ? "### Query body" : "",
+    queryExample ? "### Query example" : "",
     queryExample ? "```json" : "",
     queryExample ?? "",
     queryExample ? "```" : "",
@@ -508,7 +504,7 @@ function buildMarkdownDocument(
     "## Write",
     ...docs.mutation.notes.map((note) => `- ${note}`),
     "",
-    insertExample ? "### Insert body" : "",
+    insertExample ? "### Insert example" : "",
     insertExample ? "```json" : "",
     insertExample ?? "",
     insertExample ? "```" : "",
@@ -516,7 +512,7 @@ function buildMarkdownDocument(
     insertCurl ?? "",
     insertCurl ? "```" : "",
     "",
-    updateExample ? "### Update body" : "",
+    updateExample ? "### Update example" : "",
     updateExample ? "```json" : "",
     updateExample ?? "",
     updateExample ? "```" : "",
@@ -524,7 +520,7 @@ function buildMarkdownDocument(
     updateCurl ?? "",
     updateCurl ? "```" : "",
     "",
-    deleteExample ? "### Delete body" : "",
+    deleteExample ? "### Delete example" : "",
     deleteExample ? "```json" : "",
     deleteExample ?? "",
     deleteExample ? "```" : "",

@@ -1,14 +1,13 @@
-import { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Backspace, X } from "phosphor-react";
 import { useTranslation } from "react-i18next";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Captcha } from "@/components/ui/captcha";
 import { TabletPinKey } from "@/components/ui/tablet-pin-key";
-import { AppRouteLoadingState } from "@/components/page-load-state";
 import { ApiRequestError, api, describeApiErrorSummary } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -61,8 +60,9 @@ function getErrorMessage(error: unknown, t: (key: string) => string) {
 
 export function TabletPinPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
-  const { clearTabletAccess, companySession, loginCompany, lockTablet, tabletAccess } = useAuth();
+  const { clearTabletAccess, loginCompany, lockTablet, tabletAccess } = useAuth();
   const [pinCode, setPinCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -72,14 +72,21 @@ export function TabletPinPage() {
   const [signOutCaptchaValue, setSignOutCaptchaValue] = useState("");
   const [signOutCaptchaError, setSignOutCaptchaError] = useState("");
   const [accessReady, setAccessReady] = useState(false);
+  const consumedLockIntentRef = useRef(false);
 
   useEffect(() => {
-    if (companySession?.accessMode === "tablet") {
-      lockTablet();
+    if (consumedLockIntentRef.current) {
+      return;
     }
-    // only on first open
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+    const lockIntent = (location.state as { lockTablet?: boolean } | null | undefined)?.lockTablet;
+    if (!lockIntent) {
+      return;
+    }
+
+    consumedLockIntentRef.current = true;
+    lockTablet();
+  }, [location.state, lockTablet]);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,11 +150,15 @@ export function TabletPinPage() {
     return <Navigate to="/?mode=tablet" replace />;
   }
 
-  if (!accessReady) {
-    return <AppRouteLoadingState />;
-  }
-
   const activeTabletAccess = tabletAccess;
+  const isCheckingAccess = !accessReady;
+  const statusMessage = errorState
+    ? errorMessage
+    : submitting
+      ? t("tabletPin.unlocking")
+      : accessReady
+        ? t("tabletPin.digitsHint")
+        : null;
   const keypadWidth = "min(78vw, calc((100svh - 26rem) * 0.75), 24rem)";
 
   async function unlock(nextPinCode: string) {
@@ -240,14 +251,14 @@ export function TabletPinPage() {
           <Logo size={104} />
         </div>
 
-        <div className="grid min-h-0 w-full place-items-center py-4 sm:py-4">
+        <div className="grid min-h-0 w-full place-items-center py-4 sm:py-4" aria-busy={isCheckingAccess}>
           <div className="grid h-full w-full min-h-0 max-w-[24rem] grid-rows-[auto_auto_minmax(0,1fr)] justify-items-center gap-5 sm:gap-5">
             <div className="flex flex-col items-center gap-2 text-center">
               <p className="text-base text-muted-foreground sm:text-lg">{activeTabletAccess.companyName}</p>
               <p className="text-lg font-medium text-foreground sm:text-xl">{t("tabletPin.enterPin")}</p>
             </div>
 
-            <div className="flex flex-col items-center gap-3">
+            <div className="flex flex-col items-center gap-3" aria-live="polite" aria-atomic="true">
               <div className={cn("mx-auto flex items-center justify-center gap-3", errorState && "animate-[shake_0.28s_ease-in-out_1]")}>
                 {Array.from({ length: 4 }).map((_, index) => {
                   const filled = index < pinCode.length;
@@ -284,12 +295,29 @@ export function TabletPinPage() {
                   );
                 })}
               </div>
-              <p className={cn("min-h-[1.25rem] text-sm", errorState ? "text-destructive" : "text-muted-foreground")}>
-                {errorState ? errorMessage : submitting ? t("tabletPin.unlocking") : t("tabletPin.digitsHint")}
-              </p>
+              <div className={cn("relative min-h-[1.25rem] w-full overflow-hidden text-center text-sm", errorState ? "text-destructive" : "text-muted-foreground")}>
+                <AnimatePresence initial={false} mode="wait">
+                  {statusMessage ? (
+                    <motion.p
+                      key={statusMessage}
+                      className="w-full"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{
+                        duration: 0.14,
+                        ease: "easeOut",
+                      }}
+                      style={{ willChange: "opacity" }}
+                    >
+                      {statusMessage}
+                    </motion.p>
+                  ) : null}
+                </AnimatePresence>
+              </div>
             </div>
 
-            <div className="grid min-h-0 w-full place-items-center self-stretch overflow-hidden py-4 sm:py-4">
+            <div className={cn("grid min-h-0 w-full place-items-center self-stretch overflow-hidden py-4 sm:py-4 transition-opacity duration-150 ease-out", isCheckingAccess && "opacity-90")}>
               <div
                 className="mx-auto grid w-full grid-cols-3 gap-3 p-3 sm:gap-4 sm:p-4"
                 style={{
@@ -299,7 +327,7 @@ export function TabletPinPage() {
                 {keypadRows.flat().map((key) => {
                   if (key === "back") {
                     return (
-                      <TabletPinKey key={key} onClick={() => handleKeyPress("back")}>
+                      <TabletPinKey key={key} onClick={() => handleKeyPress("back")} disabled={isCheckingAccess}>
                         <Backspace size={30} weight="bold" />
                       </TabletPinKey>
                     );
@@ -307,14 +335,14 @@ export function TabletPinPage() {
 
                   if (key === "clear") {
                     return (
-                      <TabletPinKey key={key} muted onClick={() => handleKeyPress("clear")}>
+                      <TabletPinKey key={key} muted onClick={() => handleKeyPress("clear")} disabled={isCheckingAccess}>
                         <X size={28} weight="bold" />
                       </TabletPinKey>
                     );
                   }
 
                   return (
-                    <TabletPinKey key={key} onClick={() => handleKeyPress(key)}>
+                    <TabletPinKey key={key} onClick={() => handleKeyPress(key)} disabled={isCheckingAccess}>
                       {key}
                     </TabletPinKey>
                   );
@@ -333,13 +361,13 @@ export function TabletPinPage() {
             size="sm"
             className="h-7 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
             onClick={openSignOutDialog}
+            disabled={isCheckingAccess}
           >
             {t("tabletPin.signOut")}
           </Button>
         </div>
         </div>
       </div>
-
       <Dialog open={signOutOpen} onOpenChange={setSignOutOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

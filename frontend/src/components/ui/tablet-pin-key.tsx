@@ -6,9 +6,10 @@ interface TabletPinKeyProps {
   muted?: boolean;
   onClick: () => void;
   className?: string;
+  disabled?: boolean;
 }
 
-export function TabletPinKey({ children, muted = false, onClick, className }: TabletPinKeyProps) {
+export function TabletPinKey({ children, muted = false, onClick, className, disabled = false }: TabletPinKeyProps) {
   return (
     <div className={cn("relative aspect-square w-full", className)}>
       <div
@@ -20,14 +21,18 @@ export function TabletPinKey({ children, muted = false, onClick, className }: Ta
       />
       <button
         type="button"
+        disabled={disabled}
         onPointerDown={() => {
+          if (disabled) {
+            return;
+          }
           if (navigator.vibrate && window.isSecureContext && navigator.userActivation?.isActive) {
             navigator.vibrate(10);
           }
         }}
         onClick={onClick}
         className={cn(
-          "absolute inset-0 flex items-center justify-center rounded-full bg-transparent transition-transform active:scale-95",
+          "absolute inset-0 flex items-center justify-center rounded-full bg-transparent transition-transform active:scale-95 disabled:pointer-events-none disabled:cursor-default disabled:opacity-70",
           muted ? "text-muted-foreground" : "text-foreground"
         )}
       >

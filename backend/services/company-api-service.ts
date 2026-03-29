@@ -48,41 +48,9 @@ function toSqlValues(values: Array<string | number | boolean | null>): SqlValue[
   return values.map(normalizeSqlValue);
 }
 
-function inferExampleValue(column: CompanyApiSchemaColumn): string | number | null {
-  const name = column.name.toLowerCase();
-  const type = column.type.toLowerCase();
-
-  if (name.endsWith("_id")) {
-    return 1;
-  }
-  if (name.includes("date")) {
-    return "2026-01-01";
-  }
-  if (name.includes("time")) {
-    return "09:00";
-  }
-  if (name.includes("email")) {
-    return "name@example.com";
-  }
-  if (name.startsWith("is_") || name.startsWith("has_") || name.endsWith("_enabled")) {
-    return 1;
-  }
-  if (type.includes("int") || type.includes("real") || type.includes("numeric")) {
-    return 1;
-  }
-  if (type.includes("json")) {
-    return "{}";
-  }
-  if (column.nullable) {
-    return null;
-  }
-
-  return `${column.name}_value`;
-}
-
 async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTableSchema[]> {
-  const tables = await db.all<{ name: string; sql: string | null }>(
-    "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC",
+  const tables = await db.all<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC",
   );
 
   const result: CompanyApiTableSchema[] = [];
@@ -95,20 +63,21 @@ async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTable
       continue;
     }
 
-    const columns = parseColumnsFromCreateTableSql(table.sql);
+    const columns = await db.all<{
+      cid: number;
+      name: string;
+      type: string;
+      notnull: number;
+      pk: number;
+      dflt_value: string | null;
+    }>(`PRAGMA table_info(${quoteIdentifier(table.name)})`);
 
     const normalizedColumns: CompanyApiSchemaColumn[] = columns.map((column) => ({
       name: column.name,
       type: column.type || "TEXT",
-      nullable: column.is_not_null === 0,
+      nullable: column.notnull === 0,
       primaryKey: column.pk > 0,
-      example: inferExampleValue({
-        name: column.name,
-        type: column.type || "TEXT",
-        nullable: column.is_not_null === 0,
-        primaryKey: column.pk > 0,
-        example: null,
-      }),
+      example: null,
     }));
     const preferredOrderColumn =
       normalizedColumns.find((column) => column.name === "created_at")?.name ??
@@ -130,79 +99,6 @@ async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTable
   }
 
   return result;
-}
-
-function parseColumnsFromCreateTableSql(createTableSql: string | null) {
-  if (!createTableSql) {
-    return [];
-  }
-
-  const start = createTableSql.indexOf("(");
-  const end = createTableSql.lastIndexOf(")");
-  if (start === -1 || end === -1 || end <= start) {
-    return [];
-  }
-
-  const body = createTableSql.slice(start + 1, end);
-  const segments = splitTopLevelCommaSegments(body);
-
-  return segments
-    .map((segment) => segment.trim())
-    .filter(Boolean)
-    .filter((segment) => !/^(constraint|foreign key|primary key|unique|check)\b/i.test(segment))
-    .map((segment) => {
-      const match = segment.match(/^"?(?<name>[A-Za-z_][A-Za-z0-9_]*)"?\s+(?<rest>.+)$/s);
-      if (!match?.groups?.name || !match.groups.rest) {
-        return null;
-      }
-
-      const rest = match.groups.rest.trim();
-      const typeMatch = rest.match(/^(?<type>[A-Za-z0-9_()]+(?:\s+[A-Za-z0-9_()]+)?)/);
-      const type = typeMatch?.groups?.type?.trim() || "TEXT";
-      const normalizedRest = rest.toUpperCase();
-
-      return {
-        name: match.groups.name,
-        type,
-        is_not_null: normalizedRest.includes("NOT NULL") ? 1 : 0,
-        pk: normalizedRest.includes("PRIMARY KEY") ? 1 : 0,
-      };
-    })
-    .filter((column): column is { name: string; type: string; is_not_null: number; pk: number } => column !== null);
-}
-
-function splitTopLevelCommaSegments(value: string) {
-  const segments: string[] = [];
-  let current = "";
-  let depth = 0;
-
-  for (const char of value) {
-    if (char === "(") {
-      depth += 1;
-      current += char;
-      continue;
-    }
-
-    if (char === ")") {
-      depth = Math.max(0, depth - 1);
-      current += char;
-      continue;
-    }
-
-    if (char === "," && depth === 0) {
-      segments.push(current);
-      current = "";
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.trim()) {
-    segments.push(current);
-  }
-
-  return segments;
 }
 
 const scalarValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -382,115 +278,6 @@ function validateWritableColumns(values: Record<string, string | number | boolea
   return entries;
 }
 
-function buildExampleQuery(tables: CompanyApiTableSchema[]): CompanyApiQueryInput | null {
-  const table = tables[0];
-  if (!table) {
-    return null;
-  }
-
-  const visibleColumns = table.columns;
-  const selectedColumns = visibleColumns.slice(0, 5).map((column) => column.name);
-  const firstFilterColumn =
-    visibleColumns.find((column) => column.name.includes("date")) ??
-    visibleColumns.find((column) => column.name.startsWith("is_")) ??
-    visibleColumns[0];
-
-  return {
-    table: table.name,
-    columns: selectedColumns.length > 0 ? selectedColumns : table.columns.slice(0, 5).map((column) => column.name),
-    filters: firstFilterColumn
-      ? [
-          {
-            column: firstFilterColumn.name,
-            operator: "eq",
-            value: firstFilterColumn.example,
-          },
-        ]
-      : [],
-    orderBy: table.defaultOrderBy,
-    limit: 100,
-    offset: 0,
-  };
-}
-
-function buildExampleMutation(
-  tables: CompanyApiTableSchema[],
-  action: CompanyApiMutationAction,
-): CompanyApiMutationInput | null {
-  const table = tables[0];
-  if (!table) {
-    return null;
-  }
-
-  const writableColumns = table.columns.filter((column) => column.name !== "id");
-  const firstWritableColumn = writableColumns[0];
-  const filterColumn =
-    table.columns.find((column) => column.primaryKey) ??
-    writableColumns.find((column) => column.name.includes("date")) ??
-    writableColumns[0];
-
-  if (action === "insert") {
-    return {
-      action,
-      table: table.name,
-      values: Object.fromEntries(
-        writableColumns.slice(0, 3).map((column) => [column.name, column.example]),
-      ),
-    };
-  }
-
-  if (!firstWritableColumn || !filterColumn) {
-    return null;
-  }
-
-  return {
-    action,
-    table: table.name,
-    values: action === "update" ? { [firstWritableColumn.name]: firstWritableColumn.example } : undefined,
-    filters: [
-      {
-        column: filterColumn.name,
-        operator: "eq",
-        value: filterColumn.example,
-      },
-    ],
-  };
-}
-
-function buildCurlExample(path: string, body: CompanyApiQueryInput | CompanyApiMutationInput | null) {
-  if (!body) {
-    return null;
-  }
-
-  return [
-    "curl -X POST \\",
-    '  -H "Content-Type: application/json" \\',
-    `  -H "X-API-Key: ${API_KEY_PREFIX}your_company_key" \\`,
-    `  https://your-app.example.com${path} \\`,
-    `  -d '${JSON.stringify(body)}'`,
-  ].join("\n");
-}
-
-function buildPowerQueryExample(example: CompanyApiQueryInput | null) {
-  if (!example) {
-    return null;
-  }
-
-  return [
-    "let",
-    '  ApiUrl = "https://your-app.example.com/api/external/query",',
-    `  RequestBody = Text.ToBinary("${JSON.stringify(example).replace(/"/g, '""')}"),`,
-    '  Response = Json.Document(Web.Contents(ApiUrl, [',
-    '    Headers = [#"Content-Type" = "application/json", #"X-API-Key" = "jtzt_your_company_key"],',
-    "    Content = RequestBody",
-    "  ])),",
-    '  Rows = Response[rows],',
-    "  Table = Table.FromRecords(Rows)",
-    "in",
-    "  Table",
-  ].join("\n");
-}
-
 function buildMarkdownDocs(docs: Omit<CompanyApiDocsResponse["docs"], "markdown">) {
   const endpointLines = docs.endpoints
     .map((endpoint) => `- \`${endpoint.method} ${endpoint.path}\` - ${endpoint.description}`)
@@ -522,12 +309,12 @@ function buildMarkdownDocs(docs: Omit<CompanyApiDocsResponse["docs"], "markdown"
     "## Query",
     ...docs.query.notes.map((note) => `- ${note}`),
     "",
-    docs.query.example ? "### Example query body" : "",
+    docs.query.example ? "### Query example" : "",
     docs.query.example ? "```json" : "",
     docs.query.example ? JSON.stringify(docs.query.example, null, 2) : "",
     docs.query.example ? "```" : "",
     docs.query.curlExample ? "" : "",
-    docs.query.curlExample ? "### Example query cURL" : "",
+    docs.query.curlExample ? "### Query cURL" : "",
     docs.query.curlExample ? "```bash" : "",
     docs.query.curlExample ?? "",
     docs.query.curlExample ? "```" : "",
@@ -540,17 +327,17 @@ function buildMarkdownDocs(docs: Omit<CompanyApiDocsResponse["docs"], "markdown"
     "## Mutation",
     ...docs.mutation.notes.map((note) => `- ${note}`),
     "",
-    docs.mutation.examples.insert ? "### Example insert body" : "",
+    docs.mutation.examples.insert ? "### Insert example" : "",
     docs.mutation.examples.insert ? "```json" : "",
     docs.mutation.examples.insert ? JSON.stringify(docs.mutation.examples.insert, null, 2) : "",
     docs.mutation.examples.insert ? "```" : "",
     docs.mutation.examples.update ? "" : "",
-    docs.mutation.examples.update ? "### Example update body" : "",
+    docs.mutation.examples.update ? "### Update example" : "",
     docs.mutation.examples.update ? "```json" : "",
     docs.mutation.examples.update ? JSON.stringify(docs.mutation.examples.update, null, 2) : "",
     docs.mutation.examples.update ? "```" : "",
     docs.mutation.examples.delete ? "" : "",
-    docs.mutation.examples.delete ? "### Example delete body" : "",
+    docs.mutation.examples.delete ? "### Delete example" : "",
     docs.mutation.examples.delete ? "```json" : "",
     docs.mutation.examples.delete ? JSON.stringify(docs.mutation.examples.delete, null, 2) : "",
     docs.mutation.examples.delete ? "```" : "",
@@ -608,8 +395,9 @@ export const companyApiService = {
 
   async getSchema(db: AppDatabase): Promise<CompanyApiSchemaResponse> {
     try {
+      const tables = await readCompanyScopedTables(db);
       return {
-        tables: await readCompanyScopedTables(db),
+        tables,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown schema introspection error";
@@ -704,13 +492,7 @@ export const companyApiService = {
 
   async getGeneratedDocs(db: AppDatabase): Promise<CompanyApiDocsResponse["docs"]> {
     try {
-      const schema = await this.getSchema(db);
-      const exampleQuery = buildExampleQuery(schema.tables);
-      const mutationExamples = {
-        insert: buildExampleMutation(schema.tables, "insert"),
-        update: buildExampleMutation(schema.tables, "update"),
-        delete: buildExampleMutation(schema.tables, "delete"),
-      };
+      const tables = await readCompanyScopedTables(db);
       const docsWithoutMarkdown: Omit<CompanyApiDocsResponse["docs"], "markdown"> = {
         auth: {
           header: "X-API-Key",
@@ -755,11 +537,11 @@ export const companyApiService = {
           notes: [
             "Every query is automatically scoped to the authenticated company.",
             "Table names and columns are validated against the live schema before SQL is built.",
-            "The schema endpoint updates itself as your database evolves, so the API page stays in sync.",
+            "The schema endpoint reflects the current database state directly.",
           ],
-          example: exampleQuery,
-          curlExample: buildCurlExample("/api/external/query", exampleQuery),
-          powerQueryExample: buildPowerQueryExample(exampleQuery),
+          example: null,
+          curlExample: null,
+          powerQueryExample: null,
         },
         mutation: {
           actions: [...mutationActions],
@@ -767,14 +549,18 @@ export const companyApiService = {
             "Mutations are validated against the live schema before SQL is built.",
             "Update and delete operations require filters to reduce accidental broad writes.",
           ],
-          examples: mutationExamples,
+          examples: {
+            insert: null,
+            update: null,
+            delete: null,
+          },
           curlExamples: {
-            insert: buildCurlExample("/api/external/mutate", mutationExamples.insert),
-            update: buildCurlExample("/api/external/mutate", mutationExamples.update),
-            delete: buildCurlExample("/api/external/mutate", mutationExamples.delete),
+            insert: null,
+            update: null,
+            delete: null,
           },
         },
-        tables: schema.tables,
+        tables,
       };
 
       return {

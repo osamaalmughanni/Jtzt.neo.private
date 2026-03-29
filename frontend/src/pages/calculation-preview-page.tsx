@@ -66,7 +66,6 @@ export function CalculationPreviewPage() {
     void api
       .validateCalculation(companySession.token, {
         sqlText: currentCalculation.sqlText,
-        chartConfig: currentCalculation.chartConfig,
       })
       .then((response) => {
         if (!active) return;

@@ -30,7 +30,6 @@ const createFromPresetSchema = z.object({
 
 const validateCalculationSchema = z.object({
   sqlText: z.string().min(5),
-  chartConfig: chartConfigSchema,
 });
 
 const calculationIdSchema = z.object({
@@ -57,7 +56,7 @@ calculationRoutes.post("/validate", requireCompanyAdmin, async (c) => {
   }
 
   const body = validateCalculationSchema.parse(await c.req.json());
-  return c.json(await calculationService.validateSql(c.get("db"), body.sqlText, body.chartConfig));
+  return c.json(await calculationService.validateSql(c.get("db"), body.sqlText));
 });
 
 calculationRoutes.post("/", requireCompanyAdmin, async (c) => {

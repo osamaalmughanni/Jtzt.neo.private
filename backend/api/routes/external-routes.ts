@@ -73,6 +73,7 @@ externalRoutes.get("/", async (c) => {
 });
 
 externalRoutes.get("/docs", async (c) => {
+  c.header("Cache-Control", "no-store");
   return c.json({
     ok: true,
     docs: await companyApiService.getGeneratedDocs(c.get("db")),
@@ -80,6 +81,7 @@ externalRoutes.get("/docs", async (c) => {
 });
 
 externalRoutes.get("/schema", async (c) => {
+  c.header("Cache-Control", "no-store");
   return c.json(await companyApiService.getSchema(c.get("db")));
 });
 
