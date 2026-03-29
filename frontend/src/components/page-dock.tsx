@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { useAppHeaderState } from "@/components/app-header-state";
 
@@ -6,11 +6,11 @@ export function PageDock({ children, cacheKey }: { children: ReactNode; cacheKey
   const { setBottomBar } = useAppHeaderState();
   const childrenRef = useRef(children);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     childrenRef.current = children;
   }, [children]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setBottomBar(childrenRef.current, cacheKey ?? null);
     return () => {
       setBottomBar(null);

@@ -434,6 +434,7 @@ export function DashboardPage() {
   const dashboardPageErrorRef = useRef<unknown>(null);
   useEffect(() => {
     if (dashboardPageResource.status !== "ready" || !dashboardPageResource.data) {
+      setDashboardDisplaySnapshot(null);
       return;
     }
 
