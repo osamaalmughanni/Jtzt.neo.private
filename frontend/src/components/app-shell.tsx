@@ -1,7 +1,6 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Icon } from "phosphor-react";
-import { AnimatePresence, motion } from "framer-motion";
 import { AppContentLane } from "@/components/app-content-lane";
 import { AppFooter } from "@/components/app-footer";
 import { AppHeader } from "@/components/app-header";
@@ -175,7 +174,7 @@ function ShellContent({
   menuTo?: string;
   scope: "company" | "admin" | "tablet";
 }) {
-  const { bottomBar, bottomBarKey, startLoading, stopLoading } = useAppHeaderState();
+  const { bottomBar, startLoading, stopLoading } = useAppHeaderState();
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const scrollContentRef = useRef<HTMLDivElement | null>(null);
   const [showTopFade, setShowTopFade] = useState(false);
@@ -322,20 +321,9 @@ function ShellContent({
       </main>
       {bottomBar ? (
         <div className="relative z-20 pt-2 pb-4">
-          <AnimatePresence initial={false} mode="wait">
-            <motion.div
-              key={bottomBarKey ?? locationKey}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
-              style={{ willChange: "opacity" }}
-            >
-              <AppContentLane className="py-3">
-                {bottomBar}
-              </AppContentLane>
-            </motion.div>
-          </AnimatePresence>
+          <AppContentLane className="py-3">
+            {bottomBar}
+          </AppContentLane>
         </div>
       ) : null}
       <div className="relative z-20 min-h-14 pt-1 pb-4">
