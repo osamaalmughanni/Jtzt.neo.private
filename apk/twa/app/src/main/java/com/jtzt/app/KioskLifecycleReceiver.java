@@ -3,6 +3,7 @@ package com.jtzt.app;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 
 public class KioskLifecycleReceiver extends BroadcastReceiver {
     @Override
@@ -18,6 +19,7 @@ public class KioskLifecycleReceiver extends BroadcastReceiver {
 
         Intent launch = new Intent(context, KioskWebViewActivity.class);
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        launch.setData(Uri.parse(SessionStore.getConfiguredHomeUrl(context)));
         context.startActivity(launch);
     }
 }

@@ -12,6 +12,7 @@ export interface CompanyTokenPayload {
   accessMode: "full" | "tablet";
   companyId: string;
   companyName: string;
+  tabletCodeUpdatedAt?: string | null;
   userId: number;
   role: "employee" | "manager" | "admin";
 }

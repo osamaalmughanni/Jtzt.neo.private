@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -59,6 +60,14 @@ def get_version_metadata(manifest_path: Path) -> tuple[int, str]:
         candidate_code = existing_code + 1
 
     return candidate_code, version_name
+
+
+def hash_file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def run_gradle_release_build(gradlew: Path, project_dir: Path, gradle_home: Path, env: dict[str, str]) -> None:
@@ -289,6 +298,19 @@ def main() -> int:
     frontend_public_dir = repo_root / "frontend" / "public"
     ensure_dir(frontend_public_dir)
     shutil.copy2(signed_apk, frontend_public_dir / "jtzt.apk")
+
+    apk_sha256 = hash_file_sha256(signed_apk)
+    update_manifest = {
+        "versionCode": version_code,
+        "versionName": version_name,
+        "sha256": apk_sha256,
+        "apkUrl": "https://app.jtzt.com/jtzt.apk",
+        "downloadUrl": "https://app.jtzt.com/jtzt.apk",
+        "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+    }
+    update_manifest_json = json.dumps(update_manifest, indent=2) + "\n"
+    (release_dir / "jtzt.manifest").write_text(update_manifest_json, encoding="utf-8")
+    (frontend_public_dir / "jtzt.manifest").write_text(update_manifest_json, encoding="utf-8")
 
     print(f"Release APK ready: {release_apk}")
     return 0

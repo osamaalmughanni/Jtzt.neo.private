@@ -17,15 +17,26 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.provider.Settings;
 
 import com.jtzt.app.android.AndroidUiController;
 import com.jtzt.app.android.KioskModeController;
+
+import java.io.File;
 
 public class KioskControllerActivity extends Activity {
     private TextView domainStatus;
     private EditText domainInput;
     private Button domainSaveButton;
     private Button domainResetButton;
+    private TextView updateTitle;
+    private TextView updateDescription;
+    private EditText updateInput;
+    private TextView updateStatus;
+    private Button updateSaveButton;
+    private Button updateResetButton;
+    private Button updateCheckButton;
+    private Button updateForceButton;
     private TextView deviceState;
     private TextView launcherStatus;
     private TextView lockdownHint;
@@ -76,7 +87,7 @@ public class KioskControllerActivity extends Activity {
         domainTitle.setGravity(Gravity.CENTER_HORIZONTAL);
 
         TextView domainDescription = new TextView(this);
-        domainDescription.setText("Stored locally on this device. Change the home origin, then return to Jtzt.");
+        domainDescription.setText("Stored locally on this device. Change the website, or reset back to the default if the site does not load.");
         domainDescription.setTextColor(0xFFB0B0B0);
         domainDescription.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         domainDescription.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -89,14 +100,53 @@ public class KioskControllerActivity extends Activity {
         domainStatus.setGravity(Gravity.CENTER_HORIZONTAL);
 
         domainSaveButton = new Button(this);
-        domainSaveButton.setText("Save domain");
+        domainSaveButton.setText("Save website");
         domainSaveButton.setAllCaps(false);
         domainSaveButton.setOnClickListener(v -> applyDomainSetting());
 
         domainResetButton = new Button(this);
-        domainResetButton.setText("Reset default");
+        domainResetButton.setText("Reset to default");
         domainResetButton.setAllCaps(false);
         domainResetButton.setOnClickListener(v -> resetDomainSetting());
+
+        updateTitle = new TextView(this);
+        updateTitle.setText("APK update");
+        updateTitle.setTextColor(0xFFFFFFFF);
+        updateTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        updateTitle.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        updateDescription = new TextView(this);
+        updateDescription.setText("Keep a verified update manifest here, check for newer builds, and force-install the latest package.");
+        updateDescription.setTextColor(0xFFB0B0B0);
+        updateDescription.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        updateDescription.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        updateInput = buildTextInput("https://app.jtzt.com/jtzt.manifest");
+
+        updateStatus = new TextView(this);
+        updateStatus.setTextColor(0xFFE0E0E0);
+        updateStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        updateStatus.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        updateSaveButton = new Button(this);
+        updateSaveButton.setText("Save manifest");
+        updateSaveButton.setAllCaps(false);
+        updateSaveButton.setOnClickListener(v -> applyUpdateSetting());
+
+        updateResetButton = new Button(this);
+        updateResetButton.setText("Reset manifest");
+        updateResetButton.setAllCaps(false);
+        updateResetButton.setOnClickListener(v -> resetUpdateSetting());
+
+        updateCheckButton = new Button(this);
+        updateCheckButton.setText("Check version");
+        updateCheckButton.setAllCaps(false);
+        updateCheckButton.setOnClickListener(v -> checkUpdateAvailability());
+
+        updateForceButton = new Button(this);
+        updateForceButton.setText("Force update");
+        updateForceButton.setAllCaps(false);
+        updateForceButton.setOnClickListener(v -> forceUpdateInstall());
 
         deviceState = new TextView(this);
         deviceState.setTextColor(0xFFFFFFFF);
@@ -175,6 +225,25 @@ public class KioskControllerActivity extends Activity {
         root.addView(domainSaveButton, domainSaveParams);
         LinearLayout.LayoutParams domainResetParams = fullWidthParams(dp(8));
         root.addView(domainResetButton, domainResetParams);
+        LinearLayout.LayoutParams updateTitleParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        updateTitleParams.topMargin = dp(18);
+        root.addView(updateTitle, updateTitleParams);
+        LinearLayout.LayoutParams updateDescriptionParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        updateDescriptionParams.topMargin = dp(4);
+        root.addView(updateDescription, updateDescriptionParams);
+        LinearLayout.LayoutParams updateInputParams = fullWidthParams(dp(12));
+        root.addView(updateInput, updateInputParams);
+        LinearLayout.LayoutParams updateStatusParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        updateStatusParams.topMargin = dp(8);
+        root.addView(updateStatus, updateStatusParams);
+        LinearLayout.LayoutParams updateSaveParams = fullWidthParams(dp(8));
+        root.addView(updateSaveButton, updateSaveParams);
+        LinearLayout.LayoutParams updateResetParams = fullWidthParams(dp(8));
+        root.addView(updateResetButton, updateResetParams);
+        LinearLayout.LayoutParams updateCheckParams = fullWidthParams(dp(8));
+        root.addView(updateCheckButton, updateCheckParams);
+        LinearLayout.LayoutParams updateForceParams = fullWidthParams(dp(8));
+        root.addView(updateForceButton, updateForceParams);
         LinearLayout.LayoutParams deviceStateParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         deviceStateParams.topMargin = dp(18);
         root.addView(deviceState, deviceStateParams);
@@ -251,7 +320,7 @@ public class KioskControllerActivity extends Activity {
     private void returnToKiosk() {
         Intent intent = new Intent(this, KioskWebViewActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        intent.setData(Uri.parse(SessionStore.getLaunchUrl(this)));
+        intent.setData(Uri.parse(SessionStore.getConfiguredHomeUrl(this)));
         startActivity(intent);
         finish();
     }
@@ -262,8 +331,17 @@ public class KioskControllerActivity extends Activity {
         boolean isLockTaskActive = DevicePolicyHelper.isLockTaskActive(this);
         boolean isDefaultHome = HomeRoleHelper.isDefaultHome(this);
         String configuredHomeUrl = SessionStore.getConfiguredHomeUrl(this);
+        String configuredUpdateUrl = SessionStore.getConfiguredUpdateUrl(this);
         domainInput.setText(configuredHomeUrl);
         domainStatus.setText("Active domain: " + configuredHomeUrl);
+        updateInput.setText(configuredUpdateUrl);
+        if (updateStatus != null) {
+            if (updateStatus.getTag() instanceof String) {
+                updateStatus.setText((String) updateStatus.getTag());
+            } else {
+                updateStatus.setText("Installed APK: " + ApkUpdateManager.getInstalledVersionCode(this) + " (" + ApkUpdateManager.getInstalledVersionName(this) + ") | Tap Check version to compare.");
+            }
+        }
         textZoomInput.setText(String.valueOf(SessionStore.getWebViewTextZoom(this)));
 
         if (isDeviceOwner) {
@@ -325,6 +403,89 @@ public class KioskControllerActivity extends Activity {
         returnToKiosk();
     }
 
+    private void applyUpdateSetting() {
+        String rawValue = readInput(updateInput);
+        if (rawValue.isEmpty()) {
+            showUpdateError("Enter an update manifest URL.");
+            return;
+        }
+
+        try {
+            String normalized = SessionStore.setConfiguredUpdateUrl(this, rawValue);
+            updateInput.setText(normalized);
+            setUpdateStatus("Update manifest saved: " + normalized);
+        } catch (IllegalArgumentException exception) {
+            showUpdateError(exception.getMessage());
+        }
+    }
+
+    private void resetUpdateSetting() {
+        SessionStore.resetConfiguredUpdateUrl(this);
+        String configuredUpdateUrl = SessionStore.getConfiguredUpdateUrl(this);
+        updateInput.setText(configuredUpdateUrl);
+        setUpdateStatus("Update manifest reset: " + configuredUpdateUrl);
+    }
+
+    private void checkUpdateAvailability() {
+        String rawValue = readInput(updateInput);
+        if (rawValue.isEmpty()) {
+            showUpdateError("Enter an update manifest URL.");
+            return;
+        }
+
+        setUpdateBusy(true);
+        setUpdateStatus("Checking update manifest...");
+        new Thread(() -> {
+            try {
+                ApkUpdateManager.UpdateCheckResult result = ApkUpdateManager.checkForUpdate(this, rawValue);
+                String summary = "Installed " + result.installedVersionCode + " (" + safeText(result.installedVersionName) + ")"
+                        + " • Remote " + result.manifest.versionCode + " (" + safeText(result.manifest.versionName) + ")"
+                        + (result.updateAvailable ? " • Update available" : " • Up to date");
+                if (result.manifest.sha256 != null && !result.manifest.sha256.trim().isEmpty()) {
+                    summary += " • SHA-256 " + shortHash(result.manifest.sha256);
+                }
+                runOnUiThread(() -> setUpdateStatus(buildUpdateSummary(result)));
+            } catch (Exception exception) {
+                runOnUiThread(() -> showUpdateError(exception.getMessage() == null ? "Could not check APK version." : exception.getMessage()));
+            } finally {
+                runOnUiThread(() -> setUpdateBusy(false));
+            }
+        }).start();
+    }
+
+    private void forceUpdateInstall() {
+        String rawValue = readInput(updateInput);
+        if (rawValue.isEmpty()) {
+            showUpdateError("Enter an update manifest URL.");
+            return;
+        }
+
+        setUpdateBusy(true);
+        setUpdateStatus("Downloading verified APK...");
+        new Thread(() -> {
+            try {
+                ApkUpdateManager.UpdateCheckResult result = ApkUpdateManager.checkForUpdate(this, rawValue);
+                File apkFile = ApkUpdateManager.downloadVerifiedApk(this, result.manifest);
+                runOnUiThread(() -> {
+                    try {
+                        ApkUpdateManager.installApk(this, apkFile);
+                        setUpdateStatus("Installer opened for " + safeText(result.manifest.versionName) + " (" + result.manifest.versionCode + ")");
+                    } catch (IllegalStateException permissionError) {
+                        setUpdateStatus("Enable install permission, then tap Force update again.");
+                        Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                    } catch (Exception exception) {
+                        showUpdateError(exception.getMessage() == null ? "Could not open installer." : exception.getMessage());
+                    }
+                });
+            } catch (Exception exception) {
+                runOnUiThread(() -> showUpdateError(exception.getMessage() == null ? "Could not update APK." : exception.getMessage()));
+            } finally {
+                runOnUiThread(() -> setUpdateBusy(false));
+            }
+        }).start();
+    }
+
     private void showDedicatedSetupDialog() {
         String message =
                 "Jtzt cannot become device owner from a normal permission prompt. Android only grants that role during dedicated-device provisioning."
@@ -371,6 +532,71 @@ public class KioskControllerActivity extends Activity {
                 .setMessage(message)
                 .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
                 .show();
+    }
+
+    private void showUpdateError(String message) {
+        new AlertDialog.Builder(this)
+                .setTitle("Update error")
+                .setMessage(message)
+                .setPositiveButton("OK", (dialog, which) -> dialog.dismiss())
+                .show();
+    }
+
+    private void setUpdateStatus(String message) {
+        if (updateStatus != null) {
+            updateStatus.setTag(message);
+            updateStatus.setText(message);
+        }
+    }
+
+    private void setUpdateBusy(boolean busy) {
+        updateSaveButton.setEnabled(!busy);
+        updateResetButton.setEnabled(!busy);
+        updateCheckButton.setEnabled(!busy);
+        updateForceButton.setEnabled(!busy);
+        updateInput.setEnabled(!busy);
+    }
+
+    private String safeText(String value) {
+        return value == null || value.trim().isEmpty() ? "-" : value.trim();
+    }
+
+    private String buildUpdateSummary(ApkUpdateManager.UpdateCheckResult result) {
+        StringBuilder summary = new StringBuilder();
+        summary.append("Installed ")
+                .append(result.installedVersionCode)
+                .append(" (")
+                .append(safeText(result.installedVersionName))
+                .append(") | Remote ")
+                .append(result.manifest.versionCode)
+                .append(" (")
+                .append(safeText(result.manifest.versionName))
+                .append(")");
+
+        summary.append(result.updateAvailable ? " | New version available" : " | Up to date");
+
+        if (result.manifest.sha256 != null && !result.manifest.sha256.trim().isEmpty()) {
+            String remoteHash = result.manifest.sha256.trim();
+            summary.append(" | Remote hash ")
+                    .append(remoteHash.length() <= 12 ? remoteHash : remoteHash.substring(0, 12) + "...");
+        }
+
+        if (result.installedSha256 != null && !result.installedSha256.trim().isEmpty()) {
+            String installedHash = result.installedSha256.trim();
+            summary.append(" | Installed hash ")
+                    .append(installedHash.length() <= 12 ? installedHash : installedHash.substring(0, 12) + "...");
+            summary.append(result.hashMatches ? " | Hash verified" : " | Hash differs");
+        }
+
+        return summary.toString();
+    }
+
+    private String shortHash(String hash) {
+        String normalized = hash == null ? "" : hash.trim();
+        if (normalized.length() <= 12) {
+            return normalized;
+        }
+        return normalized.substring(0, 12) + "…";
     }
 
     private void showDomainError(String message) {

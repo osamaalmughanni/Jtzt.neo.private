@@ -55,6 +55,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAdminIdentity(null);
   }
 
+  function clearTabletAccess() {
+    sessionStorage.clearTabletAccess();
+    setTabletAccessState(null);
+  }
+
   async function validateActiveSessions() {
     if (companySession) {
       try {
@@ -151,9 +156,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const handleAuthInvalid = (event: Event) => {
       const { token } = (event as CustomEvent<AuthInvalidEventDetail>).detail;
+      const isTabletSession = companySession?.token === token && companySession?.accessMode === "tablet";
 
       if (companySession?.token === token) {
         clearCompanySession();
+      }
+
+      if (isTabletSession) {
+        clearTabletAccess();
       }
 
       if (adminSession?.token === token) {
@@ -207,8 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setTabletAccessState(access);
       },
       clearTabletAccess() {
-        sessionStorage.clearTabletAccess();
-        setTabletAccessState(null);
+        clearTabletAccess();
       },
       lockTablet() {
         clearCompanySession();

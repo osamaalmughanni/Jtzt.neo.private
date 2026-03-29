@@ -36,6 +36,7 @@ public class LauncherActivity extends Activity {
         if (isHomeLaunch() && SessionStore.hasKioskStarted(this)) {
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         }
+        launchIntent.setData(Uri.parse(SessionStore.getConfiguredHomeUrl(this)));
         startActivity(launchIntent);
         finish();
     }

@@ -39,6 +39,7 @@ type CompanySessionInput =
     accessMode: "full" | "tablet";
     userId: number;
     role: "employee" | "manager" | "admin";
+    tabletCodeUpdatedAt?: string | null;
   };
 
 async function createCompanySession(
@@ -47,7 +48,7 @@ async function createCompanySession(
   companyId: string,
   session: CompanySessionInput,
 ) {
-  const company = await systemService.getCompanyAuthState(systemDb, companyId);
+  const company = await systemService.getCompanyById(systemDb, companyId);
   if (!company) {
     throw new HTTPException(401, { message: "Invalid or expired bearer token" });
   }
@@ -57,6 +58,7 @@ async function createCompanySession(
     accessMode: session.accessMode,
     companyId: company.id,
     companyName: company.name,
+    tabletCodeUpdatedAt: session.tabletCodeUpdatedAt ?? null,
     userId: session.userId,
     role: session.role,
   });
@@ -229,6 +231,7 @@ export const authService = {
       accessMode: "tablet",
       userId: user.id,
       role: user.role,
+      tabletCodeUpdatedAt: company.tabletCodeUpdatedAt,
     });
   },
 

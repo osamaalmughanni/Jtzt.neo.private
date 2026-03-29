@@ -1,6 +1,7 @@
 package com.jtzt.app;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
@@ -10,6 +11,8 @@ import android.os.SystemClock;
 import android.view.MotionEvent;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -31,6 +34,7 @@ public class KioskWebViewActivity extends Activity {
     private boolean managePageOpening;
     private int rapidTapCount;
     private long lastRapidTapAt;
+    private boolean loadFailureDialogVisible;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,9 +88,31 @@ public class KioskWebViewActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
+                Uri finishedUri = url == null ? null : Uri.parse(url);
+                if (finishedUri != null && !SessionStore.matchesConfiguredHome(KioskWebViewActivity.this, finishedUri)) {
+                    forceHomeNavigation();
+                    return;
+                }
+                loadFailureDialogVisible = false;
                 SessionStore.persist(KioskWebViewActivity.this, url);
                 applyTextZoom();
                 super.onPageFinished(view, url);
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                super.onReceivedError(view, request, error);
+                if (request != null && request.isForMainFrame()) {
+                    showLoadFailureDialog();
+                }
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request, android.webkit.WebResourceResponse errorResponse) {
+                super.onReceivedHttpError(view, request, errorResponse);
+                if (request != null && request.isForMainFrame()) {
+                    showLoadFailureDialog();
+                }
             }
         });
         webView.setOnTouchListener((view, event) -> {
@@ -103,6 +129,10 @@ public class KioskWebViewActivity extends Activity {
         applyTextZoom();
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
+            Uri restoredUri = webView.getUrl() == null ? null : Uri.parse(webView.getUrl());
+            if (restoredUri != null && !SessionStore.matchesConfiguredHome(this, restoredUri)) {
+                forceHomeNavigation();
+            }
         } else {
             webView.loadUrl(SessionStore.getLaunchUrl(this));
         }
@@ -175,7 +205,11 @@ public class KioskWebViewActivity extends Activity {
             return;
         }
         if (webView != null) {
-            webView.loadUrl(uri == null ? SessionStore.getLaunchUrl(this) : uri.toString());
+            if (uri != null && !SessionStore.matchesConfiguredHome(this, uri)) {
+                forceHomeNavigation();
+                return;
+            }
+            webView.loadUrl(uri == null ? SessionStore.getConfiguredHomeUrl(this) : uri.toString());
         }
     }
 
@@ -201,15 +235,28 @@ public class KioskWebViewActivity extends Activity {
             return true;
         }
 
-        if (SessionStore.matchesConfiguredHome(this, uri)) {
-            if (KIOSK_EXIT_PATH.equals(uri.getPath())) {
+        String scheme = uri.getScheme();
+        if ("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme)) {
+            if (SessionStore.matchesConfiguredHome(this, uri) && KIOSK_EXIT_PATH.equals(uri.getPath())) {
                 openExitGate();
+                return true;
+            }
+            if (!SessionStore.matchesConfiguredHome(this, uri)) {
+                forceHomeNavigation();
                 return true;
             }
             return false;
         }
 
         return true;
+    }
+
+    private void forceHomeNavigation() {
+        if (webView == null || isFinishing()) {
+            return;
+        }
+
+        webView.loadUrl(SessionStore.getConfiguredHomeUrl(this));
     }
 
     private void openExitGate() {
@@ -253,6 +300,36 @@ public class KioskWebViewActivity extends Activity {
         int textZoom = SessionStore.getWebViewTextZoom(this);
         WebSettings settings = webView.getSettings();
         settings.setTextZoom(textZoom);
+    }
+
+    private void showLoadFailureDialog() {
+        if (loadFailureDialogVisible || isFinishing()) {
+            return;
+        }
+
+        loadFailureDialogVisible = true;
+        new AlertDialog.Builder(this)
+                .setTitle("Website could not load")
+                .setMessage("The configured website did not respond correctly. You can retry, reset to the default website, or open the controller to change it.")
+                .setCancelable(false)
+                .setPositiveButton("Retry", (dialog, which) -> {
+                    loadFailureDialogVisible = false;
+                    if (webView != null) {
+                        webView.loadUrl(SessionStore.getConfiguredHomeUrl(this));
+                    }
+                })
+                .setNeutralButton("Reset default", (dialog, which) -> {
+                    loadFailureDialogVisible = false;
+                    SessionStore.resetConfiguredHomeUrl(this);
+                    if (webView != null) {
+                        webView.loadUrl(SessionStore.getConfiguredHomeUrl(this));
+                    }
+                })
+                .setNegativeButton("Settings", (dialog, which) -> {
+                    loadFailureDialogVisible = false;
+                    startActivity(new Intent(this, KioskControllerActivity.class));
+                })
+                .show();
     }
 
     private void registerBackHandler() {

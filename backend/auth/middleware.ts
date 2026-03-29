@@ -36,22 +36,27 @@ export const authMiddleware = createMiddleware<{
       return;
     }
 
-    const company = await systemService.getCompanyAuthState(c.get("systemDb"), session.companyId);
+    const company = await systemService.getCompanyById(c.get("systemDb"), session.companyId);
     if (!company) {
       throw new Error("Unknown company");
     }
 
     if (session.actorType === "workspace") {
-      if (session.companyName !== company.name || session.workspaceAuthVersion !== company.authVersion) {
+      const workspaceCompany = await systemService.getCompanyAuthState(c.get("systemDb"), session.companyId);
+      if (!workspaceCompany || session.companyName !== workspaceCompany.name || session.workspaceAuthVersion !== workspaceCompany.authVersion) {
         throw new Error("Stale workspace session");
       }
 
       c.set("session", {
         ...session,
-        companyName: company.name,
+        companyName: workspaceCompany.name,
       });
       await next();
       return;
+    }
+
+    if (session.accessMode === "tablet" && session.tabletCodeUpdatedAt !== company.tabletCodeUpdatedAt) {
+      throw new Error("Stale tablet session");
     }
 
     const companyDb = await createCompanyDatabase(c.get("config"), session.companyId);

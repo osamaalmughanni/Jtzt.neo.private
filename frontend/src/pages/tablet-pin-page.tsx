@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Captcha } from "@/components/ui/captcha";
 import { TabletPinKey } from "@/components/ui/tablet-pin-key";
+import { AppRouteLoadingState } from "@/components/page-load-state";
 import { ApiRequestError, api, describeApiErrorSummary } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -67,6 +68,7 @@ export function TabletPinPage() {
   const [signOutCaptcha, setSignOutCaptcha] = useState("");
   const [signOutCaptchaValue, setSignOutCaptchaValue] = useState("");
   const [signOutCaptchaError, setSignOutCaptchaError] = useState("");
+  const [accessReady, setAccessReady] = useState(false);
 
   useEffect(() => {
     if (companySession?.accessMode === "tablet") {
@@ -75,6 +77,55 @@ export function TabletPinPage() {
     // only on first open
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAccessReady(false);
+
+    const verifyTabletAccess = async () => {
+      const code = tabletAccess?.code;
+      if (!code) {
+        return;
+      }
+
+      try {
+        await api.tabletAccess({ code });
+        if (!cancelled) {
+          setAccessReady(true);
+        }
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        if (error instanceof ApiRequestError && error.status === 401) {
+          clearTabletAccess();
+          navigate("/?mode=tablet", { replace: true });
+          return;
+        }
+
+        setAccessReady(true);
+      }
+    };
+
+    void verifyTabletAccess();
+
+    const interval = window.setInterval(() => {
+      void verifyTabletAccess();
+    }, 10000);
+
+    const onFocus = () => {
+      void verifyTabletAccess();
+    };
+
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [clearTabletAccess, navigate, tabletAccess?.code]);
 
   useEffect(() => {
     if (!errorState) return;
@@ -87,6 +138,10 @@ export function TabletPinPage() {
 
   if (!tabletAccess) {
     return <Navigate to="/?mode=tablet" replace />;
+  }
+
+  if (!accessReady) {
+    return <AppRouteLoadingState />;
   }
 
   const activeTabletAccess = tabletAccess;

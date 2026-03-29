@@ -18,7 +18,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast, toastError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
-import { Shield, TabletSmartphone } from "lucide-react";
+import { Check, Shield, TabletSmartphone } from "lucide-react";
 
 const AUTH_MODES = ["sign-in", "register", "workspace", "tablet", "admin"] as const;
 
@@ -77,7 +77,6 @@ export function AuthAccessPage() {
       continueToTablet: t("auth.continueToTablet"),
       tabletChecking: t("auth.tabletChecking"),
       tabletAccessFailed: t("auth.tabletAccessFailed"),
-      tabletStandardCompanyDescription: t("auth.tabletStandardCompanyDescription"),
       companyNamePlaceholder: t("auth.companyNamePlaceholder"),
       usernamePlaceholder: t("auth.usernamePlaceholder"),
       adminUsernamePlaceholder: t("auth.adminUsernamePlaceholder"),
@@ -292,13 +291,17 @@ export function AuthAccessPage() {
                       label={t("auth.tabletCodeLabel")}
                       placeholder={t("auth.tabletCodePlaceholder")}
                       forceLowercase
+                      endAdornment={
+                        tabletAccessPreview ? (
+                          <span
+                            className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted-foreground"
+                            aria-hidden="true"
+                          >
+                            <Check className="h-5 w-5" />
+                          </span>
+                        ) : null
+                      }
                     />
-                    {tabletAccessPreview ? (
-                      <div className="border border-border bg-muted/20 p-4">
-                        <p className="text-sm font-semibold text-foreground">{tabletAccessPreview.companyName}</p>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">{copy.tabletStandardCompanyDescription}</p>
-                      </div>
-                    ) : null}
                     <Button className="w-full" type="submit" disabled={tabletForm.formState.isSubmitting}>
                       {tabletForm.formState.isSubmitting ? copy.tabletChecking : copy.continueToTablet}
                     </Button>
@@ -375,6 +378,7 @@ function AuthField({
   type = "text",
   inputClassName,
   forceLowercase = false,
+  endAdornment,
 }: {
   control: any;
   name: string;
@@ -383,6 +387,7 @@ function AuthField({
   type?: "text" | "password";
   inputClassName?: string;
   forceLowercase?: boolean;
+  endAdornment?: React.ReactNode;
 }) {
   return (
     <FormField
@@ -392,16 +397,19 @@ function AuthField({
         <FormItem className="space-y-2">
           <FormLabel className="text-sm font-medium text-foreground">{label}</FormLabel>
           <FormControl>
-            <Input
-              {...field}
-              type={type}
-              placeholder={placeholder}
-              className={cn("h-11 border-border/70 bg-background shadow-none", inputClassName)}
-              onChange={(event) => {
-                const nextValue = forceLowercase ? event.target.value.toLowerCase() : event.target.value;
-                field.onChange(nextValue);
-              }}
-            />
+            <div className="relative">
+              <Input
+                {...field}
+                type={type}
+                placeholder={placeholder}
+                className={cn("h-11 border-border/70 bg-background shadow-none", endAdornment && "pr-11", inputClassName)}
+                onChange={(event) => {
+                  const nextValue = forceLowercase ? event.target.value.toLowerCase() : event.target.value;
+                  field.onChange(nextValue);
+                }}
+              />
+              {endAdornment}
+            </div>
           </FormControl>
           <FormMessage />
         </FormItem>
