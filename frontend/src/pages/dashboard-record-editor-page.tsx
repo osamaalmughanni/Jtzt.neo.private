@@ -40,6 +40,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useCompanySettings } from "@/lib/company-settings";
 import { toast } from "@/lib/toast";
+import { evaluateTimeEntryAccess, formatTimeEntryAccessMessage } from "@/lib/time-entry-access";
 import {
   DEFAULT_COMPANY_DATE_TIME_FORMAT,
   DEFAULT_COMPANY_LOCALE,
@@ -126,6 +127,13 @@ function groupAssignments<T extends { projectId: number }>(rows: T[]) {
     grouped.set(row.projectId, current);
   }
   return grouped;
+}
+
+function hasRenderableCustomFieldValue(value: string | number | boolean | undefined) {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
+  return false;
 }
 
 interface DashboardRecordEditorPageProps {
@@ -402,6 +410,62 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
             date: startDate,
           })
         : null;
+  const missingCustomFieldLabels = useMemo(
+    () =>
+      activeCustomFields
+        .filter((field) => {
+          if (!field.required) {
+            return false;
+          }
+
+          const value = customFieldValues[field.id];
+          return !hasRenderableCustomFieldValue(value);
+        })
+        .map((field) => ({
+          fieldId: field.id,
+          label: field.label,
+        })),
+    [activeCustomFields, customFieldValues],
+  );
+  const accessResult = useMemo(
+    () =>
+      evaluateTimeEntryAccess({
+        scope: "recordEditor",
+        mode,
+        includePolicy: false,
+        role: companyIdentity?.user.role,
+        settings,
+        entryType,
+        startDate,
+        endDate: resolvedEndDate,
+        todayDay,
+        hasHolidayInRange: holidayBlocked,
+        hasWeekendInRange: selectedDayIsWeekend || enumerateLocalDays(startDate, resolvedEndDate).some((day) => isWeekendDay(day, settings.weekendDays)),
+        hasExistingEntry: rangeEntryConflict.hasWork || rangeEntryConflict.hasLeave,
+        hasWorkConflict: rangeEntryConflict.hasWork,
+        hasLeaveConflict: rangeEntryConflict.hasLeave,
+        projectMissing: entryType === "work" && settings.projectsEnabled && !projectId,
+        taskMissing: entryType === "work" && settings.tasksEnabled && !taskId,
+        missingCustomFieldLabels,
+      }),
+    [
+      companyIdentity?.user.role,
+      entryType,
+      holidayBlocked,
+      missingCustomFieldLabels,
+      mode,
+      projectId,
+      rangeEntryConflict.hasLeave,
+      rangeEntryConflict.hasWork,
+      resolvedEndDate,
+      selectedDayIsWeekend,
+      settings,
+      startDate,
+      taskId,
+      todayDay,
+    ],
+  );
+  const accessMessage = formatTimeEntryAccessMessage(accessResult, "recordEditor", t);
   const entryTypeTabs: Array<{ value: TimeEntryType; label: string }> = [
     {
       value: "work",
@@ -434,15 +498,7 @@ export function DashboardRecordEditorPage({ mode }: DashboardRecordEditorPagePro
           requested: vacationRequestedDays.toFixed(2),
         })
       : null;
-  const workDayConflictError =
-    entryType !== "work" && rangeEntryConflict.hasWork
-      ? t("recordEditor.workDayAlreadyBooked")
-      : entryType !== "work" && rangeEntryConflict.hasLeave
-        ? t("recordEditor.leaveTypeAlreadyBooked")
-      : entryType === "work" && rangeEntryConflict.hasLeave
-        ? t("recordEditor.leaveDayAlreadyBooked")
-      : null;
-  const blockingMessages = [dayLimitError, workDayConflictError, vacationError, timeOffInLieuError].filter(
+  const blockingMessages = [dayLimitError, accessMessage, vacationError, timeOffInLieuError].filter(
     (value): value is string => Boolean(value),
   );
   const blockingError = blockingMessages[0] ?? null;

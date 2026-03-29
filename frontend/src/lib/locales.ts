@@ -433,6 +433,8 @@ export const resources = {
         requiredWorkFieldsDescription: "Fill the required work fields before starting the timer.",
         startWork: "Start work",
         startWorkDescription: "Fill the required fields to start a timer.",
+        startWorkMissingRequirements: "Still missing: {{items}}.",
+        missingRequirements: "Still missing: {{items}}.",
         stopWork: "Stop work"
       },
       tabletPin: {
@@ -495,6 +497,8 @@ export const resources = {
         deleteDescription: "This record will be removed.",
         thisYear: "This year",
         days: "days",
+        oneRecordPerDay: "Only one record can be created per day for this company.",
+        missingRequirements: "Still missing: {{items}}.",
         thisRangeStaysValid:
           "This range stays valid. Effective leave days: {{effective}}. Excluded: {{holidays}} public holiday{{holidaySuffix}} and {{weekends}} weekend day{{weekendSuffix}}.",
         employeesInsertLimit: "Employees can only add entries within the insert day limit.",
@@ -1332,6 +1336,8 @@ export const resources = {
         requiredWorkFieldsDescription: "Pflichtfelder für Arbeit ausfüllen, bevor der Timer startet.",
         startWork: "Arbeit starten",
         startWorkDescription: "Pflichtfelder ausfüllen, um den Timer zu starten.",
+        startWorkMissingRequirements: "Es fehlen noch: {{items}}.",
+        missingRequirements: "Es fehlen noch: {{items}}.",
         stopWork: "Arbeit stoppen"
       },
       tabletPin: {
@@ -1394,6 +1400,8 @@ export const resources = {
         deleteDescription: "Dieser Eintrag wird entfernt.",
         thisYear: "Dieses Jahr",
         days: "Tage",
+        oneRecordPerDay: "In dieser Firma darf pro Tag nur ein Eintrag erstellt werden.",
+        missingRequirements: "Es fehlen noch: {{items}}.",
         thisRangeStaysValid:
           "Dieser Zeitraum bleibt gültig. Effektive Abwesenheitstage: {{effective}}. Ausgenommen: {{holidays}} Feiertag{{holidaySuffix}} und {{weekends}} Wochenendtag{{weekendSuffix}}.",
         employeesInsertLimit: "Mitarbeiter können nur innerhalb des Einfüge-Limits Einträge anlegen.",

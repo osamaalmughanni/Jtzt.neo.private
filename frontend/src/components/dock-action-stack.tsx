@@ -18,7 +18,7 @@ export function DockActionStack({
   messageClassName?: string;
 }) {
   return (
-    <div className={cn("flex flex-col items-center gap-2", className)}>
+    <div className={cn("flex flex-col items-center gap-4", className)}>
       <div className="flex items-center justify-center">
         {primary}
       </div>
@@ -39,5 +39,15 @@ export function DockActionStack({
 export function DockActionButton({
   ...props
 }: ComponentPropsWithoutRef<typeof Button>) {
-  return <Button variant="ghost" size="default" {...props} />;
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      {...props}
+      className={cn(
+        "whitespace-nowrap",
+        props.className,
+      )}
+    />
+  );
 }

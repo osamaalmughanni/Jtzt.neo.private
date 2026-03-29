@@ -10,7 +10,7 @@ import type {
   PublicHolidayRecord,
   TimeEntryView,
 } from "@shared/types/models";
-import type { DashboardPageSnapshotResponse, ProjectTaskManagementResponse, StartTimerRequirement } from "@shared/types/api";
+import type { DashboardPageSnapshotResponse, ProjectTaskManagementResponse } from "@shared/types/api";
 import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import { evaluateTimeEntryPolicy, getAllowedEntryTypesForDay, getFutureDayDistance, getPastDayDistance } from "@shared/utils/time-entry-policy";
 import {
@@ -51,6 +51,8 @@ import { useCompanySettings } from "@/lib/company-settings";
 import { useAppHeaderState } from "@/components/app-header-state";
 import { getEntryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
 import { formatCompanyDate } from "@/lib/locale-format";
+import { evaluateTimeEntryAccess, formatStartTimerRequirementsMessage } from "@/lib/time-entry-access";
+import { evaluateTimerSetupRequirements, type TimerSetupRequirement } from "@/lib/timer-setup-policy";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import {
@@ -262,10 +264,12 @@ function RecordStatusIcon({
   entryType,
   active,
   className,
+  label,
 }: {
   entryType: TimeEntryView["entryType"];
   active: boolean;
   className: string;
+  label?: string;
 }) {
   const Icon = active
     ? CircleNotch
@@ -278,20 +282,16 @@ function RecordStatusIcon({
         : FirstAidKit;
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      type="button"
+    <div
+      aria-hidden="true"
       className={cn(
-        "h-8 w-8 p-0 text-muted-foreground pointer-events-none",
+        "inline-flex min-w-0 items-center gap-1 rounded-full border px-2 py-0 text-[11px] leading-5",
         active ? getRecordEntryStatusClass(entryType, active) : className,
       )}
-      onClick={(event) => event.preventDefault()}
-      tabIndex={-1}
-      aria-hidden="true"
     >
-      <Icon size={14} weight={active ? "bold" : "fill"} className={active ? "animate-spin" : undefined} />
-    </Button>
+      <Icon size={12} weight={active ? "bold" : "fill"} className={cn("shrink-0", active ? "animate-spin" : undefined)} />
+      {label ? <span className="min-w-0 whitespace-nowrap">{label}</span> : null}
+    </div>
   );
 }
 
@@ -328,7 +328,7 @@ export function DashboardPage() {
   const [tabletPunchValues, setTabletPunchValues] = useState<Record<string, string | number | boolean>>({});
   const [tabletPunchProjectId, setTabletPunchProjectId] = useState("");
   const [tabletPunchTaskId, setTabletPunchTaskId] = useState("");
-  const [tabletPunchRequirements, setTabletPunchRequirements] = useState<StartTimerRequirement[]>([]);
+  const [tabletPunchServerRequirements, setTabletPunchServerRequirements] = useState<TimerSetupRequirement[]>([]);
   const [tabletPunchSubmitting, setTabletPunchSubmitting] = useState(false);
   const [summaryPeriod, setSummaryPeriod] = useState<"week" | "month" | "year">("week");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -499,19 +499,47 @@ export function DashboardPage() {
   const futurePlannedLeaveOnly = allowedEntryTypes.onlyPlannedLeaveAllowed && futureRecordSelected;
   const selectedDayHasWorkEntry = entries.some((entry) => entry.entryType === "work");
   const selectedDayHasLeaveEntry = entries.some((entry) => entry.entryType !== "work");
-  const workEntryAllowed = allowedEntryTypes.work.allowed && !selectedDayHasLeaveEntry;
+  const selectedDayHasAnyEntry = selectedDayHasWorkEntry || selectedDayHasLeaveEntry;
+  const selectedDayAccess = useMemo(
+    () =>
+      evaluateTimeEntryAccess({
+        scope: "dashboard",
+        mode: "create",
+        includePolicy: false,
+        role: companyIdentity?.user.role,
+        settings,
+        entryType: "work",
+        startDate: selectedDayKey,
+        endDate: selectedDayKey,
+        todayDay,
+        hasHolidayInRange: selectedDayIsHoliday,
+        hasWeekendInRange: selectedDayIsWeekend,
+        hasExistingEntry: selectedDayHasAnyEntry,
+      }),
+    [
+      companyIdentity?.user.role,
+      selectedDayHasAnyEntry,
+      selectedDayIsHoliday,
+      selectedDayIsWeekend,
+      selectedDayKey,
+      settings,
+      todayDay,
+    ],
+  );
+  const workEntryAllowed = allowedEntryTypes.work.allowed && (settings.allowIntersectingRecords || !selectedDayHasLeaveEntry);
   const vacationAllowed = allowedEntryTypes.vacation.allowed && summary.contractStats.vacation.availableDays > 0;
   const timeOffAllowed = allowedEntryTypes.timeOffInLieu.allowed && summary.contractStats.timeOffInLieu.availableMinutes > 0;
-  const leaveEntryAllowed = !selectedDayHasWorkEntry && !selectedDayHasLeaveEntry && (allowedEntryTypes.sickLeave.allowed || vacationAllowed || timeOffAllowed);
+  const leaveEntryAllowed = (allowedEntryTypes.sickLeave.allowed || vacationAllowed || timeOffAllowed) && (settings.allowIntersectingRecords || !selectedDayHasAnyEntry);
   const canCreateRecord = workEntryAllowed || leaveEntryAllowed;
-  const singleRecordBlocked = settings.allowOneRecordPerDay && entries.length > 0;
+  const singleRecordBlocked = selectedDayAccess.blocks.some((block) => block.kind === "single_record_per_day");
   const canUseTabletPunch = summary.activeEntry
     ? true
-    : isNowContext && workEntryAllowed;
+    : isNowContext && workEntryAllowed && !singleRecordBlocked;
   const singleRecordMessage = singleRecordBlocked ? t("dashboard.oneRecordPerDay") : null;
   const canAddRecordButton = canCreateRecord && !singleRecordBlocked;
-  const createRecordMessage =
-    selectedDayPolicy.reason === "insert_limit"
+  const createRecordMessage = singleRecordBlocked
+    ? null
+    : selectedDayPolicy.reason === "insert_limit"
       ? t("dashboard.insertLimitDetailed", {
           limit: settings.insertDaysLimit,
           days: selectedDayPastDistance,
@@ -531,9 +559,9 @@ export function DashboardPage() {
       ? t("dashboard.weekendWorkBlocked", {
           date: formatCompanyDate(selectedDayKey, settings.locale),
         })
-      : selectedDayHasWorkEntry
+      : !settings.allowIntersectingRecords && selectedDayHasWorkEntry
       ? t("dashboard.workDayAlreadyBooked")
-      : selectedDayHasLeaveEntry
+      : !settings.allowIntersectingRecords && selectedDayHasLeaveEntry
       ? t("recordEditor.leaveTypeAlreadyBooked")
       : null;
   const recordDockMessages = useMemo(
@@ -609,6 +637,32 @@ export function DashboardPage() {
     () => getCustomFieldsForTarget(settings.customFields, { scope: "time_entry", entryType: "work" }).filter((field) => field.required),
     [settings.customFields]
   );
+  const tabletPunchRequirements = useMemo(
+    () =>
+      evaluateTimerSetupRequirements({
+        settings,
+        projectId: tabletPunchProjectId,
+        taskId: tabletPunchTaskId,
+        selectedProjectExists: !settings.projectsEnabled || Boolean(selectedTabletProject),
+        selectedTaskExists: !settings.tasksEnabled || availableTabletTasks.some((task) => task.id === Number(tabletPunchTaskId)),
+        requiredCustomFields: requiredTabletWorkFields,
+        customFieldValues: tabletPunchValues,
+      }),
+    [
+      availableTabletTasks,
+      requiredTabletWorkFields,
+      selectedTabletProject,
+      settings,
+      tabletPunchProjectId,
+      tabletPunchTaskId,
+      tabletPunchValues,
+    ],
+  );
+  useEffect(() => {
+    if (tabletPunchServerRequirements.length > 0) {
+      setTabletPunchServerRequirements([]);
+    }
+  }, [tabletPunchProjectId, tabletPunchServerRequirements.length, tabletPunchTaskId, tabletPunchValues]);
 
   const searchParamsRef = useRef(searchParams);
   const effectiveUserIdRef = useRef<number | null>(effectiveUserId);
@@ -776,13 +830,17 @@ export function DashboardPage() {
     if (!companySession) return;
     try {
       setTabletPunchSubmitting(true);
+      if (!tabletPunchRequirements.ready) {
+        setTabletPunchSetupOpen(true);
+        return;
+      }
       const preflight = await api.checkStartTimer(companySession.token, {
         customFieldValues: input.customFieldValues,
         projectId: input.projectId ?? null,
         taskId: input.taskId ?? null,
       });
-      setTabletPunchRequirements(preflight.requirements);
       if (!preflight.ready) {
+        setTabletPunchServerRequirements(preflight.requirements);
         setTabletPunchSetupOpen(true);
         return;
       }
@@ -795,7 +853,7 @@ export function DashboardPage() {
       setTabletPunchValues({});
       setTabletPunchProjectId("");
       setTabletPunchTaskId("");
-      setTabletPunchRequirements([]);
+      setTabletPunchServerRequirements([]);
       await refreshDashboardViews();
     } catch (error) {
       try {
@@ -804,7 +862,7 @@ export function DashboardPage() {
           projectId: input.projectId ?? null,
           taskId: input.taskId ?? null,
         });
-        setTabletPunchRequirements(retry.requirements);
+        setTabletPunchServerRequirements(retry.requirements);
         setTabletPunchSetupOpen(true);
       } catch {
         // keep the setup open, but avoid surfacing a stale validation path
@@ -838,53 +896,16 @@ export function DashboardPage() {
       return;
     }
 
-    setTabletPunchRequirements([]);
+    setTabletPunchServerRequirements([]);
     setTabletPunchSetupOpen(true);
   }
-
-  useEffect(() => {
-    if (!companySession || !isTabletMode || !tabletPunchSetupOpen) {
-      return;
-    }
-
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      void api.checkStartTimer(companySession.token, {
-        customFieldValues: tabletPunchValues,
-        projectId: tabletPunchProjectId ? Number(tabletPunchProjectId) : null,
-        taskId: tabletPunchTaskId ? Number(tabletPunchTaskId) : null,
-      })
-        .then((response) => {
-          if (!cancelled) {
-            setTabletPunchRequirements(response.requirements);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setTabletPunchRequirements([]);
-          }
-        });
-    }, 150);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [
-    companySession,
-    isTabletMode,
-    tabletPunchSetupOpen,
-    tabletPunchProjectId,
-    tabletPunchTaskId,
-    tabletPunchValues,
-  ]);
 
   const createRecordHref = buildRecordEditorHref(
     effectiveUserId,
     selectedDate,
     futurePlannedLeaveOnly ? (vacationAllowed ? "vacation" : timeOffAllowed ? "time_off_in_lieu" : undefined) : undefined,
   );
-  const dockShowsPlay = isNowContext && workEntryAllowed && !summary.activeEntry;
+  const dockShowsPlay = isNowContext && workEntryAllowed && !summary.activeEntry && !singleRecordBlocked;
   const dockShowsStop = Boolean(summary.activeEntry);
   const dockUsesPlus = !dockShowsStop && !dockShowsPlay;
   const dockButtonMode = summary.activeEntry ? "stop" : "play";
@@ -892,19 +913,11 @@ export function DashboardPage() {
     value: String(user.id),
     label: user.fullName,
   }));
-  const tabletPunchProjectReady = !settings.projectsEnabled || tabletPunchProjectId.trim().length > 0;
-  const tabletPunchTaskReady = !settings.tasksEnabled || tabletPunchTaskId.trim().length > 0;
-  const tabletPunchCustomFieldsReady = requiredTabletWorkFields.every((field) => {
-    const currentValue = tabletPunchValues[field.id];
-    if (field.type === "boolean") {
-      return typeof currentValue === "boolean";
-    }
-
-    return typeof currentValue === "string"
-      ? currentValue.trim().length > 0
-      : typeof currentValue === "number";
-  });
-  const canStartTabletPunch = canUseTabletPunch && tabletPunchProjectReady && tabletPunchTaskReady && tabletPunchCustomFieldsReady;
+  const tabletPunchRequirementsMessage = useMemo(
+    () => formatStartTimerRequirementsMessage(tabletPunchRequirements.ready ? tabletPunchServerRequirements : tabletPunchRequirements.requirements, t),
+    [tabletPunchRequirements, tabletPunchServerRequirements, t],
+  );
+  const canStartTabletPunch = canUseTabletPunch && tabletPunchRequirements.ready && tabletPunchServerRequirements.length === 0;
   const tabletSetupDockKey = [
     "tablet-setup",
     tabletPunchSetupOpen ? "1" : "0",
@@ -980,19 +993,6 @@ export function DashboardPage() {
             title={t("dashboard.startWork")}
             description={t("dashboard.startWorkDescription", { defaultValue: "Fill the required fields to start a timer." })}
           />
-          {tabletPunchRequirements.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {tabletPunchRequirements.map((requirement, index) => (
-                <Badge
-                  key={`${requirement.kind}-${requirement.fieldId ?? requirement.label}-${index}`}
-                  variant="secondary"
-                  className="rounded-full px-2 py-0 text-[11px] font-medium"
-                >
-                  {requirement.label}
-                </Badge>
-              ))}
-            </div>
-          ) : null}
           <FormFields>
             {settings.projectsEnabled ? (
               <Field label={t("recordEditor.project", { defaultValue: "Project" })}>
@@ -1074,6 +1074,9 @@ export function DashboardPage() {
                 {t("common.cancel")}
               </DockActionButton>
             }
+            message={tabletPunchRequirementsMessage ? (
+              <HintStack messages={[tabletPunchRequirementsMessage]} className="text-center" />
+            ) : null}
           />
         </PageDock>
       </FormPage>
@@ -1171,8 +1174,8 @@ export function DashboardPage() {
         skeleton={null}
       >
       <Stack gap="lg" className="min-h-full flex-1">
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <div className="flex flex-col gap-4">
+        <div className="rounded-2xl border border-border bg-card p-3">
+          <div className="flex flex-col gap-3">
             <FormSection>
               <div className="flex min-h-10 flex-col justify-center gap-2">
                 {canSwitchUser ? (
@@ -1256,7 +1259,7 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-4">
+        <div className="rounded-2xl border border-border bg-card p-3">
           <div className="flex flex-col gap-2">
             {entries.map((entry) => {
                 const canEdit = evaluateTimeEntryPolicy({
@@ -1299,38 +1302,34 @@ export function DashboardPage() {
                 return (
                   <div
                     key={entry.id}
-                    className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 px-0"
+                    className="grid grid-cols-[minmax(0,1fr),auto] items-center gap-2 px-0"
                   >
-                    <div>
+                    <div className="min-w-0 flex items-center gap-2 overflow-hidden">
                       <RecordStatusIcon
                         entryType={entry.entryType}
                         active={isActiveWorkEntry}
                         className={entryStateUi[entry.entryType].recordStatusClassName}
+                        label={getEntryLabel(entry.entryType)}
                       />
-                    </div>
-                    <div className="min-w-0 overflow-hidden">
-                      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-                        <p className="min-w-0 flex-1 truncate text-sm font-medium leading-4 text-foreground">
-                          {entryHeadline}
-                        </p>
-                        <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
-                          <Badge
-                            variant={isActiveWorkEntry ? "destructive" : "secondary"}
-                            className="shrink-0 rounded-full px-2 py-0 text-[11px] leading-5"
-                          >
-                            {entryMeta}
-                          </Badge>
-                          {secondaryBadges.map((badge) => (
-                            <Badge
-                              key={badge.key}
-                              variant="outline"
-                              className="max-w-[7rem] shrink-0 rounded-full px-2 py-0 text-[11px] leading-5 text-muted-foreground sm:max-w-[9rem]"
-                            >
-                              <span className="block truncate">{badge.label}</span>
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
+                      <p className="min-w-0 flex-1 truncate text-sm font-medium leading-4 text-foreground">
+                        {entryHeadline}
+                      </p>
+                      <Badge
+                        variant={isActiveWorkEntry ? "destructive" : "secondary"}
+                        className="shrink-0 whitespace-nowrap rounded-full px-2 py-0 text-[11px] leading-5"
+                      >
+                        {entryMeta}
+                      </Badge>
+                      {secondaryBadges.length > 0 ? (
+                        <Badge
+                          variant="outline"
+                          className="min-w-0 shrink rounded-full px-2 py-0 text-[11px] leading-5 text-muted-foreground"
+                        >
+                          <span className="block truncate">
+                            {secondaryBadges.map((badge) => badge.label).join(" · ")}
+                          </span>
+                        </Badge>
+                      ) : null}
                     </div>
                     <div className="relative z-10 flex shrink-0 items-center justify-end gap-0.5 self-center">
                       <Button
