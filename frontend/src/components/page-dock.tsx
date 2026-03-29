@@ -10,7 +10,7 @@ export function PageDock({ children, cacheKey }: { children: React.ReactNode; ca
   }, [children]);
 
   useEffect(() => {
-    setBottomBar(childrenRef.current);
+    setBottomBar(childrenRef.current, cacheKey ?? null);
     return () => {
       setBottomBar(null);
     };

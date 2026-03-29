@@ -10,7 +10,7 @@ import type {
   PublicHolidayRecord,
   TimeEntryView,
 } from "@shared/types/models";
-import type { DashboardPageSnapshotResponse, ProjectTaskManagementResponse } from "@shared/types/api";
+import type { DashboardPageSnapshotResponse, ProjectTaskManagementResponse, StartTimerRequirement } from "@shared/types/api";
 import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import { evaluateTimeEntryPolicy, getAllowedEntryTypesForDay, getFutureDayDistance, getPastDayDistance } from "@shared/utils/time-entry-policy";
 import {
@@ -52,7 +52,7 @@ import { useAppHeaderState } from "@/components/app-header-state";
 import { getEntryStateUi, getEntryTypeLabel } from "@/lib/entry-state-ui";
 import { formatCompanyDate } from "@/lib/locale-format";
 import { evaluateTimeEntryAccess, formatStartTimerRequirementsMessage } from "@/lib/time-entry-access";
-import { evaluateTimerSetupRequirements, type TimerSetupRequirement } from "@/lib/timer-setup-policy";
+import { evaluateTimerSetupRequirements } from "@/lib/timer-setup-policy";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import {
@@ -238,7 +238,13 @@ function buildEntrySecondaryBadges(
 }
 
 function triggerHapticFeedback() {
-  if (typeof navigator !== "undefined" && navigator.vibrate) {
+  if (
+    typeof navigator !== "undefined" &&
+    navigator.vibrate &&
+    typeof window !== "undefined" &&
+    window.isSecureContext &&
+    navigator.userActivation?.isActive
+  ) {
     navigator.vibrate(10);
   }
 }
@@ -328,7 +334,7 @@ export function DashboardPage() {
   const [tabletPunchValues, setTabletPunchValues] = useState<Record<string, string | number | boolean>>({});
   const [tabletPunchProjectId, setTabletPunchProjectId] = useState("");
   const [tabletPunchTaskId, setTabletPunchTaskId] = useState("");
-  const [tabletPunchServerRequirements, setTabletPunchServerRequirements] = useState<TimerSetupRequirement[]>([]);
+  const [tabletPunchServerRequirements, setTabletPunchServerRequirements] = useState<StartTimerRequirement[]>([]);
   const [tabletPunchSubmitting, setTabletPunchSubmitting] = useState(false);
   const [summaryPeriod, setSummaryPeriod] = useState<"week" | "month" | "year">("week");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -953,6 +959,15 @@ export function DashboardPage() {
       summary.activeEntry?.id,
     ],
   );
+  const calendarDockKey = useMemo(
+    () => [
+      "calendar-picker",
+      formatLocalDay(draftDate),
+      formatLocalDay(visibleMonth),
+      isNowContext ? "1" : "0",
+    ].join("|"),
+    [draftDate, isNowContext, visibleMonth],
+  );
 
   useEffect(() => {
     if (datePickerOpen) {
@@ -986,7 +1001,7 @@ export function DashboardPage() {
       <FormPage className="min-h-0 flex-none">
         <PageBackAction onClick={() => {
           setTabletPunchSetupOpen(false);
-          setTabletPunchRequirements([]);
+          setTabletPunchServerRequirements([]);
         }} label={t("common.close")} />
         <FormSection>
           <PageLabel
@@ -1066,7 +1081,7 @@ export function DashboardPage() {
                   setTabletPunchValues({});
                   setTabletPunchProjectId("");
                   setTabletPunchTaskId("");
-                  setTabletPunchRequirements([]);
+                  setTabletPunchServerRequirements([]);
                 }}
                 type="button"
                 disabled={tabletPunchSubmitting}
@@ -1110,29 +1125,27 @@ export function DashboardPage() {
             compact
           />
         </FormSection>
-        <PageDock cacheKey="calendar-picker">
+        <PageDock cacheKey={calendarDockKey}>
           <DockActionStack
-            primary={(
-              <div className="flex flex-col items-center gap-2">
-                <Button
-                  variant={isNowContext ? "secondary" : "default"}
-                  size="sm"
-                  type="button"
-                  className="h-9 rounded-full px-4 text-xs font-medium"
-                  onClick={() => goToToday({ closePicker: true })}
-                  aria-label={t("dashboard.today")}
-                >
-                  <ClockCounterClockwise size={14} weight="bold" />
-                  <span className="ml-2">{t("dashboard.today")}</span>
-                </Button>
-                <CompanyDateDisplay
-                  day={formatLocalDay(draftDate)}
-                  centered
-                  className="gap-0.5"
-                  dateClassName="text-center text-xs font-medium leading-5 text-muted-foreground"
-                  weekdayClassName="text-center text-[11px] leading-4 text-muted-foreground/80"
-                />
-              </div>
+            secondary={(
+              <DockActionButton
+                variant={isNowContext ? "secondary" : "default"}
+                type="button"
+                onClick={() => goToToday({ closePicker: true })}
+                aria-label={t("dashboard.today")}
+              >
+                <ClockCounterClockwise size={14} weight="bold" />
+                <span className="ml-2">{t("dashboard.today")}</span>
+              </DockActionButton>
+            )}
+            message={(
+              <CompanyDateDisplay
+                day={formatLocalDay(draftDate)}
+                centered
+                className="gap-0.5"
+                dateClassName="text-center text-xs font-medium leading-5 text-muted-foreground"
+                weekdayClassName="text-center text-[11px] leading-4 text-muted-foreground/80"
+              />
             )}
           />
         </PageDock>

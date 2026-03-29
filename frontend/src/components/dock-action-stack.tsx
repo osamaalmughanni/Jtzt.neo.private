@@ -10,7 +10,7 @@ export function DockActionStack({
   secondaryClassName,
   messageClassName,
 }: {
-  primary: ReactNode;
+  primary?: ReactNode;
   secondary?: ReactNode;
   message?: ReactNode;
   className?: string;
@@ -18,16 +18,22 @@ export function DockActionStack({
   messageClassName?: string;
 }) {
   return (
-    <div className={cn("grid w-full min-h-[8.5rem] grid-rows-[4rem_2rem_2.5rem] justify-items-center gap-2", className)}>
-      <div className="flex w-full items-center justify-center">
-        {primary}
-      </div>
-      <div className={cn("flex w-full items-center justify-center", secondaryClassName)}>
-        {secondary}
-      </div>
-      <div className={cn("flex w-full items-center justify-center text-center break-words", messageClassName)}>
-        {message}
-      </div>
+    <div className={cn("flex w-full flex-col items-center gap-3", className)}>
+      {primary ? (
+        <div className="flex w-full items-center justify-center">
+          {primary}
+        </div>
+      ) : null}
+      {secondary ? (
+        <div className={cn("flex w-full items-center justify-center", secondaryClassName)}>
+          {secondary}
+        </div>
+      ) : null}
+      {message ? (
+        <div className={cn("flex w-full items-center justify-center text-center break-words", messageClassName)}>
+          {message}
+        </div>
+      ) : null}
     </div>
   );
 }
