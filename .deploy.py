@@ -28,6 +28,9 @@ Commands this script runs (remote):
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
+import json
 import os
 import select
 import secrets
@@ -68,6 +71,9 @@ DEPLOY_DEFAULTS = {
     "DEPLOY_HEALTH_URL": "http://127.0.0.1:3000/api/health",
     "DEPLOY_ACCESS_URL": "http://91.99.214.245:3000",
 }
+
+REMOTE_DEPLOY_STATE_PATH = "/etc/jtzt/deploy-state.json"
+REMOTE_NPM_CACHE_DIR = "/var/lib/jtzt/npm-cache"
 
 RUNTIME_DEFAULTS = {
     "APP_ENV": "production",
@@ -110,6 +116,22 @@ def yellow(text: str) -> str:
     return color(text, "33")
 
 
+def magenta(text: str) -> str:
+    return color(text, "35")
+
+
+def blue(text: str) -> str:
+    return color(text, "34")
+
+
+def white(text: str) -> str:
+    return color(text, "97")
+
+
+def dim(text: str) -> str:
+    return color(text, "90")
+
+
 def red(text: str) -> str:
     return color(text, "31")
 
@@ -117,6 +139,37 @@ def red(text: str) -> str:
 def fail(message: str, code: int = 1) -> None:
     print(f"[deploy:error] {message}", file=sys.stderr)
     raise SystemExit(code)
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def hash_release_inputs() -> str:
+    digest = hashlib.sha256()
+    for root in release_paths():
+        if not root.exists():
+            fail(f"missing release artifact: {root}")
+        if root.is_file():
+            digest.update(f"F\0{root.relative_to(ROOT).as_posix()}\0".encode("utf-8"))
+            digest.update(root.read_bytes())
+            continue
+
+        for path in sorted((item for item in root.rglob("*") if item.is_file()), key=lambda item: item.relative_to(ROOT).as_posix()):
+            digest.update(f"F\0{path.relative_to(ROOT).as_posix()}\0".encode("utf-8"))
+            digest.update(path.read_bytes())
+
+    return digest.hexdigest()
+
+
+def hash_dependency_inputs() -> str:
+    digest = hashlib.sha256()
+    for path in (ROOT / "package.json", ROOT / "package-lock.json"):
+        if not path.exists():
+            fail(f"missing dependency artifact: {path}")
+        digest.update(f"{path.relative_to(ROOT).as_posix()}\0".encode("utf-8"))
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
 def pause_on_success(timeout_seconds: int = 10) -> None:
@@ -286,20 +339,109 @@ def remote_run(env: dict[str, str], command: str, *, capture_output: bool = Fals
     return run(ssh_base_args(env) + [remote_target(env), f"bash -lc {shlex.quote(command)}"], capture_output=capture_output)
 
 
+def remote_write_text_if_changed(env: dict[str, str], path: str, contents: str) -> bool:
+    encoded_contents = base64.b64encode(contents.encode("utf-8")).decode("ascii")
+    result = remote_run(
+        env,
+        f"""
+python3 - <<'PY'
+from __future__ import annotations
+
+import base64
+import hashlib
+from pathlib import Path
+
+path = Path({path!r})
+desired = base64.b64decode({encoded_contents!r}).decode("utf-8")
+desired_hash = hashlib.sha256(desired.encode("utf-8")).hexdigest()
+current = path.read_text(encoding="utf-8") if path.exists() else ""
+current_hash = hashlib.sha256(current.encode("utf-8")).hexdigest() if path.exists() else ""
+
+if current_hash == desired_hash:
+    print("unchanged")
+    raise SystemExit(0)
+
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(desired, encoding="utf-8")
+print("updated")
+PY
+""".strip(),
+        capture_output=True,
+    )
+    return (result.stdout or "").strip() == "updated"
+
+
+def read_remote_deploy_state(env: dict[str, str]) -> dict[str, str]:
+    result = remote_run(
+        env,
+        f"""
+python3 - <<'PY'
+from pathlib import Path
+
+path = Path({REMOTE_DEPLOY_STATE_PATH!r})
+if path.exists():
+    print(path.read_text(encoding="utf-8"), end="")
+PY
+""".strip(),
+        capture_output=True,
+    )
+    raw_state = (result.stdout or "").strip()
+    if not raw_state:
+        return {}
+    try:
+        data = json.loads(raw_state)
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def write_remote_deploy_state(env: dict[str, str], state: dict[str, str]) -> bool:
+    encoded_state = base64.b64encode(json.dumps(state, indent=2, sort_keys=True).encode("utf-8")).decode("ascii")
+    result = remote_run(
+        env,
+        f"""
+python3 - <<'PY'
+from __future__ import annotations
+
+import base64
+import hashlib
+from pathlib import Path
+
+path = Path({REMOTE_DEPLOY_STATE_PATH!r})
+desired = base64.b64decode({encoded_state!r}).decode("utf-8")
+desired_hash = hashlib.sha256(desired.encode("utf-8")).hexdigest()
+current = path.read_text(encoding="utf-8") if path.exists() else ""
+current_hash = hashlib.sha256(current.encode("utf-8")).hexdigest() if path.exists() else ""
+
+if current_hash == desired_hash:
+    print("unchanged")
+    raise SystemExit(0)
+
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(desired, encoding="utf-8")
+print("updated")
+PY
+""".strip(),
+        capture_output=True,
+    )
+    return (result.stdout or "").strip() == "updated"
+
+
 def build_assets() -> None:
     run(["npm", "run", "typecheck"])
     run(["npm", "run", "build:frontend"])
     run(["npm", "run", "build:backend"])
 
 
-def release_id() -> str:
+def release_id(fingerprint: str | None = None) -> str:
     try:
         result = run(["git", "rev-parse", "--short", "HEAD"], capture_output=True)
         sha = (result.stdout or "").strip()
     except Exception:
         sha = "nogit"
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    return f"{stamp}-{sha}"
+    suffix = fingerprint[:12] if fingerprint else sha
+    return f"{stamp}-{suffix}"
 
 
 def render_runtime_env(env: dict[str, str]) -> str:
@@ -317,6 +459,74 @@ def render_runtime_env(env: dict[str, str]) -> str:
             continue
         lines.append(f"{key}={value}")
     return "\n".join(lines) + "\n"
+
+
+def render_systemd_unit(env: dict[str, str]) -> str:
+    return f"""[Unit]
+Description=Jtzt API
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile={env['DEPLOY_ENV_PATH']}
+WorkingDirectory={env['DEPLOY_BASE_DIR']}/current
+ExecStart=/usr/bin/env node {env['DEPLOY_BASE_DIR']}/current/dist/backend/server.js
+Restart=always
+RestartSec=2
+TimeoutStartSec=120
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+def build_deploy_state(env: dict[str, str], *, release_fingerprint: str, release_id: str) -> dict[str, str]:
+    caddyfile = render_caddyfile(env)
+    systemd_unit = render_systemd_unit(env)
+    runtime_env = render_runtime_env(env)
+    state: dict[str, str] = {
+        "schema": "1",
+        "release_fingerprint": release_fingerprint,
+        "release_id": release_id,
+        "dependencies_hash": hash_dependency_inputs(),
+        "systemd_unit_hash": sha256_text(systemd_unit),
+        "runtime_env_hash": sha256_text(runtime_env),
+        "firewall_hash": sha256_text(json.dumps({
+            "ports": [22, 80, 443, 3000],
+            "enabled": True,
+        }, sort_keys=True, separators=(",", ":"))),
+        "prereqs_hash": sha256_text("\n".join([
+            "nodejs",
+            "npm",
+            "tar",
+            "curl",
+            "ca-certificates",
+            "build-essential",
+            "python3",
+            "make",
+            "g++",
+        ])),
+    }
+    if caddyfile:
+        state["caddyfile_hash"] = sha256_text(caddyfile)
+    return state
+
+
+def build_bootstrap_state(env: dict[str, str]) -> dict[str, str]:
+    state = build_deploy_state(env, release_fingerprint="bootstrap", release_id="bootstrap")
+    return state
+
+
+def bootstrap_inputs_match_state(env: dict[str, str], state: dict[str, str]) -> bool:
+    desired = build_bootstrap_state(env)
+    for key in ("systemd_unit_hash", "runtime_env_hash", "caddyfile_hash"):
+        desired_value = desired.get(key)
+        current_value = state.get(key)
+        if desired_value != current_value:
+            return False
+    return True
 
 
 def access_url(env: dict[str, str]) -> str:
@@ -401,6 +611,398 @@ def print_report(
         print(size_text.rstrip())
     print(cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
     print("")
+
+
+def collect_deploy_report(
+    env: dict[str, str],
+    *,
+    release: str,
+    release_fingerprint: str,
+    dependency_fingerprint: str,
+    deployment_mode: str,
+    migration_status: str,
+    remote_state: dict[str, str],
+) -> str:
+    domain = deploy_domain(env)
+    sections: list[str] = [
+        green(bold("╔" + "═" * 54 + "╗")),
+        green(bold("║")) + f" {white(bold('JTZT DEPLOY REPORT')).ljust(52)} " + green(bold("║")),
+        green(bold("╚" + "═" * 54 + "╝")),
+        "",
+    ]
+
+    def add_section(title: str, body: str) -> None:
+        sections.append(cyan(bold(f"▶ {title.upper()}")))
+        sections.append(body.rstrip())
+        sections.append("")
+
+    def yes_no(value: str) -> str:
+        return green("yes") if value.lower() in {"active", "enabled", "listening", "healthy"} else yellow(value)
+
+    add_section(
+        "summary",
+        "\n".join(
+            [
+                f"{dim('deployment mode:')} {yellow(deployment_mode)}",
+                f"{dim('migration status:')} {yellow(migration_status)}",
+                f"{dim('release:')} {green(release)}",
+                f"{dim('release fingerprint:')} {blue(release_fingerprint)}",
+                f"{dim('dependency fingerprint:')} {blue(dependency_fingerprint)}",
+                f"{dim('website:')} {yellow(website_url(env))}",
+                f"{dim('backend:')} {yellow(backend_url(env))}",
+                f"{dim('health:')} {yellow(env['DEPLOY_HEALTH_URL'])}",
+            ]
+        ),
+    )
+
+    remote_state_summary = "\n".join(
+        [
+            f"{dim('release id:')} {green(str(remote_state.get('release_id', '(none)')))}",
+            f"{dim('release fingerprint:')} {blue(str(remote_state.get('release_fingerprint', '(missing)')))}",
+            f"{dim('bootstrap hash:')} {blue(str(remote_state.get('bootstrap_hash', '(missing)')))}",
+            f"{dim('firewall hash:')} {blue(str(remote_state.get('firewall_hash', '(missing)')))}",
+            f"{dim('proxy hash:')} {blue(str(remote_state.get('proxy_hash', '(missing)')))}",
+        ]
+    )
+    add_section("remote state", remote_state_summary)
+    add_section(
+        "system",
+        remote_run(
+            env,
+            "echo \"$(uname -srm)\" && (command -v node >/dev/null 2>&1 && echo \"node $(node -v)\" || echo \"node missing\") && (command -v npm >/dev/null 2>&1 && echo \"npm $(npm -v)\" || echo \"npm missing\")",
+            capture_output=True,
+        ).stdout
+        or dim("(empty)"),
+    )
+    add_section(
+        "service status",
+        remote_run(
+            env,
+            f"""
+set -euo pipefail
+active_state="$(systemctl show {env['DEPLOY_SERVICE']} -p ActiveState --value)"
+sub_state="$(systemctl show {env['DEPLOY_SERVICE']} -p SubState --value)"
+enabled_state="$(systemctl is-enabled {env['DEPLOY_SERVICE']} 2>/dev/null || true)"
+main_pid="$(systemctl show {env['DEPLOY_SERVICE']} -p MainPID --value)"
+printf 'service: %s (%s)\\n' "$active_state" "$sub_state"
+printf 'enabled: %s\\n' "${{enabled_state:-unknown}}"
+printf 'main pid: %s\\n' "${{main_pid:-0}}"
+if [ -n "{domain}" ]; then
+  caddy_state="$(systemctl show caddy -p ActiveState --value)"
+  caddy_sub="$(systemctl show caddy -p SubState --value)"
+  printf 'proxy: %s (%s)\\n' "${{caddy_state:-unknown}}" "${{caddy_sub:-unknown}}"
+fi
+""".strip(),
+            capture_output=True,
+        ).stdout
+        or "",
+    )
+    health_parts = [remote_run(env, f"curl -fsS {env['DEPLOY_HEALTH_URL']} || true", capture_output=True).stdout or ""]
+    if domain:
+        health_parts.append(remote_run(env, f"curl -fsS --resolve {domain}:443:127.0.0.1 https://{domain}/ || true", capture_output=True).stdout or "")
+    add_section("health", "\n".join(part.rstrip() for part in health_parts if part.strip()) or dim("(unavailable)"))
+    add_section(
+        "listeners",
+        remote_run(
+            env,
+            f"""
+set -euo pipefail
+ss -lntp | awk '$4 ~ /:3000$/ || $4 ~ /:80$/ || $4 ~ /:443$/' || true
+""".strip(),
+            capture_output=True,
+        ).stdout
+        or dim("(no matching listeners)"),
+    )
+    add_section(
+        "firewall",
+        remote_run(
+            env,
+            """
+set -euo pipefail
+if command -v ufw >/dev/null 2>&1; then
+  ufw status verbose || true
+else
+  echo "ufw not installed"
+fi
+""".strip(),
+            capture_output=True,
+        ).stdout
+        or dim("(empty)"),
+    )
+    add_section(
+        "paths",
+        remote_run(
+            env,
+            f"""
+set -euo pipefail
+printf 'base: %s\\n' "{env['DEPLOY_BASE_DIR']}"
+printf 'current: %s\\n' "$(readlink -f {env['DEPLOY_BASE_DIR']}/current 2>/dev/null || echo missing)"
+printf 'previous: %s\\n' "$(readlink -f {env['DEPLOY_BASE_DIR']}/previous 2>/dev/null || echo missing)"
+""".strip(),
+            capture_output=True,
+        ).stdout
+        or dim("(empty)"),
+    )
+    add_section(
+        "storage",
+        remote_run(
+            env,
+            f"""
+set -euo pipefail
+for path in {env['DEPLOY_BASE_DIR']} {env['DEPLOY_SHARED_DIR']} {env['DEPLOY_BACKUP_DIR']} {env['DEPLOY_PUBLIC_DIR']}; do
+  if [ -e "$path" ]; then
+    size="$(du -sh "$path" 2>/dev/null | awk '{{print $1}}')"
+    printf '%s: %s\\n' "$path" "${{size:-unknown}}"
+  fi
+done
+""".strip(),
+            capture_output=True,
+        ).stdout
+        or dim("(empty)"),
+    )
+    add_section(
+        "releases",
+        remote_run(
+            env,
+            f"""
+set -euo pipefail
+if [ -d {env['DEPLOY_BASE_DIR']}/releases ]; then
+  for path in {env['DEPLOY_BASE_DIR']}/releases/*; do
+    [ -e "$path" ] || continue
+    size="$(du -sh "$path" 2>/dev/null | awk '{{print $1}}')"
+    name="$(basename "$path")"
+    printf '%s: %s\\n' "$name" "${{size:-unknown}}"
+  done | sort
+fi
+""".strip(),
+            capture_output=True,
+        ).stdout
+        or dim("(empty)"),
+    )
+    add_section(
+        "backups",
+        remote_run(
+            env,
+            f"""
+set -euo pipefail
+if [ -d {env['DEPLOY_BACKUP_DIR']} ]; then
+  for path in {env['DEPLOY_BACKUP_DIR']}/*; do
+    [ -e "$path" ] || continue
+    size="$(du -sh "$path" 2>/dev/null | awk '{{print $1}}')"
+    name="$(basename "$path")"
+    printf '%s: %s\\n' "$name" "${{size:-unknown}}"
+  done | sort
+fi
+""".strip(),
+            capture_output=True,
+        ).stdout
+        or "",
+    )
+    add_section(
+        "databases",
+        remote_run(
+            env,
+            f"""
+set -euo pipefail
+if [ -f {env['NODE_SYSTEM_SQLITE_PATH']} ]; then
+  size="$(du -h {env['NODE_SYSTEM_SQLITE_PATH']} 2>/dev/null | awk '{{print $1}}')"
+  printf 'system db: %s (%s)\\n' "{env['NODE_SYSTEM_SQLITE_PATH']}" "${{size:-unknown}}"
+fi
+if [ -d {env['NODE_COMPANY_SQLITE_DIR']} ]; then
+  for path in {env['NODE_COMPANY_SQLITE_DIR']}/*.sqlite; do
+    [ -e "$path" ] || continue
+    size="$(du -h "$path" 2>/dev/null | awk '{{print $1}}')"
+    printf '%s: %s\\n' "$path" "${{size:-unknown}}"
+  done
+fi
+""".strip(),
+            capture_output=True,
+        ).stdout
+        or dim("(empty)"),
+    )
+    add_section(
+        "public root",
+        remote_run(
+            env,
+            f"""
+set -euo pipefail
+if [ -d {env['DEPLOY_PUBLIC_DIR']} ]; then
+  for path in {env['DEPLOY_PUBLIC_DIR']}/*; do
+    [ -e "$path" ] || continue
+    name="$(basename "$path")"
+    if [ -d "$path" ]; then
+      printf '%s/\\n' "$name"
+    else
+      size="$(du -h "$path" 2>/dev/null | awk '{{print $1}}')"
+      printf '%s (%s)\\n' "$name" "${{size:-unknown}}"
+    fi
+  done | sort
+fi
+""".strip(),
+            capture_output=True,
+        ).stdout
+        or dim("(empty)"),
+    )
+    sections.append(render_disk_health_section(env).rstrip())
+    sections.append(render_ram_health_section(env).rstrip())
+    sections.append(green(bold("╔" + "═" * 54 + "╗")))
+    sections.append(green(bold("║")) + f" {white(bold('END OF REPORT')).ljust(52)} " + green(bold("║")))
+    sections.append(green(bold("╚" + "═" * 54 + "╝")))
+
+    return "\n".join(sections).rstrip() + "\n"
+
+
+def format_bytes(value: int) -> str:
+    units = ["B", "KB", "MB", "GB", "TB", "PB"]
+    size = float(max(value, 0))
+    unit = 0
+    while size >= 1024 and unit < len(units) - 1:
+        size /= 1024
+        unit += 1
+    if unit == 0:
+        return f"{int(size)} {units[unit]}"
+    return f"{size:.1f} {units[unit]}"
+
+
+def render_usage_bar(percent: int, width: int = 24) -> str:
+    bounded = max(0, min(percent, 100))
+    filled = round(width * bounded / 100)
+    bar = f"[{'#' * filled}{'-' * (width - filled)}] {bounded:3d}%"
+    if bounded >= 90:
+        return red(bar)
+    if bounded >= 70:
+        return yellow(bar)
+    return green(bar)
+
+
+def collect_disk_health(env: dict[str, str]) -> list[dict[str, str | int]]:
+    paths = [
+        "/",
+        env["DEPLOY_BASE_DIR"],
+        env["DEPLOY_SHARED_DIR"],
+        env["DEPLOY_BACKUP_DIR"],
+        env["DEPLOY_PUBLIC_DIR"],
+        env["NODE_SYSTEM_SQLITE_PATH"],
+    ]
+    result = remote_run(
+        env,
+        "df -P -B1 " + " ".join(shlex.quote(path) for path in paths),
+        capture_output=True,
+    )
+    rows: list[dict[str, str | int]] = []
+    lines = [line.strip() for line in (result.stdout or "").splitlines() if line.strip()]
+    for line in lines[1:]:
+        parts = line.split()
+        if len(parts) < 6:
+            continue
+        filesystem = parts[0]
+        total = int(parts[1])
+        used = int(parts[2])
+        available = int(parts[3])
+        used_percent = int(parts[4].rstrip("%"))
+        mounted_on = " ".join(parts[5:])
+        rows.append({
+            "filesystem": filesystem,
+            "total": total,
+            "used": used,
+            "available": available,
+            "used_percent": used_percent,
+            "mounted_on": mounted_on,
+        })
+    return rows
+
+
+def render_disk_health_section(env: dict[str, str]) -> str:
+    rows = collect_disk_health(env)
+    if not rows:
+        return f"{cyan(bold('▶ DISK'))}\n{dim('(missing)')}\n"
+
+    lines = [cyan(bold("▶ DISK")), ""]
+    seen_mounts: set[str] = set()
+    for row in rows:
+        percent = int(row["used_percent"])
+        mount = str(row["mounted_on"])
+        if mount in seen_mounts:
+            continue
+        seen_mounts.add(mount)
+        lines.append(cyan(bold(mount)))
+        lines.append(f"  {render_usage_bar(percent)}")
+        lines.append(
+            f"  {dim('used')} {white(format_bytes(int(row['used'])))} / {white(format_bytes(int(row['total'])))}"
+            f", {dim('free')} {white(format_bytes(int(row['available'])))}"
+            f", {dim('filesystem')} {magenta(str(row['filesystem']))}"
+        )
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def collect_ram_health(env: dict[str, str]) -> dict[str, int]:
+    result = remote_run(
+        env,
+        r"""
+set -euo pipefail
+free -b
+""".strip(),
+        capture_output=True,
+    )
+    lines = [line.strip() for line in (result.stdout or "").splitlines() if line.strip()]
+    mem: dict[str, int] = {}
+    swap: dict[str, int] = {}
+    for line in lines:
+        parts = line.split()
+        if len(parts) < 7:
+            continue
+        label = parts[0].rstrip(":").lower()
+        values = {
+            "total": int(parts[1]),
+            "used": int(parts[2]),
+            "free": int(parts[3]),
+            "shared": int(parts[4]),
+            "buff_cache": int(parts[5]),
+            "available": int(parts[6]),
+        }
+        if label == "mem":
+            mem = values
+        elif label == "swap":
+            swap = values
+    return {
+        "mem_total": mem.get("total", 0),
+        "mem_used": mem.get("used", 0),
+        "mem_free": mem.get("free", 0),
+        "mem_shared": mem.get("shared", 0),
+        "mem_buff_cache": mem.get("buff_cache", 0),
+        "mem_available": mem.get("available", 0),
+        "swap_total": swap.get("total", 0),
+        "swap_used": swap.get("used", 0),
+        "swap_free": swap.get("free", 0),
+    }
+
+
+def render_ram_health_section(env: dict[str, str]) -> str:
+    stats = collect_ram_health(env)
+    if not stats["mem_total"]:
+        return f"{cyan(bold('▶ RAM'))}\n{dim('(missing)')}\n"
+
+    mem_percent = round(100 * stats["mem_used"] / stats["mem_total"]) if stats["mem_total"] else 0
+    swap_percent = round(100 * stats["swap_used"] / stats["swap_total"]) if stats["swap_total"] else 0
+    lines = [cyan(bold("▶ RAM")), ""]
+    lines.append(cyan(bold("memory")))
+    lines.append(f"  {render_usage_bar(mem_percent)}")
+    lines.append(
+        f"  {dim('used')} {white(format_bytes(stats['mem_used']))} / {white(format_bytes(stats['mem_total']))}"
+        f", {dim('free')} {white(format_bytes(stats['mem_free']))}"
+        f", {dim('available')} {white(format_bytes(stats['mem_available']))}"
+        f", {dim('cached')} {white(format_bytes(stats['mem_buff_cache']))}"
+    )
+    lines.append("")
+    lines.append(cyan(bold("swap")))
+    lines.append(f"  {render_usage_bar(swap_percent)}")
+    lines.append(
+        f"  {dim('used')} {white(format_bytes(stats['swap_used']))} / {white(format_bytes(stats['swap_total']))}"
+        f", {dim('free')} {white(format_bytes(stats['swap_free']))}"
+    )
+    lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def print_size_report(env: dict[str, str], release: str | None = None, *, remote_text: str | None = None) -> None:
@@ -568,40 +1170,19 @@ def bootstrap(env: dict[str, str]) -> None:
     )
     remote_run(env, "mkdir -p {public}".format(public=env["DEPLOY_PUBLIC_DIR"]))
 
-    service_unit = f"""[Unit]
-Description=Jtzt API
-After=network.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-EnvironmentFile={env['DEPLOY_ENV_PATH']}
-WorkingDirectory={env['DEPLOY_BASE_DIR']}/current
-ExecStart=/usr/bin/env node {env['DEPLOY_BASE_DIR']}/current/dist/backend/server.js
-Restart=always
-RestartSec=2
-TimeoutStartSec=120
-LimitNOFILE=1048576
-
-[Install]
-WantedBy=multi-user.target
-"""
-
-    remote_run(
+    service_unit = render_systemd_unit(env)
+    service_changed = remote_write_text_if_changed(
         env,
-        "cat > /etc/systemd/system/{service}.service <<'EOF'\n{unit}\nEOF".format(
-            service=env["DEPLOY_SERVICE"],
-            unit=service_unit.rstrip(),
-        ),
+        f"/etc/systemd/system/{env['DEPLOY_SERVICE']}.service",
+        service_unit,
     )
-    remote_run(env, "cat > {env_path} <<'EOF'\n{contents}EOF".format(
-        env_path=env["DEPLOY_ENV_PATH"],
-        contents=render_runtime_env(env),
-    ))
-    remote_run(env, "systemctl daemon-reload")
+    env_changed = remote_write_text_if_changed(env, env["DEPLOY_ENV_PATH"], render_runtime_env(env))
+    if service_changed or env_changed:
+        remote_run(env, "systemctl daemon-reload")
     remote_run(env, f"systemctl enable {env['DEPLOY_SERVICE']}")
     if deploy_domain(env):
         remote_run(env, "systemctl enable caddy")
+    write_remote_deploy_state(env, build_bootstrap_state(env))
     info("bootstrap complete")
 
 
@@ -665,8 +1246,30 @@ node dist/backend/server.js migrate
     return result.stdout or ""
 
 
-def install_remote_deps(env: dict[str, str], release_dir: str) -> None:
-    remote_run(env, f"cd {release_dir} && npm ci --omit=dev --no-audit --no-fund")
+def install_remote_deps(env: dict[str, str], release_dir: str, dependency_fingerprint: str) -> None:
+    remote_run(
+        env,
+        f"""
+set -euo pipefail
+cache_root={REMOTE_NPM_CACHE_DIR}
+release_dir={release_dir}
+node_identity="$(node -p 'process.platform + "-" + process.arch + "-" + process.versions.node')"
+cache_dir="$cache_root/{dependency_fingerprint}/$node_identity"
+if [ -d "$cache_dir/node_modules" ]; then
+  rm -rf "$release_dir/node_modules"
+  ln -sfn "$cache_dir/node_modules" "$release_dir/node_modules"
+  exit 0
+fi
+
+mkdir -p "$cache_dir"
+cp "$release_dir/package.json" "$cache_dir/package.json"
+cp "$release_dir/package-lock.json" "$cache_dir/package-lock.json"
+cd "$cache_dir"
+npm ci --omit=dev --no-audit --no-fund
+rm -rf "$release_dir/node_modules"
+ln -sfn "$cache_dir/node_modules" "$release_dir/node_modules"
+""".strip(),
+    )
 
 
 def wait_for_remote_health(env: dict[str, str], *, extra_context: str = "") -> None:
@@ -750,6 +1353,14 @@ fi
 
 
 def ensure_remote_firewall(env: dict[str, str]) -> None:
+    desired_hash = sha256_text(json.dumps({
+        "ports": [22, 80, 443, 3000],
+        "enabled": True,
+    }, sort_keys=True, separators=(",", ":")))
+    state = read_remote_deploy_state(env)
+    if state.get("firewall_hash") == desired_hash:
+        return
+
     remote_run(
         env,
         """
@@ -767,6 +1378,8 @@ ufw --force enable >/dev/null || true
 ufw status verbose || true
 """.strip(),
     )
+    state["firewall_hash"] = desired_hash
+    write_remote_deploy_state(env, state)
 
 
 def ensure_remote_web_proxy(env: dict[str, str]) -> None:
@@ -783,9 +1396,16 @@ if ! command -v caddy >/dev/null 2>&1; then
   apt-get install -y caddy
 fi
 install -d -m 755 /etc/caddy
-cat > /etc/caddy/Caddyfile <<'EOF'
-{render_caddyfile(env).rstrip()}
-EOF
+systemctl enable caddy
+""".strip(),
+    )
+    changed = remote_write_text_if_changed(env, "/etc/caddy/Caddyfile", render_caddyfile(env))
+    if not changed:
+        return
+    remote_run(
+        env,
+        f"""
+set -euo pipefail
 if command -v getent >/dev/null 2>&1; then
   resolved="$(getent ahostsv4 {shlex.quote(domain)} | awk 'NR==1 {{print $1}}')"
   if [ -n "$resolved" ] && [ "$resolved" != "{env['DEPLOY_HOST']}" ]; then
@@ -794,7 +1414,6 @@ if command -v getent >/dev/null 2>&1; then
 fi
 caddy fmt --overwrite /etc/caddy/Caddyfile >/dev/null
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
-systemctl enable caddy
 systemctl restart caddy
 """.strip(),
     )
@@ -861,15 +1480,77 @@ curl -fsS {env['DEPLOY_HEALTH_URL']} || true
 def deploy(env: dict[str, str]) -> None:
     ensure_local_tools()
     validate_env(env)
+    current_state = read_remote_deploy_state(env)
+    if not bootstrap_inputs_match_state(env, current_state):
+        info("bootstrap state changed or missing; refreshing server setup")
+        bootstrap(env)
+        current_state = read_remote_deploy_state(env)
     ensure_remote_prereqs(env)
     ensure_remote_firewall(env)
     ensure_remote_web_proxy(env)
-    release = release_id()
+    dependency_fingerprint = hash_dependency_inputs()
+    release_fingerprint = hash_release_inputs()
+    if current_state.get("release_fingerprint") == release_fingerprint:
+        release_label = current_state.get("release_id") or release_fingerprint[:12]
+        domain = deploy_domain(env)
+        website_probe = "true"
+        if domain:
+            website_probe = f"curl -fsS --resolve {domain}:443:127.0.0.1 https://{domain}/ >/dev/null"
+        health_result = remote_run(
+            env,
+            f"""
+set -euo pipefail
+if systemctl is-active --quiet {env['DEPLOY_SERVICE']} && curl -fsS {env['DEPLOY_HEALTH_URL']} >/dev/null && {website_probe}; then
+  echo "healthy"
+else
+  echo "restart-needed"
+fi
+""".strip(),
+            capture_output=True,
+        )
+        if (health_result.stdout or "").strip() == "healthy":
+            info("remote release fingerprint already matches the current build and the service is healthy; skipping deploy")
+            final_report = collect_deploy_report(
+                env,
+                release=release_label,
+                release_fingerprint=release_fingerprint,
+                dependency_fingerprint=dependency_fingerprint,
+                deployment_mode="no-op",
+                migration_status="not run",
+                remote_state=current_state,
+            )
+            print(final_report.rstrip())
+            return
+
+        info("remote release fingerprint already matches the current build, but the service needs a restart")
+        remote_run(
+            env,
+            f"""
+set -euo pipefail
+systemctl start {env['DEPLOY_SERVICE']}
+""".strip(),
+        )
+        wait_for_remote_health(env)
+        wait_for_public_website(env)
+        updated_state = read_remote_deploy_state(env)
+        final_report = collect_deploy_report(
+            env,
+            release=release_label,
+            release_fingerprint=release_fingerprint,
+            dependency_fingerprint=dependency_fingerprint,
+            deployment_mode="restart-only",
+            migration_status="not run",
+            remote_state=updated_state or current_state,
+        )
+        print(final_report.rstrip())
+        return
+
+    release = release_id(release_fingerprint)
     release_dir = upload_release(env, release)
-    install_remote_deps(env, release_dir)
+    install_remote_deps(env, release_dir, dependency_fingerprint)
     sync_public_assets(env, release_dir)
     try:
-        run_release_migrations(env, release, release_dir)
+        run_release_migrations(env, release, release_dir, emit=False)
         remote_run(
             env,
             f"""
@@ -884,10 +1565,24 @@ systemctl start {env['DEPLOY_SERVICE']}
         )
         wait_for_remote_health(env)
         wait_for_public_website(env)
+        remote_state = build_deploy_state(
+            env,
+            release_fingerprint=release_fingerprint,
+            release_id=release,
+        )
+        write_remote_deploy_state(env, remote_state)
         cleanup_text = prune_releases(env, keep=3, emit=False)
-        info(f"deploy complete: {release}")
-        size_text = size_report(env, release=release, emit=False)
-        print_report(env, release, cleanup_text=cleanup_text, size_text=size_text)
+        remote_state["cleanup"] = cleanup_text or ""
+        final_report = collect_deploy_report(
+            env,
+            release=release,
+            release_fingerprint=release_fingerprint,
+            dependency_fingerprint=dependency_fingerprint,
+            deployment_mode="deployed",
+            migration_status="success",
+            remote_state=remote_state,
+        )
+        print(final_report.rstrip())
     except Exception:
         info("deploy failed, attempting rollback")
         try:
@@ -1148,8 +1843,7 @@ def main() -> None:
             return
         if args.command == "deploy":
             build_assets()
-            deploy(build_release_env(env, allow_generate=False))
-            pause_on_success()
+            deploy(build_release_env(env, allow_generate=True))
             return
         if args.command == "migrate":
             migrate(build_release_env(env, allow_generate=False))
@@ -1175,11 +1869,8 @@ def main() -> None:
             return
         if args.command == "full":
             prepared = build_release_env(env, allow_generate=True)
-            doctor(prepared)
-            bootstrap(prepared)
             build_assets()
             deploy(build_release_env(prepared, allow_generate=False))
-            pause_on_success()
             return
 
         fail(f"unsupported command: {args.command}")

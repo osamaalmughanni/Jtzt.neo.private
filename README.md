@@ -45,6 +45,7 @@ Deployment runs through `.deploy.py` and targets the Hetzner host and domain con
 Useful commands:
 
 ```bash
+python .deploy.py
 python .deploy.py doctor
 python .deploy.py bootstrap
 python .deploy.py typecheck
@@ -61,6 +62,8 @@ python .deploy.py full
 - The live app runs on a single Debian host.
 - SQLite files live outside the release directory, so deploys do not overwrite databases.
 - Releases are versioned and switched by symlink.
+- `.deploy.py` fingerprints the release payload, hashes managed setup files, and caches `node_modules` by lockfile hash so unchanged deploys skip reinstalling the same server setup and dependency tree.
+- Running `python .deploy.py` now does the full smart path and ends with one combined report.
 - A systemd unit keeps the backend running and restarting on failure.
 - Caddy terminates HTTPS on the public domain and renews Let's Encrypt certificates automatically.
 - Deploys take a backup of the SQLite data directory before the release switch.
