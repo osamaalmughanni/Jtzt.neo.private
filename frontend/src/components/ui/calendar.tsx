@@ -136,7 +136,7 @@ function CalendarBase({
   const dayGridClassName = "flex flex-col gap-1";
   const weekRowClassName = "grid grid-cols-7 gap-1";
   const cellClassName = compact ? "text-[11px]" : "text-sm";
-  const dayCellHeightClassName = compact ? "min-h-8" : "min-h-10 sm:min-h-11";
+  const dayCellSizeClassName = "aspect-square";
   const innerClassName = compact ? "h-5 w-5 text-[11px]" : "h-7 w-7 sm:h-8 sm:w-8";
   const selectionRingClassName =
     selectionTone === "destructive"
@@ -195,7 +195,7 @@ function CalendarBase({
               const slotKey = `slot-${weekIndex}-${dayIndex}`;
 
               if (!day) {
-                return <div key={slotKey} aria-hidden="true" className={cn("w-full", dayCellHeightClassName)} />;
+                return <div key={slotKey} aria-hidden="true" className={cn("w-full", dayCellSizeClassName)} />;
               }
 
               const isoDate = formatLocalDay(day);
@@ -207,7 +207,7 @@ function CalendarBase({
 
               const baseCellClassName = cn(
                 "relative flex w-full items-center justify-center overflow-hidden rounded-lg border tabular-nums transition-[background-color,border-color,color,opacity] duration-200 ease-out",
-                dayCellHeightClassName,
+                dayCellSizeClassName,
                 cellClassName,
                 isDisabled
                   ? "cursor-not-allowed border-transparent bg-background text-muted-foreground/40 opacity-50"
