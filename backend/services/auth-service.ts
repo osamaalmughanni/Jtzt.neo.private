@@ -69,7 +69,7 @@ async function createWorkspaceSession(
   config: RuntimeConfig,
   companyId: string,
 ) {
-  const company = await systemService.getCompanyAuthState(systemDb, companyId);
+  const company = await systemService.getCompanyById(systemDb, companyId);
   if (!company) {
     throw new HTTPException(401, { message: "Invalid or expired bearer token" });
   }
@@ -79,7 +79,6 @@ async function createWorkspaceSession(
     accessMode: "full",
     companyId: company.id,
     companyName: company.name,
-    workspaceAuthVersion: company.authVersion,
     userId: 0,
     role: "admin",
   });
@@ -183,9 +182,6 @@ export const authService = {
 
     const company = await systemService.getCompanyById(systemDb, payload.companyId);
     if (!company) {
-      throw new HTTPException(401, { message: "Invalid workspace key" });
-    }
-    if (company.name !== payload.companyName) {
       throw new HTTPException(401, { message: "Invalid workspace key" });
     }
 

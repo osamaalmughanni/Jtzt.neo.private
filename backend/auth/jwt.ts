@@ -22,7 +22,6 @@ export interface WorkspaceSessionPayload {
   accessMode: "full";
   companyId: string;
   companyName: string;
-  workspaceAuthVersion: number;
   userId: number;
   role: "admin";
 }

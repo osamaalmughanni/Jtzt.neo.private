@@ -1,18 +1,5 @@
-function hasColumn(rows, columnName) {
-  return rows.some((row) => row.name === columnName);
-}
-
 export async function up({ context: db }) {
-  const columns = db.prepare("PRAGMA table_info(companies)").all();
-  if (!Array.isArray(columns) || columns.length === 0) {
-    return;
-  }
-
-  if (hasColumn(columns, "auth_version")) {
-    return;
-  }
-
-  db.exec("ALTER TABLE companies ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0");
+  void db;
 }
 
 export async function down() {

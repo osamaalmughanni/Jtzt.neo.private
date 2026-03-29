@@ -42,14 +42,9 @@ export const authMiddleware = createMiddleware<{
     }
 
     if (session.actorType === "workspace") {
-      const workspaceCompany = await systemService.getCompanyAuthState(c.get("systemDb"), session.companyId);
-      if (!workspaceCompany || session.companyName !== workspaceCompany.name || session.workspaceAuthVersion !== workspaceCompany.authVersion) {
-        throw new Error("Stale workspace session");
-      }
-
       c.set("session", {
         ...session,
-        companyName: workspaceCompany.name,
+        companyName: company.name,
       });
       await next();
       return;

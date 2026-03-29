@@ -36,13 +36,16 @@ function createCaptchaChallenge(length = 6) {
 function getErrorMessage(error: unknown, t: (key: string) => string) {
   if (error instanceof ApiRequestError) {
     const serverMessage = describeApiErrorSummary(error, "");
+    const isInactiveUser = serverMessage === "User is inactive" || error.responseText.includes("User is inactive");
+    const isInvalidPin = serverMessage === "Invalid PIN code" || error.responseText.includes("Invalid PIN code");
 
-    if (error.status === 401) {
-      if (serverMessage === "Invalid PIN code" || error.responseText.includes("Invalid PIN code")) {
+    if (isInactiveUser) {
+      return t("tabletPin.inactivePin");
+    }
+
+    if (error.status === 401 || error.status === 403) {
+      if (isInvalidPin) {
         return t("tabletPin.invalidPin");
-      }
-      if (serverMessage === "User is inactive" || error.responseText.includes("User is inactive")) {
-        return t("tabletPin.inactivePin");
       }
       return t("tabletPin.accessFailed");
     }

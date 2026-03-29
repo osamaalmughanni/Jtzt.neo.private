@@ -1,11 +1,5 @@
 export async function up({ context: db }) {
-  const columns = db.prepare("PRAGMA table_info(companies)").all();
-  const hasAuthVersion = Array.isArray(columns) && columns.some((column) => column.name === "auth_version");
-  if (hasAuthVersion) {
-    return;
-  }
-
-  db.exec("ALTER TABLE companies ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0");
+  void db;
 }
 
 export async function down() {

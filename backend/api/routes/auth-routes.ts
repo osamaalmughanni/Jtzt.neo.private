@@ -3,7 +3,6 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { authMiddleware, companyDbMiddleware } from "../../auth/middleware";
 import { createCompanyDatabase } from "../../db/runtime-database";
-import { verifyWorkspaceKeyToken } from "../../auth/jwt";
 import { authService } from "../../services/auth-service";
 import { systemService } from "../../services/system-service";
 import type { AppRouteConfig } from "../context";
@@ -51,18 +50,7 @@ authRoutes.post("/login", async (c) => {
 
 authRoutes.post("/workspace-login", async (c) => {
   const body = developerLoginSchema.parse(await c.req.json());
-  const systemDb = c.get("systemDb");
-  const payload = await verifyWorkspaceKeyToken(c.get("config"), body.token.trim()).catch(() => null);
-  if (!payload) {
-    return c.json({ error: "Invalid workspace key" }, 401);
-  }
-
-  const company = await systemService.getCompanyById(systemDb, payload.companyId);
-  if (!company) {
-    return c.json({ error: "Invalid workspace key" }, 401);
-  }
-
-  return c.json({ session: await authService.loginWorkspaceKey(systemDb, c.get("config"), body) });
+  return c.json({ session: await authService.loginWorkspaceKey(c.get("systemDb"), c.get("config"), body) });
 });
 
 authRoutes.post("/register-company", async (c) => {

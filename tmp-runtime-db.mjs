@@ -10,7 +10,6 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS companies (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
-  auth_version INTEGER NOT NULL DEFAULT 0,
   api_key_hash TEXT,
   api_key_created_at TEXT,
   tablet_code_value TEXT,
