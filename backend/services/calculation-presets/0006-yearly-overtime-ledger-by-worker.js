@@ -214,14 +214,6 @@ FROM month_summary ms
 CROSS JOIN settings_ctx s
 ORDER BY ms.month_start DESC, ms.full_name ASC
 `.trim(),
-  outputMode: "table",
-  chartConfig: {
-    type: "bar",
-    categoryColumn: null,
-    valueColumn: null,
-    seriesColumn: null,
-    stacked: false,
-  },
 };
 
 export default preset;

@@ -171,14 +171,6 @@ export function mapCalculation(row: any): CalculationRecord {
     name: row.name,
     description: row.description ?? null,
     sqlText: row.sql_text,
-    outputMode: row.output_mode,
-    chartConfig: parseJsonValue(row.chart_config_json, {
-      type: row.chart_type ?? "bar",
-      categoryColumn: row.chart_category_column ?? null,
-      valueColumn: row.chart_value_column ?? null,
-      seriesColumn: row.chart_series_column ?? null,
-      stacked: Boolean(row.chart_stacked ?? 0)
-    }),
     isBuiltin: Boolean(row.is_builtin ?? 0),
     builtinKey: row.builtin_key ?? null,
     createdAt: row.created_at,

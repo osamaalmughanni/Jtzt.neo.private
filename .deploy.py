@@ -458,6 +458,8 @@ def release_paths() -> list[Path]:
     return [
         ROOT / "dist" / "backend",
         ROOT / "dist" / "frontend",
+        ROOT / "backend" / "db" / "migrations" / "system",
+        ROOT / "backend" / "db" / "migrations" / "company",
         ROOT / "package.json",
         ROOT / "package-lock.json",
     ]
@@ -827,28 +829,6 @@ cd {release_dir}
 set -a
 . {env['DEPLOY_ENV_PATH']}
 set +a
-cat > {release_dir}/schema-refresh.mjs <<'EOF'
-import path from 'node:path';
-import Database from 'better-sqlite3';
-import {{ systemSchema, companySchema }} from './dist/backend/db/schema.js';
-
-const systemPath = process.env.NODE_SYSTEM_SQLITE_PATH || '/var/lib/jtzt/system.db';
-const companyDir = process.env.NODE_COMPANY_SQLITE_DIR || '/var/lib/jtzt/companies';
-
-const systemDb = new Database(systemPath);
-systemDb.exec(systemSchema);
-const rows = systemDb.prepare('SELECT id FROM companies').all();
-systemDb.close();
-
-for (const row of rows) {{
-  const dbPath = path.join(companyDir, `${{row.id}}.sqlite`);
-  const db = new Database(dbPath);
-  db.exec(companySchema);
-  db.close();
-}}
-EOF
-node {release_dir}/schema-refresh.mjs
-rm -f {release_dir}/schema-refresh.mjs
 base={env['DEPLOY_BASE_DIR']}
 if [ -L "$base/current" ]; then
   ln -sfn "$(readlink "$base/current")" "$base/previous"

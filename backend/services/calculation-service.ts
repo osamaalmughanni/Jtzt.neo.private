@@ -3,8 +3,6 @@ import { desc, eq, sql } from "drizzle-orm";
 import type {
   CalculationPresetRecord,
   CalculationRecord,
-  CalculationOutputMode,
-  CalculationChartConfig,
 } from "../../shared/types/models";
 import type {
   CalculationValidationIssue,
@@ -57,16 +55,6 @@ function normalizeText(value: string | null | undefined) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function normalizeChartConfig(config: CalculationChartConfig): CalculationChartConfig {
-  return {
-    type: config.type,
-    categoryColumn: normalizeText(config.categoryColumn),
-    valueColumn: normalizeText(config.valueColumn),
-    seriesColumn: normalizeText(config.seriesColumn),
-    stacked: Boolean(config.stacked),
-  };
-}
-
 async function previewSql(db: NodeDatabase, sqlText: string, limit = 50) {
   const previewSqlText = `SELECT * FROM (${normalizeSql(sqlText)}) AS calculation_preview LIMIT ${limit}`;
   return db.sqlite.prepare(previewSqlText).all() as PreviewRow[];
@@ -95,8 +83,6 @@ function hydrateBuiltinCalculation(calculation: CalculationRecord, presetsByKey:
     sqlText: preset.sqlText,
     name: preset.name,
     description: preset.description,
-    outputMode: preset.outputMode,
-    chartConfig: preset.chartConfig,
   };
 }
 
@@ -115,13 +101,6 @@ export const calculationService = {
       name: calculations.name,
       description: calculations.description,
       sql_text: calculations.sqlText,
-      output_mode: calculations.outputMode,
-      chart_type: calculations.chartType,
-      chart_category_column: calculations.chartCategoryColumn,
-      chart_value_column: calculations.chartValueColumn,
-      chart_series_column: calculations.chartSeriesColumn,
-      chart_config_json: calculations.chartConfigJson,
-      chart_stacked: calculations.chartStacked,
       is_builtin: calculations.isBuiltin,
       builtin_key: calculations.builtinKey,
       created_at: calculations.createdAt,
@@ -144,13 +123,6 @@ export const calculationService = {
       name: calculations.name,
       description: calculations.description,
       sql_text: calculations.sqlText,
-      output_mode: calculations.outputMode,
-      chart_type: calculations.chartType,
-      chart_category_column: calculations.chartCategoryColumn,
-      chart_value_column: calculations.chartValueColumn,
-      chart_series_column: calculations.chartSeriesColumn,
-      chart_config_json: calculations.chartConfigJson,
-      chart_stacked: calculations.chartStacked,
       is_builtin: calculations.isBuiltin,
       builtin_key: calculations.builtinKey,
       created_at: calculations.createdAt,
@@ -199,7 +171,6 @@ export const calculationService = {
   },
 
   async createCalculation(db: NodeDatabase, companyId: string, input: CreateCalculationInput) {
-    const normalizedChartConfig = normalizeChartConfig(input.chartConfig);
     const validation = await this.validateSql(db, input.sqlText);
     if (!validation.valid) {
       throw new HTTPException(400, {
@@ -212,13 +183,7 @@ export const calculationService = {
       name: input.name.trim(),
       description: normalizeText(input.description),
       sqlText: normalizeSql(input.sqlText),
-      outputMode: input.outputMode,
-      chartType: normalizedChartConfig.type,
-      chartCategoryColumn: normalizedChartConfig.categoryColumn,
-      chartValueColumn: normalizedChartConfig.valueColumn,
-      chartSeriesColumn: normalizedChartConfig.seriesColumn,
-      chartConfigJson: JSON.stringify(normalizedChartConfig),
-      chartStacked: normalizedChartConfig.stacked ? 1 : 0,
+      outputMode: "table",
       isBuiltin: 0,
       createdAt,
       updatedAt: createdAt,
@@ -232,7 +197,6 @@ export const calculationService = {
       throw new HTTPException(400, { message: "Built-in calculations cannot be edited" });
     }
 
-    const normalizedChartConfig = normalizeChartConfig(input.chartConfig);
     const validation = await this.validateSql(db, input.sqlText);
     if (!validation.valid) {
       throw new HTTPException(400, {
@@ -245,13 +209,7 @@ export const calculationService = {
       name: input.name.trim(),
       description: normalizeText(input.description),
       sqlText: normalizeSql(input.sqlText),
-      outputMode: input.outputMode,
-      chartType: normalizedChartConfig.type,
-      chartCategoryColumn: normalizedChartConfig.categoryColumn,
-      chartValueColumn: normalizedChartConfig.valueColumn,
-      chartSeriesColumn: normalizedChartConfig.seriesColumn,
-      chartConfigJson: JSON.stringify(normalizedChartConfig),
-      chartStacked: normalizedChartConfig.stacked ? 1 : 0,
+      outputMode: "table",
       updatedAt,
     }).where(eq(calculations.id, input.calculationId)).run();
   },
@@ -276,8 +234,6 @@ export const calculationService = {
       name: preset.name,
       description: preset.description,
       sqlText: preset.sqlText,
-      outputMode: preset.outputMode,
-      chartConfig: preset.chartConfig,
     });
   },
 };

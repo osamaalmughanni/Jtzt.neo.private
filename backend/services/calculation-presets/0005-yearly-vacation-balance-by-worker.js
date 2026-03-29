@@ -128,14 +128,6 @@ LEFT JOIN yearly_entitlement ent ON ent.user_id = u.user_id
 LEFT JOIN yearly_used used ON used.user_id = u.user_id
 ORDER BY "Vacation available" DESC, u.full_name ASC
 `.trim(),
-  outputMode: "table",
-  chartConfig: {
-    type: "bar",
-    categoryColumn: null,
-    valueColumn: null,
-    seriesColumn: null,
-    stacked: false,
-  },
 };
 
 export default preset;

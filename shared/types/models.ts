@@ -21,8 +21,6 @@ export type OvertimePayoutDecisionMode = "company" | "employee" | "conditional";
 export type OvertimeConflictResolution = "stack" | "highest_only";
 export type OvertimeRuleTriggerKind = "daily_overtime" | "weekly_overtime" | "sunday_or_holiday" | "night_shift" | "daily_after_hours" | "weekly_after_hours";
 export type OvertimePresetId = "at_default" | "de_default" | "fr_35h" | "eu_custom";
-export type CalculationOutputMode = "table" | "chart" | "both";
-export type CalculationChartType = "bar" | "line" | "area" | "pie";
 
 export interface CompanyCustomFieldOption {
   id: string;
@@ -119,18 +117,8 @@ export interface ProjectRecord extends Omit<ProjectRow, "isActive" | "allowAllUs
   customFieldValues: Record<string, string | number | boolean>;
 }
 
-export interface CalculationChartConfig {
-  type: CalculationChartType;
-  categoryColumn: string | null;
-  valueColumn: string | null;
-  seriesColumn: string | null;
-  stacked: boolean;
-}
-
-export interface CalculationRecord extends Omit<CalculationRow, "chartType" | "chartCategoryColumn" | "chartValueColumn" | "chartSeriesColumn" | "chartStacked" | "isBuiltin" | "sqlText" | "outputMode" | "chartConfigJson"> {
+export interface CalculationRecord extends Omit<CalculationRow, "isBuiltin" | "sqlText" | "outputMode"> {
   sqlText: string;
-  outputMode: CalculationOutputMode;
-  chartConfig: CalculationChartConfig;
   isBuiltin: boolean;
 }
 
@@ -139,8 +127,6 @@ export interface CalculationPresetRecord {
   name: string;
   description: string;
   sqlText: string;
-  outputMode: CalculationOutputMode;
-  chartConfig: CalculationChartConfig;
 }
 
 export interface TimeEntryRecord extends Omit<TimeEntryRow, "entryType" | "startTime" | "endTime" | "notes" | "projectId" | "taskId" | "customFieldValuesJson"> {

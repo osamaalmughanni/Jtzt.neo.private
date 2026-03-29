@@ -57,4 +57,6 @@ export const systemTables = {
   developerAccessTokens,
 } as const;
 
+export const systemSchema = systemTables;
+
 export type SystemSchema = typeof systemTables;

@@ -184,21 +184,14 @@ export const calculations = sqliteTable(
     name: text("name").notNull(),
     description: text("description"),
     sqlText: text("sql_text").notNull(),
-    outputMode: text("output_mode").notNull().default("both"),
-    chartType: text("chart_type").notNull().default("bar"),
-    chartCategoryColumn: text("chart_category_column"),
-    chartValueColumn: text("chart_value_column"),
-    chartSeriesColumn: text("chart_series_column"),
-    chartConfigJson: text("chart_config_json").notNull().default("{}"),
-    chartStacked: integer("chart_stacked").notNull().default(0),
+    outputMode: text("output_mode").notNull().default("table"),
     isBuiltin: integer("is_builtin").notNull().default(0),
     builtinKey: text("builtin_key"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    check("calculations_output_mode_check", sql`${table.outputMode} IN ('table', 'chart', 'both')`),
-    check("calculations_chart_type_check", sql`${table.chartType} IN ('bar', 'line', 'area', 'pie')`),
+    check("calculations_output_mode_check", sql`${table.outputMode} = 'table'`),
   ],
 );
 
@@ -236,7 +229,7 @@ export const customFieldValues = sqliteView("custom_field_values", {
 }).as(sql`
   SELECT
     'user' AS entity_type,
-    id AS entity_id,
+    users.id AS entity_id,
     NULL AS entry_type,
     json_each.key AS field_id,
     json_each.value AS value_raw,
@@ -255,7 +248,7 @@ export const customFieldValues = sqliteView("custom_field_values", {
   UNION ALL
   SELECT
     'project' AS entity_type,
-    id AS entity_id,
+    projects.id AS entity_id,
     NULL AS entry_type,
     json_each.key AS field_id,
     json_each.value AS value_raw,
@@ -274,7 +267,7 @@ export const customFieldValues = sqliteView("custom_field_values", {
   UNION ALL
   SELECT
     'task' AS entity_type,
-    id AS entity_id,
+    tasks.id AS entity_id,
     NULL AS entry_type,
     json_each.key AS field_id,
     json_each.value AS value_raw,
@@ -293,8 +286,8 @@ export const customFieldValues = sqliteView("custom_field_values", {
   UNION ALL
   SELECT
     'time_entry' AS entity_type,
-    id AS entity_id,
-    entry_type AS entry_type,
+    time_entries.id AS entity_id,
+    time_entries.entry_type AS entry_type,
     json_each.key AS field_id,
     json_each.value AS value_raw,
     json_each.type AS value_type,

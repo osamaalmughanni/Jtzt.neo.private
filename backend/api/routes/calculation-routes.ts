@@ -4,20 +4,10 @@ import { authMiddleware, companyDbMiddleware, hasCompanyAdminAccess, requireComp
 import { calculationService } from "../../services/calculation-service";
 import type { AppRouteConfig } from "../context";
 
-const chartConfigSchema = z.object({
-  type: z.enum(["bar", "line", "area", "pie"]),
-  categoryColumn: z.string().trim().min(1).max(100).nullable(),
-  valueColumn: z.string().trim().min(1).max(100).nullable(),
-  seriesColumn: z.string().trim().min(1).max(100).nullable(),
-  stacked: z.boolean(),
-});
-
 const createCalculationSchema = z.object({
   name: z.string().min(2).max(120),
   description: z.string().max(500).nullable().optional(),
   sqlText: z.string().min(5),
-  outputMode: z.enum(["table", "chart", "both"]),
-  chartConfig: chartConfigSchema,
 });
 
 const updateCalculationSchema = createCalculationSchema.extend({

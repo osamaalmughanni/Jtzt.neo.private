@@ -294,14 +294,6 @@ CROSS JOIN month_bounds mb
 CROSS JOIN format_ctx f
 ORDER BY ct.total_hours * ct.hourly_rate DESC, u.full_name ASC
 `.trim(),
-  outputMode: "table",
-  chartConfig: {
-    type: "bar",
-    categoryColumn: null,
-    valueColumn: null,
-    seriesColumn: null,
-    stacked: false,
-  },
 };
 
 export default preset;

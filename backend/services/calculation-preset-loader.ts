@@ -24,8 +24,6 @@ function normalizePresetRecord(preset: Omit<CalculationPresetRecord, "sqlText"> 
     name: preset.name,
     description: preset.description,
     sqlText,
-    outputMode: preset.outputMode,
-    chartConfig: preset.chartConfig,
   };
 }
 

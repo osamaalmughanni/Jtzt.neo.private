@@ -16,16 +16,13 @@ import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "@/lib/toast";
-import type { CalculationListResponse, CreateCalculationInput } from "@shared/types/api";
-import type { CalculationRecord } from "@shared/types/models";
+import type { CalculationListResponse } from "@shared/types/api";
 import { getCalculationPresetDescription, getCalculationPresetLabel } from "@/lib/calculation-presets";
 
 type CalculationFormState = {
   name: string;
   description: string;
   sqlText: string;
-  outputMode: CreateCalculationInput["outputMode"];
-  chartConfig: CreateCalculationInput["chartConfig"];
 };
 
 function createEmptyForm(): CalculationFormState {
@@ -33,14 +30,6 @@ function createEmptyForm(): CalculationFormState {
     name: "",
     description: "",
     sqlText: "",
-    outputMode: "both",
-    chartConfig: {
-      type: "bar",
-      categoryColumn: "label",
-      valueColumn: "value",
-      seriesColumn: null,
-      stacked: false,
-    },
   };
 }
 
@@ -49,8 +38,6 @@ function clonePreset(preset: CalculationListResponse["presets"][number], t: Retu
     name: getCalculationPresetLabel(preset, t),
     description: getCalculationPresetDescription(preset, t),
     sqlText: preset.sqlText,
-    outputMode: preset.outputMode,
-    chartConfig: { ...preset.chartConfig },
   };
 }
 
@@ -123,8 +110,6 @@ export function CalculationEditorPage({ mode }: { mode: "create" | "edit" }) {
         name: currentCalculation.name,
         description: currentCalculation.description ?? "",
         sqlText: currentCalculation.sqlText,
-        outputMode: currentCalculation.outputMode,
-        chartConfig: { ...currentCalculation.chartConfig },
       });
       initializationRef.current = true;
       return;
@@ -162,8 +147,8 @@ export function CalculationEditorPage({ mode }: { mode: "create" | "edit" }) {
 
     let active = true;
     setValidating(true);
-      const timeout = window.setTimeout(() => {
-        void api
+    const timeout = window.setTimeout(() => {
+      void api
         .validateCalculation(companySession.token, {
           sqlText: form.sqlText,
         })
@@ -191,7 +176,7 @@ export function CalculationEditorPage({ mode }: { mode: "create" | "edit" }) {
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [companySession, form.chartConfig, form.sqlText]);
+  }, [companySession, form.sqlText]);
 
   async function handleSave() {
     if (!companySession) return;
@@ -202,8 +187,6 @@ export function CalculationEditorPage({ mode }: { mode: "create" | "edit" }) {
         name: form.name.trim(),
         description: form.description.trim() || null,
         sqlText: form.sqlText.trim(),
-        outputMode: form.outputMode,
-        chartConfig: form.chartConfig,
       };
 
       if (mode === "create") {

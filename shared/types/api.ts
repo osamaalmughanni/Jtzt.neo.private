@@ -2,8 +2,6 @@ import type {
   CompanyCustomField,
   CompanySettings,
   CompanyRecord,
-  CalculationChartConfig,
-  CalculationOutputMode,
   CalculationPresetRecord,
   CalculationRecord,
   CompanyUserDetail,
@@ -248,8 +246,6 @@ export interface CreateCalculationInput {
   name: string;
   description?: string | null;
   sqlText: string;
-  outputMode: CalculationOutputMode;
-  chartConfig: CalculationChartConfig;
 }
 
 export interface UpdateCalculationInput {
@@ -257,8 +253,6 @@ export interface UpdateCalculationInput {
   name: string;
   description?: string | null;
   sqlText: string;
-  outputMode: CalculationOutputMode;
-  chartConfig: CalculationChartConfig;
 }
 
 export interface CreateCalculationFromPresetInput {
