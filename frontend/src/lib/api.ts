@@ -20,6 +20,7 @@ import type {
   CreateCalculationInput,
   CreateTaskInput,
   DashboardResponse,
+  DashboardPageSnapshotResponse,
   DeleteProjectInput,
   CalculationListResponse,
   CalculationValidationResponse,
@@ -43,6 +44,7 @@ import type {
   TimeOffInLieuBalanceResponse,
   SickLeaveSummaryResponse,
   VacationBalanceResponse,
+  StartTimerCheckResponse,
   UpdateSettingsInput,
   UpdateOvertimeSettingsInput,
   UpdateProjectInput,
@@ -359,6 +361,20 @@ export const api = {
     });
   },
 
+  getDashboardPageSnapshot(
+    token: string,
+    filters: { targetUserId?: number; targetDay: string; targetMonth?: string },
+  ) {
+    const params = new URLSearchParams();
+    if (filters.targetUserId) params.set("targetUserId", String(filters.targetUserId));
+    params.set("targetDay", filters.targetDay);
+    if (filters.targetMonth) params.set("targetMonth", filters.targetMonth);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return request<DashboardPageSnapshotResponse>(`/api/time/dashboard/page${suffix}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
   getTimeEntry(token: string, entryId: number, targetUserId?: number) {
     const params = new URLSearchParams();
     if (targetUserId) params.set("targetUserId", String(targetUserId));
@@ -420,6 +436,14 @@ export const api = {
 
   startTimer(token: string, input: StartTimerInput) {
     return request<{ entry: unknown }>("/api/time/start", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    });
+  },
+
+  checkStartTimer(token: string, input: StartTimerInput) {
+    return request<StartTimerCheckResponse>("/api/time/start/check", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify(input)

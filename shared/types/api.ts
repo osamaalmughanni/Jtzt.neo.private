@@ -61,6 +61,19 @@ export interface StartTimerInput {
   customFieldValues?: Record<string, string | number | boolean>;
 }
 
+export type StartTimerRequirementKind = "project" | "task" | "custom_field" | "policy";
+
+export interface StartTimerRequirement {
+  kind: StartTimerRequirementKind;
+  label: string;
+  fieldId?: string;
+}
+
+export interface StartTimerCheckResponse {
+  ready: boolean;
+  requirements: StartTimerRequirement[];
+}
+
 export interface StopTimerInput {
   entryId?: number;
   notes?: string;
@@ -135,6 +148,18 @@ export interface TimeListResponse {
 
 export interface DashboardResponse {
   summary: DashboardSummary;
+}
+
+export type CalendarDayState = "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed";
+
+export interface DashboardPageSnapshotResponse {
+  summary: DashboardSummary;
+  entries: TimeEntryView[];
+  calendar: {
+    month: string;
+    holidays: PublicHolidayRecord[];
+    dayStates: Record<string, CalendarDayState>;
+  };
 }
 
 export interface AppHealthResponse {

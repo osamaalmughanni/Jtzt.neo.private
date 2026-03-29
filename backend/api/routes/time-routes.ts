@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { diffCalendarDays, enumerateLocalDays, isWeekendDay } from "../../../shared/utils/time";
 import { evaluateTimeEntryPolicy, getRangeEndDay } from "../../../shared/utils/time-entry-policy";
-import { validateCustomFieldValuesForTarget } from "../../../shared/utils/custom-fields";
+import { getCustomFieldsForTarget, hasCustomFieldValue, normalizeCustomFieldValue, validateCustomFieldValuesForTarget } from "../../../shared/utils/custom-fields";
 import { authMiddleware, companyDbMiddleware, hasCompanyAccess, requireCompanyUser } from "../../auth/middleware";
 import type { CompanyTokenPayload, SessionTokenPayload } from "../../auth/jwt";
 import { settingsService } from "../../services/settings-service";
@@ -29,6 +29,8 @@ const startTimerSchema = z.object({
   taskId: z.number().int().positive().nullable().optional(),
   customFieldValues: customFieldValuesSchema.optional()
 });
+
+const startTimerCheckSchema = startTimerSchema;
 
 const stopTimerSchema = z.object({
   entryId: z.number().optional(),
@@ -179,6 +181,123 @@ async function resolveProjectTaskSelection(
   }
 
   return { projectId, taskId };
+}
+
+async function inspectStartTimerRequirements(
+  db: AppDatabase,
+  companyId: string,
+  userId: number,
+  input: {
+    projectId?: number | null;
+    taskId?: number | null;
+    customFieldValues?: Record<string, string | number | boolean>;
+  },
+) {
+  const settings = await settingsService.getSettings(db, companyId);
+  const snapshot = await settingsService.getBusinessNowSnapshot(db, companyId);
+  const requirements: Array<{ kind: "project" | "task" | "custom_field" | "policy"; label: string; fieldId?: string }> = [];
+
+  const policyChecks: Array<Promise<void>> = [
+    enforceHolidayRecordRule(db, companyId, settings, {
+      entryType: "work",
+      startDate: snapshot.localDay,
+      endDate: null,
+    }),
+    enforceWeekendRecordRule(settings, {
+      entryType: "work",
+      startDate: snapshot.localDay,
+      endDate: null,
+    }),
+    enforceEntryTypeSeparation(db, companyId, userId, {
+      entryType: "work",
+      startDate: snapshot.localDay,
+      endDate: null,
+    }),
+    enforceSingleRecordPerDay(db, companyId, userId, settings, snapshot.localDay),
+    enforceIntersectingRecords(db, companyId, userId, settings, {
+      entryType: "work",
+      startDate: snapshot.localDay,
+      endDate: null,
+      startTime: snapshot.instantIso,
+      endTime: null,
+    }),
+  ];
+
+  for (const check of policyChecks) {
+    try {
+      await check;
+    } catch (error) {
+      requirements.push({
+        kind: "policy",
+        label: error instanceof Error ? error.message : "Record rule violation",
+      });
+    }
+  }
+
+  if (settings.projectsEnabled) {
+    const projectId = input.projectId ?? null;
+    if (!projectId) {
+      requirements.push({ kind: "project", label: "Project" });
+    } else {
+      const project = await db.first("SELECT id, is_active FROM projects WHERE id = ?", [projectId]) as
+        | { id: number; is_active: number }
+        | undefined;
+      if (!project || !project.is_active) {
+        requirements.push({ kind: "project", label: "Project" });
+      } else {
+        const projectUsers = await db.all<{ user_id: number }>("SELECT user_id FROM project_users WHERE project_id = ?", [projectId]);
+        if (projectUsers.length > 0 && !projectUsers.some((row) => row.user_id === userId)) {
+          requirements.push({ kind: "project", label: "Project" });
+        }
+      }
+    }
+  }
+
+  if (settings.tasksEnabled) {
+    const taskId = input.taskId ?? null;
+    if (!taskId) {
+      requirements.push({ kind: "task", label: "Task" });
+    } else {
+      const task = await db.first("SELECT id, is_active FROM tasks WHERE id = ?", [taskId]) as
+        | { id: number; is_active: number }
+        | undefined;
+      if (!task || !task.is_active) {
+        requirements.push({ kind: "task", label: "Task" });
+      } else if (settings.projectsEnabled && input.projectId) {
+        const projectTasks = await db.all<{ task_id: number }>("SELECT task_id FROM project_tasks WHERE project_id = ?", [input.projectId]);
+        if (projectTasks.length > 0 && !projectTasks.some((row) => row.task_id === taskId)) {
+          requirements.push({ kind: "task", label: "Task" });
+        }
+      }
+    }
+  }
+
+  const customFields = getCustomFieldsForTarget(settings.customFields, { scope: "time_entry", entryType: "work" });
+  for (const field of customFields) {
+    if (!field.required) {
+      continue;
+    }
+
+    const rawValue = input.customFieldValues?.[field.id];
+    const normalizedValue = normalizeCustomFieldValue(field, rawValue);
+    const hasValue = hasCustomFieldValue(normalizedValue);
+
+    if (field.type === "select") {
+      if (typeof rawValue !== "string" || !field.options.some((option) => option.id === rawValue)) {
+        requirements.push({ kind: "custom_field", label: field.label, fieldId: field.id });
+        continue;
+      }
+    }
+
+    if (!hasValue) {
+      requirements.push({ kind: "custom_field", label: field.label, fieldId: field.id });
+    }
+  }
+
+  return {
+    ready: requirements.length === 0,
+    requirements,
+  };
 }
 
 async function enforceSingleRecordPerDay(
@@ -486,8 +605,21 @@ async function getHolidaySetForRange(db: AppDatabase, companyId: string, country
 }
 
 async function buildDashboardSummary(db: AppDatabase, companyId: string, userId: number, targetDay?: string) {
-  const settings = await settingsService.getSettings(db, companyId);
-  const businessToday = (await settingsService.getBusinessNowSnapshot(db, companyId)).localDay;
+  return buildDashboardSummaryWithContext(db, companyId, userId, targetDay);
+}
+
+async function buildDashboardSummaryWithContext(
+  db: AppDatabase,
+  companyId: string,
+  userId: number,
+  targetDay?: string,
+  context?: {
+    settings?: Awaited<ReturnType<typeof settingsService.getSettings>>;
+    businessToday?: string;
+  },
+) {
+  const settings = context?.settings ?? await settingsService.getSettings(db, companyId);
+  const businessToday = context?.businessToday ?? (await settingsService.getBusinessNowSnapshot(db, companyId)).localDay;
   const focusDay = targetDay && /^\d{4}-\d{2}-\d{2}$/.test(targetDay) ? targetDay : businessToday;
   const fullWeekRange = getWeekRange(focusDay, settings.firstDayOfWeek);
   const fullMonthRange = getMonthRange(focusDay);
@@ -558,6 +690,62 @@ async function buildDashboardSummary(db: AppDatabase, companyId: string, userId:
   };
 }
 
+async function buildDashboardPageSnapshot(
+  db: AppDatabase,
+  companyId: string,
+  userId: number,
+  targetDay?: string,
+  targetMonth?: string,
+) {
+  const settings = await settingsService.getSettings(db, companyId);
+  const businessToday = (await settingsService.getBusinessNowSnapshot(db, companyId)).localDay;
+  const focusDay = targetDay && /^\d{4}-\d{2}-\d{2}$/.test(targetDay) ? targetDay : businessToday;
+  const monthDay = targetMonth && /^\d{4}-\d{2}-\d{2}$/.test(targetMonth) ? targetMonth : focusDay;
+  const monthRange = getMonthRange(monthDay);
+  const sameMonth = focusDay.slice(0, 7) === monthDay.slice(0, 7);
+
+  const [summary, monthEntries, selectedDayEntries, holidayResponse] = await Promise.all([
+    buildDashboardSummaryWithContext(db, companyId, userId, focusDay, { settings, businessToday }),
+    timeService.listEntries(db, companyId, userId, { from: monthRange.startDay, to: monthRange.endDay }),
+    sameMonth
+      ? Promise.resolve<Awaited<ReturnType<typeof timeService.listEntries>> | null>(null)
+      : timeService.listEntries(db, companyId, userId, { from: focusDay, to: focusDay }),
+    settingsService.getPublicHolidays(db, companyId, settings.country, Number(monthRange.startDay.slice(0, 4))),
+  ]);
+
+  const entries = sameMonth
+    ? monthEntries.filter((entry) => entry.entryDate <= focusDay && (entry.endDate ?? entry.entryDate) >= focusDay)
+    : selectedDayEntries ?? [];
+  const dayStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed"> = {};
+  for (const entry of monthEntries) {
+    for (const entryDay of enumerateLocalDays(entry.entryDate, entry.endDate ?? entry.entryDate)) {
+      const currentState = dayStates[entryDay];
+      dayStates[entryDay] =
+        !currentState || currentState === entry.entryType
+          ? entry.entryType
+          : "mixed";
+    }
+  }
+
+  return {
+    summary,
+    entries,
+    calendar: {
+      month: monthRange.startDay,
+      holidays: holidayResponse.holidays,
+      dayStates,
+    },
+  };
+}
+
+timeRoutes.post("/start/check", async (c) => {
+  const session = getCompanySession(c.get("session"));
+  const db = c.get("db");
+  const body = startTimerCheckSchema.parse(await c.req.json());
+  const preflight = await inspectStartTimerRequirements(db, session.companyId, session.userId, body);
+  return c.json(preflight);
+});
+
 timeRoutes.post("/start", async (c) => {
   const session = getCompanySession(c.get("session"));
   const db = c.get("db");
@@ -566,6 +754,10 @@ timeRoutes.post("/start", async (c) => {
   const snapshot = await settingsService.getBusinessNowSnapshot(db, session.companyId);
 
   try {
+    const preflight = await inspectStartTimerRequirements(db, session.companyId, session.userId, body);
+    if (!preflight.ready) {
+      throw new Error(preflight.requirements[0]?.label ?? "Record rule violation");
+    }
     await enforceHolidayRecordRule(db, session.companyId, settings, {
       entryType: "work",
       startDate: snapshot.localDay,
@@ -589,29 +781,23 @@ timeRoutes.post("/start", async (c) => {
       startTime: snapshot.instantIso,
       endTime: null
     });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : "Record rule violation" }, 400);
-  }
-
-  const customFieldValues = await validateCustomFields(db, session.companyId, "work", body.customFieldValues ?? {});
-  let projectTaskSelection: { projectId: number | null; taskId: number | null };
-  try {
-    projectTaskSelection = await resolveProjectTaskSelection(db, session.companyId, session.userId, settings, {
+    const customFieldValues = await validateCustomFields(db, session.companyId, "work", body.customFieldValues ?? {});
+    const projectTaskSelection = await resolveProjectTaskSelection(db, session.companyId, session.userId, settings, {
       entryType: "work",
       projectId: body.projectId,
       taskId: body.taskId
     });
+
+    return c.json({
+      entry: await timeService.startTimer(db, session.companyId, session.userId, {
+        ...body,
+        ...projectTaskSelection,
+        customFieldValues
+      }, snapshot)
+    });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "Record rule violation" }, 400);
   }
-
-  return c.json({
-    entry: await timeService.startTimer(db, session.companyId, session.userId, {
-      ...body,
-      ...projectTaskSelection,
-      customFieldValues
-    }, snapshot)
-  });
 });
 
 timeRoutes.post("/entry", async (c) => {
@@ -949,4 +1135,26 @@ timeRoutes.get("/dashboard", async (c) => {
   }
 
   return c.json({ summary: await buildDashboardSummary(c.get("db"), session.companyId, targetUserId, c.req.query("targetDay") ?? undefined) });
+});
+
+timeRoutes.get("/dashboard/page", async (c) => {
+  const session = getCompanySession(c.get("session"));
+  const db = c.get("db");
+  let targetUserId: number;
+  try {
+    const rawTargetUserId = c.req.query("targetUserId");
+    targetUserId = await resolveTargetUserId(db, session, rawTargetUserId ? Number(rawTargetUserId) : undefined);
+  } catch {
+    return c.json({ error: "Manager access required" }, 403);
+  }
+
+  return c.json(
+    await buildDashboardPageSnapshot(
+      db,
+      session.companyId,
+      targetUserId,
+      c.req.query("targetDay") ?? undefined,
+      c.req.query("targetMonth") ?? undefined,
+    ),
+  );
 });

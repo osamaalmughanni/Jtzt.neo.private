@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import type { PublicHolidayRecord } from "@shared/types/models";
-import { enumerateLocalDays, formatLocalDay, parseLocalDay } from "@shared/utils/time";
-import { DEFAULT_COMPANY_WEEKEND_DAYS } from "@shared/utils/company-locale";
+import { formatLocalDay, parseLocalDay } from "@shared/utils/time";
 import { FormPage, FormPanel } from "@/components/form-layout";
 import { PageIntro } from "@/components/page-intro";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
@@ -17,6 +15,8 @@ import { useCompanySettings } from "@/lib/company-settings";
 import { useAppHeaderState } from "@/components/app-header-state";
 import { getEntryStateUi } from "@/lib/entry-state-ui";
 import { formatCompanyDate } from "@/lib/locale-format";
+import { toast } from "@/lib/toast";
+import type { DashboardPageSnapshotResponse } from "@shared/types/api";
 
 function parseDayParam(value: string | null) {
   if (!value) return new Date();
@@ -27,14 +27,6 @@ function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
-function endOfMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-}
-
-function enumerateDays(startDate: string, endDate: string) {
-  return enumerateLocalDays(startDate, endDate);
-}
-
 export function DashboardDayPickerPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -42,12 +34,6 @@ export function DashboardDayPickerPage() {
   const { settings: companySettings } = useCompanySettings();
   const { setHomeAction } = useAppHeaderState();
   const [searchParams] = useSearchParams();
-  const [settingsLocale, setSettingsLocale] = useState("en-GB");
-  const [settingsCountry, setSettingsCountry] = useState("AT");
-  const [settingsFirstDayOfWeek, setSettingsFirstDayOfWeek] = useState(1);
-  const [settingsWeekendDays, setSettingsWeekendDays] = useState<number[]>([...DEFAULT_COMPANY_WEEKEND_DAYS]);
-  const [holidays, setHolidays] = useState<PublicHolidayRecord[]>([]);
-  const [dayStates, setDayStates] = useState<Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">>({});
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDayParam(searchParams.get("day"))));
   const selectedDate = parseDayParam(searchParams.get("day"));
   const selectedDayKey = formatLocalDay(selectedDate);
@@ -56,87 +42,75 @@ export function DashboardDayPickerPage() {
   const numericUserId = Number(userId);
   const backTo = `/dashboard?user=${userId}&day=${formatLocalDay(selectedDate)}`;
   const entryStateUi = useMemo(() => getEntryStateUi(t), [t]);
-  const pageResource = usePageResource<{
-    settingsLocale: string;
-    settingsCountry: string;
-    settingsFirstDayOfWeek: number;
-    settingsWeekendDays: number[];
-    holidays: PublicHolidayRecord[];
-    dayStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">;
-  }>({
+  const pageResource = usePageResource<DashboardPageSnapshotResponse>({
     enabled: Boolean(companySession) && !Number.isNaN(numericUserId) && numericUserId > 0,
-    deps: [companySession?.token, numericUserId, settingsCountry, visibleMonth.getFullYear(), visibleMonth.getMonth(), t],
+    deps: [companySession?.token, numericUserId, selectedDayKey, visibleMonth.getFullYear(), visibleMonth.getMonth(), t],
+    minPendingMs: 0,
     load: async () => {
       if (!companySession || Number.isNaN(numericUserId) || numericUserId <= 0) {
         return {
-          settingsLocale: "en-GB",
-          settingsCountry: "AT",
-          settingsFirstDayOfWeek: 1,
-          settingsWeekendDays: [...DEFAULT_COMPANY_WEEKEND_DAYS],
-          holidays: [],
-          dayStates: {},
+          summary: {
+            todayMinutes: 0,
+            weekMinutes: 0,
+            activeEntry: null,
+            recentEntries: [],
+            contractStats: {
+              currentContract: null,
+              totalBalanceMinutes: 0,
+              week: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+              month: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+              year: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+              vacation: { entitledDays: 0, usedDays: 0, availableDays: 0 },
+              timeOffInLieu: { earnedMinutes: 0, bookedMinutes: 0, availableMinutes: 0 },
+            },
+          },
+          entries: [],
+          calendar: {
+            month: formatLocalDay(startOfMonth(selectedDate)),
+            holidays: [],
+            dayStates: {},
+          },
         };
       }
 
-      const [holidayResponse, entriesResponse] = await Promise.all([
-        api.getPublicHolidays(companySession.token, companySettings?.country ?? "AT", visibleMonth.getFullYear()),
-        api.listTimeEntries(companySession.token, {
-          from: formatLocalDay(startOfMonth(visibleMonth)),
-          to: formatLocalDay(endOfMonth(visibleMonth)),
-          targetUserId: numericUserId,
-        })
-      ]);
-
-      const nextStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed"> = {};
-      for (const entry of entriesResponse.entries) {
-        const entryDays = enumerateDays(entry.entryDate, entry.endDate ?? entry.entryDate);
-        for (const entryDay of entryDays) {
-          const currentState = nextStates[entryDay];
-          nextStates[entryDay] =
-            !currentState || currentState === entry.entryType
-              ? entry.entryType
-              : "mixed";
-        }
-      }
-
-      return {
-        settingsLocale: companySettings?.locale ?? "en-GB",
-        settingsCountry: companySettings?.country ?? "AT",
-        settingsFirstDayOfWeek: companySettings?.firstDayOfWeek ?? 1,
-        settingsWeekendDays: companySettings?.weekendDays ?? [...DEFAULT_COMPANY_WEEKEND_DAYS],
-        holidays: holidayResponse.holidays,
-        dayStates: nextStates,
-      };
+      return api.getDashboardPageSnapshot(companySession.token, {
+        targetUserId: numericUserId,
+        targetDay: selectedDayKey,
+        targetMonth: formatLocalDay(startOfMonth(visibleMonth)),
+      });
     }
   });
-  const selectedHoliday = holidays.find((holiday) => holiday.date === selectedDayKey);
-  const selectedDayState = dayStates[selectedDayKey];
+  const pageErrorRef = useRef<unknown>(null);
+  const pageSnapshot =
+    pageResource.data ?? {
+      summary: {
+        todayMinutes: 0,
+        weekMinutes: 0,
+        activeEntry: null,
+        recentEntries: [],
+        contractStats: {
+          currentContract: null,
+          totalBalanceMinutes: 0,
+          week: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+          month: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+          year: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
+          vacation: { entitledDays: 0, usedDays: 0, availableDays: 0 },
+          timeOffInLieu: { earnedMinutes: 0, bookedMinutes: 0, availableMinutes: 0 },
+        },
+      },
+      entries: [],
+      calendar: {
+        month: formatLocalDay(startOfMonth(selectedDate)),
+        holidays: [],
+        dayStates: {},
+      },
+    };
+  const selectedHoliday = pageSnapshot.calendar.holidays.find((holiday) => holiday.date === selectedDayKey);
+  const selectedDayState = pageSnapshot.calendar.dayStates[selectedDayKey];
 
   function handleSelect(date: Date) {
     navigate(`/dashboard?user=${userId}&day=${formatLocalDay(date)}`);
   }
-
-  useEffect(() => {
-    if (companySettings) {
-      setSettingsLocale(companySettings.locale);
-      setSettingsCountry(companySettings.country);
-      setSettingsFirstDayOfWeek(companySettings.firstDayOfWeek);
-      setSettingsWeekendDays(companySettings.weekendDays);
-    }
-  }, [companySettings]);
-
-  useEffect(() => {
-    if (!pageResource.data) {
-      return;
-    }
-
-    setSettingsLocale(pageResource.data.settingsLocale);
-    setSettingsCountry(pageResource.data.settingsCountry);
-    setSettingsFirstDayOfWeek(pageResource.data.settingsFirstDayOfWeek);
-    setSettingsWeekendDays(pageResource.data.settingsWeekendDays);
-    setHolidays(pageResource.data.holidays);
-    setDayStates(pageResource.data.dayStates);
-  }, [pageResource.data]);
 
   useEffect(() => {
     if (previousSelectedDayKeyRef.current !== selectedDayKey) {
@@ -144,6 +118,18 @@ export function DashboardDayPickerPage() {
       setVisibleMonth(startOfMonth(selectedDate));
     }
   }, [selectedDate, selectedDayKey]);
+
+  useEffect(() => {
+    if (!pageResource.error || pageErrorRef.current === pageResource.error) {
+      return;
+    }
+
+    pageErrorRef.current = pageResource.error;
+    toast({
+      title: t("dayPicker.title"),
+      description: pageResource.error instanceof Error ? pageResource.error.message : "Request failed",
+    });
+  }, [pageResource.error, t]);
 
   useEffect(() => {
     setHomeAction({
@@ -167,7 +153,7 @@ export function DashboardDayPickerPage() {
                   selectedHoliday
                     ? t("dayPicker.holidayDescription", {
                         name: selectedHoliday.localName,
-                        date: formatCompanyDate(selectedHoliday.date, settingsLocale),
+                        date: formatCompanyDate(selectedHoliday.date, companySettings?.locale ?? "en-GB"),
                       })
                     : selectedDayState === "work"
                       ? t("dayPicker.workDescription")
@@ -216,11 +202,11 @@ export function DashboardDayPickerPage() {
             selected={selectedDate}
             month={visibleMonth}
             onSelect={handleSelect}
-            locale={settingsLocale}
-            firstDayOfWeek={settingsFirstDayOfWeek}
-            weekendDays={settingsWeekendDays}
-            holidayDates={holidays.map((holiday) => holiday.date)}
-            dayStates={dayStates}
+            locale={companySettings?.locale ?? "en-GB"}
+            firstDayOfWeek={companySettings?.firstDayOfWeek ?? 1}
+            weekendDays={companySettings?.weekendDays ?? [6, 7]}
+            holidayDates={pageSnapshot.calendar.holidays.map((holiday) => holiday.date)}
+            dayStates={pageSnapshot.calendar.dayStates}
             onMonthChange={setVisibleMonth}
             className="w-full rounded-xl border border-border bg-background p-4 sm:p-5"
           />

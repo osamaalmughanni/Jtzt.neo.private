@@ -342,7 +342,7 @@ export function validateCustomFieldValuesForTarget(
   return normalizedValues;
 }
 
-function hasCustomFieldValue(value: string | number | boolean | undefined) {
+export function hasCustomFieldValue(value: string | number | boolean | undefined) {
   if (typeof value === "string") return value.trim().length > 0;
   if (typeof value === "number") return Number.isFinite(value);
   if (typeof value === "boolean") return true;

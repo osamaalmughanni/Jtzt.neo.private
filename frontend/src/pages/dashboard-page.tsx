@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Briefcase, CalendarBlank, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, Prohibit, SpinnerGap, Stop, Trash, UmbrellaSimple } from "phosphor-react";
-import { motion } from "framer-motion";
+import { Briefcase, CalendarBlank, CircleNotch, ClockCounterClockwise, FirstAidKit, PencilSimple, Play, Plus, Prohibit, Stop, Trash, UmbrellaSimple } from "phosphor-react";
 import { useTranslation } from "react-i18next";
 import type {
   CompanyCustomField,
@@ -11,7 +10,7 @@ import type {
   PublicHolidayRecord,
   TimeEntryView,
 } from "@shared/types/models";
-import type { ProjectTaskManagementResponse } from "@shared/types/api";
+import type { DashboardPageSnapshotResponse, ProjectTaskManagementResponse, StartTimerRequirement } from "@shared/types/api";
 import { createDefaultOvertimeSettings } from "@shared/utils/overtime";
 import { evaluateTimeEntryPolicy, getAllowedEntryTypesForDay, getFutureDayDistance, getPastDayDistance } from "@shared/utils/time-entry-policy";
 import {
@@ -61,16 +60,6 @@ import {
   DEFAULT_COMPANY_WEEKEND_DAYS,
 } from "@shared/utils/company-locale";
 
-type DashboardSnapshot = {
-  entries: TimeEntryView[];
-  summary: DashboardSummary;
-};
-
-type CalendarSnapshot = {
-  holidays: PublicHolidayRecord[];
-  dayStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed">;
-};
-
 const defaultSettings: CompanySettings = {
   currency: "EUR",
   locale: DEFAULT_COMPANY_LOCALE,
@@ -111,35 +100,8 @@ const defaultSummary: DashboardSummary = {
   },
 };
 
-function startOfDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value;
-}
-
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function addMonths(date: Date, offset: number) {
-  return new Date(date.getFullYear(), date.getMonth() + offset, 1);
-}
-
-function getCalendarMonthKey(date: Date, country: string, userId: number | null, token?: string) {
-  return [
-    token ?? "none",
-    userId ?? "none",
-    country,
-    date.getFullYear(),
-    date.getMonth(),
-  ].join("|");
-}
-
-function endOfDay(date: Date) {
-  const value = startOfDay(date);
-  value.setDate(value.getDate() + 1);
-  value.setMilliseconds(-1);
-  return value;
 }
 
 function toTimeInputValue(isoValue: string | null, timeZone?: string) {
@@ -208,19 +170,69 @@ function getRecordEntryStatusClass(entryType: TimeEntryView["entryType"], isActi
   return "";
 }
 
-function getEntrySupportText(
+function hasRenderableCustomFieldValue(value: string | number | boolean | undefined) {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
+  return false;
+}
+
+function buildEntrySecondaryBadges(
   entry: TimeEntryView,
-  fieldsById: Map<string, CompanyCustomField>,
+  projectData: ProjectTaskManagementResponse | null,
   customFieldValueLabels: Map<string, string>,
+  settings: Pick<CompanySettings, "customFields">,
 ) {
-  const customFields = Object.entries(entry.customFieldValues)
-    .map(([key, value]) => {
-      const field = fieldsById.get(key);
-      const resolved = resolveCustomFieldValueLabel(field, value, customFieldValueLabels);
-      return `${field?.label ?? key}: ${resolved ?? String(value)}`;
-    })
-    .join(", ");
-  return customFields;
+  const badges: Array<{ key: string; label: string }> = [];
+
+  if (entry.projectId) {
+    const project = projectData?.projects.find((item) => item.id === entry.projectId);
+    if (project) {
+      badges.push({
+        key: `project-${project.id}`,
+        label: project.name,
+      });
+    }
+  }
+
+  if (entry.taskId) {
+    const task = projectData?.tasks.find((item) => item.id === entry.taskId);
+    if (task) {
+      badges.push({
+        key: `task-${task.id}`,
+        label: task.title,
+      });
+    }
+  }
+
+  for (const field of getCustomFieldsForTarget(settings.customFields, { scope: "time_entry", entryType: entry.entryType })) {
+    const value = entry.customFieldValues[field.id];
+    if (!hasRenderableCustomFieldValue(value)) {
+      continue;
+    }
+
+    const resolved = resolveCustomFieldValueLabel(field, value, customFieldValueLabels);
+    if (!resolved) {
+      continue;
+    }
+
+    badges.push({
+      key: `field-${field.id}`,
+      label: `${field.label}: ${resolved}`,
+    });
+  }
+
+  if (badges.length <= 3) {
+    return badges;
+  }
+
+  return [
+    ...badges.slice(0, 2),
+    {
+      key: "more",
+      label: `+${badges.length - 2}`,
+    },
+  ];
 }
 
 function triggerHapticFeedback() {
@@ -256,7 +268,7 @@ function RecordStatusIcon({
   className: string;
 }) {
   const Icon = active
-    ? SpinnerGap
+    ? CircleNotch
     : entryType === "work"
       ? Briefcase
       : entryType === "vacation"
@@ -308,8 +320,6 @@ export function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [settings, setSettings] = useState<CompanySettings>(defaultSettings);
   const [users, setUsers] = useState<CompanyUserListItem[]>([]);
-  const [entries, setEntries] = useState<TimeEntryView[]>([]);
-  const [summary, setSummary] = useState<DashboardSummary>(defaultSummary);
   const [projectData, setProjectData] = useState<ProjectTaskManagementResponse | null>(null);
   const [pendingDeleteEntry, setPendingDeleteEntry] =
     useState<TimeEntryView | null>(null);
@@ -318,6 +328,7 @@ export function DashboardPage() {
   const [tabletPunchValues, setTabletPunchValues] = useState<Record<string, string | number | boolean>>({});
   const [tabletPunchProjectId, setTabletPunchProjectId] = useState("");
   const [tabletPunchTaskId, setTabletPunchTaskId] = useState("");
+  const [tabletPunchRequirements, setTabletPunchRequirements] = useState<StartTimerRequirement[]>([]);
   const [tabletPunchSubmitting, setTabletPunchSubmitting] = useState(false);
   const [summaryPeriod, setSummaryPeriod] = useState<"week" | "month" | "year">("week");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
@@ -325,12 +336,6 @@ export function DashboardPage() {
   const [now, setNow] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => parseDayParam(searchParams.get("day")));
   const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(parseDayParam(searchParams.get("day"))));
-  const [dashboardLoading, setDashboardLoading] = useState(true);
-  const dashboardCacheRef = useRef(new Map<string, DashboardSnapshot>());
-  const dashboardRequestIdRef = useRef(0);
-  const calendarMonthCacheRef = useRef(new Map<string, CalendarSnapshot>());
-  const calendarMonthRequestRef = useRef(new Map<string, Promise<CalendarSnapshot>>());
-  const calendarMonthGenerationRef = useRef(0);
 
   const canSwitchUser = !isTabletMode && canManageOtherUsers(companyIdentity?.user.role);
   const isWorkspaceMode = companySession?.actorType === "workspace";
@@ -368,16 +373,52 @@ export function DashboardPage() {
     [companyIdentity, users],
   );
   const effectiveUserId = selectedUserId ?? (isWorkspaceMode ? availableUsers[0]?.id ?? null : companyIdentity?.user.id ?? null);
-
-  const dayMinutes = useMemo(
-    () => entries.reduce((sum, entry) => sum + entry.durationMinutes, 0),
-    [entries],
-  );
   const selectedUser = availableUsers.find(
     (user) => user.id === effectiveUserId,
   );
   const selectedUserName =
     selectedUser?.fullName ?? companyIdentity?.user.fullName ?? "User";
+  const dashboardPageResource = usePageResource<DashboardPageSnapshotResponse>({
+    enabled: Boolean(companySession) && Boolean(effectiveUserId),
+    deps: [companySession?.token, effectiveUserId, selectedDayKey, visibleMonth.getFullYear(), visibleMonth.getMonth(), t],
+    minPendingMs: 0,
+    load: async () => {
+      if (!companySession || !effectiveUserId) {
+        return {
+          summary: defaultSummary,
+          entries: [],
+          calendar: {
+            month: formatLocalDay(startOfMonth(selectedDate)),
+            holidays: [],
+            dayStates: {},
+          },
+        };
+      }
+
+      return api.getDashboardPageSnapshot(companySession.token, {
+        targetUserId: effectiveUserId,
+        targetDay: selectedDayKey,
+        targetMonth: formatLocalDay(startOfMonth(visibleMonth)),
+      });
+    },
+  });
+  const dashboardPageErrorRef = useRef<unknown>(null);
+  const dashboardSnapshot =
+    dashboardPageResource.data ?? {
+      summary: defaultSummary,
+      entries: [],
+      calendar: {
+        month: formatLocalDay(startOfMonth(selectedDate)),
+        holidays: [],
+        dayStates: {},
+      },
+    };
+  const entries = dashboardSnapshot.entries;
+  const summary = dashboardSnapshot.summary;
+  const dayMinutes = useMemo(
+    () => entries.reduce((sum, entry) => sum + entry.durationMinutes, 0),
+    [entries],
+  );
   const summaryPeriodStats =
     summaryPeriod === "week"
       ? summary.contractStats.week
@@ -399,85 +440,7 @@ export function DashboardPage() {
   const selectedDayPastDistance = getPastDayDistance(selectedDayKey, todayDay);
   const selectedDayFutureDistance = getFutureDayDistance(selectedDayKey, todayDay);
   const isNowContext = isToday(selectedDate, companyTimeZone);
-  const loadCalendarMonthSnapshot = useCallback(async (targetMonth: Date) => {
-    if (!companySession || !effectiveUserId) {
-      return {
-        holidays: [],
-        dayStates: {},
-      } satisfies CalendarSnapshot;
-    }
-
-    const normalizedMonth = startOfMonth(targetMonth);
-    const cacheKey = getCalendarMonthKey(normalizedMonth, settings.country, effectiveUserId, companySession.token);
-    const generation = calendarMonthGenerationRef.current;
-    const cached = calendarMonthCacheRef.current.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    const inFlight = calendarMonthRequestRef.current.get(cacheKey);
-    if (inFlight) {
-      return inFlight;
-    }
-
-    const request = (async () => {
-      const [holidayResponse, entriesResponse] = await Promise.all([
-        api.getPublicHolidays(companySession.token, settings.country, normalizedMonth.getFullYear()),
-        api.listTimeEntries(companySession.token, {
-          from: formatLocalDay(startOfMonth(normalizedMonth)),
-          to: formatLocalDay(endOfDay(new Date(normalizedMonth.getFullYear(), normalizedMonth.getMonth() + 1, 0))),
-          targetUserId: canSwitchUser ? effectiveUserId : undefined,
-        }),
-      ]);
-
-      const nextStates: CalendarSnapshot["dayStates"] = {};
-      for (const entry of entriesResponse.entries) {
-        for (const entryDay of enumerateLocalDays(entry.entryDate, entry.endDate ?? entry.entryDate)) {
-          const currentState = nextStates[entryDay];
-          nextStates[entryDay] =
-            !currentState || currentState === entry.entryType
-              ? entry.entryType
-              : "mixed";
-        }
-      }
-
-      const snapshot: CalendarSnapshot = {
-        holidays: holidayResponse.holidays,
-        dayStates: nextStates,
-      };
-
-      if (calendarMonthGenerationRef.current === generation) {
-        calendarMonthCacheRef.current.set(cacheKey, snapshot);
-      }
-      calendarMonthRequestRef.current.delete(cacheKey);
-      return snapshot;
-    })().catch((error) => {
-      calendarMonthRequestRef.current.delete(cacheKey);
-      throw error;
-    });
-
-    calendarMonthRequestRef.current.set(cacheKey, request);
-    return request;
-  }, [canSwitchUser, companySession, effectiveUserId, settings.country]);
-
-  const calendarResource = usePageResource<CalendarSnapshot>({
-    enabled: Boolean(companySession) && Boolean(effectiveUserId),
-    deps: [companySession?.token, effectiveUserId, visibleMonth.getFullYear(), visibleMonth.getMonth(), t],
-    load: () => loadCalendarMonthSnapshot(visibleMonth),
-    minPendingMs: 0,
-  });
-  useEffect(() => {
-    if (!companySession || !effectiveUserId) {
-      return;
-    }
-
-    const currentMonth = startOfMonth(visibleMonth);
-    void loadCalendarMonthSnapshot(currentMonth);
-    void loadCalendarMonthSnapshot(addMonths(currentMonth, -1));
-    void loadCalendarMonthSnapshot(addMonths(currentMonth, 1));
-  }, [companySession, effectiveUserId, loadCalendarMonthSnapshot, visibleMonth]);
-
-  const calendarHolidays = calendarResource.data?.holidays ?? [];
+  const calendarHolidays = dashboardSnapshot.calendar.holidays;
   const holidayDateSet = useMemo(() => new Set(calendarHolidays.map((holiday) => holiday.date)), [calendarHolidays]);
   const selectedDayIsWeekend = isWeekendDay(selectedDayKey, settings.weekendDays);
   const selectedHoliday = useMemo(
@@ -486,13 +449,21 @@ export function DashboardPage() {
   );
   const selectedDayIsHoliday = holidayDateSet.has(selectedDayKey);
   const calendarHolidayDates = useMemo(
-    () => calendarResource.data?.holidays.map((holiday) => holiday.date) ?? [],
-    [calendarResource.data?.holidays],
+    () => calendarHolidays.map((holiday) => holiday.date),
+    [calendarHolidays],
   );
-  const calendarDayStates = useMemo(
-    () => calendarResource.data?.dayStates ?? {},
-    [calendarResource.data?.dayStates],
-  );
+  const calendarDayStates = dashboardSnapshot.calendar.dayStates;
+  useEffect(() => {
+    if (!dashboardPageResource.error || dashboardPageErrorRef.current === dashboardPageResource.error) {
+      return;
+    }
+
+    dashboardPageErrorRef.current = dashboardPageResource.error;
+    toast({
+      title: t("dashboard.couldNotLoadRecords"),
+      description: dashboardPageResource.error instanceof Error ? dashboardPageResource.error.message : "Request failed",
+    });
+  }, [dashboardPageResource.error, t]);
   const allowedEntryTypes = getAllowedEntryTypesForDay({
     role: companyIdentity?.user.role,
     settings,
@@ -568,11 +539,6 @@ export function DashboardPage() {
   const recordDockMessages = useMemo(
     () => [singleRecordMessage, createRecordMessage].filter((value): value is string => Boolean(value)),
     [createRecordMessage, singleRecordMessage],
-  );
-  const customFieldsById = useMemo(
-    () =>
-      new Map(settings.customFields.map((field) => [field.id, field])),
-    [settings.customFields],
   );
   const customFieldValueLabels = useMemo(
     () => buildCustomFieldValueLabelLookup(settings.customFields),
@@ -726,105 +692,6 @@ export function DashboardPage() {
     };
   }, [canSwitchUser, companySession]);
 
-  const loadDashboardSnapshot = useCallback(async (targetDay: Date, targetUserId: number | null) => {
-    if (!companySession) {
-      return {
-        entries: [],
-        summary: defaultSummary,
-      } satisfies DashboardSnapshot;
-    }
-
-    const [entriesResponse, dashboardResponse] = await Promise.all([
-      api.listTimeEntries(companySession.token, {
-        from: formatLocalDay(startOfDay(targetDay)),
-        to: formatLocalDay(endOfDay(targetDay)),
-        targetUserId: targetUserId ?? undefined,
-      }),
-      api.getDashboard(companySession.token, targetUserId ?? undefined, formatLocalDay(targetDay)),
-    ]);
-
-    return {
-      entries: entriesResponse.entries,
-      summary: dashboardResponse.summary,
-    };
-  }, [companySession]);
-
-  const prefetchAdjacentDashboardSnapshots = useCallback((targetDay: Date, targetUserId: number | null) => {
-    if (!companySession) {
-      return;
-    }
-
-    const adjacentDays = [
-      new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate() - 1),
-      new Date(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate() + 1),
-    ];
-
-    for (const day of adjacentDays) {
-      const cacheKey = `${targetUserId ?? "none"}|${formatLocalDay(day)}`;
-      if (dashboardCacheRef.current.has(cacheKey)) {
-        continue;
-      }
-
-      void loadDashboardSnapshot(day, targetUserId)
-        .then((snapshot) => {
-          dashboardCacheRef.current.set(cacheKey, snapshot);
-        })
-        .catch(() => {
-          // Ignore prefetch failures; the active path will report real errors.
-        });
-    }
-  }, [companySession, loadDashboardSnapshot]);
-
-  useEffect(() => {
-    if (!companySession) {
-      setEntries([]);
-      setSummary(defaultSummary);
-      setDashboardLoading(false);
-      return;
-    }
-
-    const requestId = dashboardRequestIdRef.current + 1;
-    dashboardRequestIdRef.current = requestId;
-    const resolvedUserId =
-      canSwitchUser
-        ? selectedUserId ?? users[0]?.id ?? null
-        : companyIdentity?.user.id ?? null;
-    const cacheKey = `${resolvedUserId ?? "none"}|${selectedDayKey}`;
-    const cached = dashboardCacheRef.current.get(cacheKey);
-
-    if (cached) {
-      setEntries(cached.entries);
-      setSummary(cached.summary);
-      setDashboardLoading(false);
-    } else {
-      setDashboardLoading(true);
-    }
-
-    void loadDashboardSnapshot(selectedDate, resolvedUserId)
-      .then((snapshot) => {
-        if (dashboardRequestIdRef.current !== requestId) {
-          return;
-        }
-
-        dashboardCacheRef.current.set(cacheKey, snapshot);
-        setEntries(snapshot.entries);
-        setSummary(snapshot.summary);
-        setDashboardLoading(false);
-        prefetchAdjacentDashboardSnapshots(selectedDate, resolvedUserId);
-      })
-      .catch((error) => {
-        if (dashboardRequestIdRef.current !== requestId) {
-          return;
-        }
-
-        toast({
-          title: t("dashboard.couldNotLoadRecords"),
-          description: error instanceof Error ? error.message : "Request failed",
-        });
-        setDashboardLoading(false);
-      });
-  }, [canSwitchUser, companyIdentity?.user.id, companySession, loadDashboardSnapshot, prefetchAdjacentDashboardSnapshots, selectedDate, selectedDayKey, selectedUserId, t, users]);
-
   useEffect(() => {
     if (!companyIdentity?.user.id) return;
     const needsUser = !searchParams.get("user");
@@ -869,22 +736,7 @@ export function DashboardPage() {
   }, [selectedDate, selectedDayKey]);
 
   async function refreshDashboardViews() {
-    const resolvedUserId =
-      canSwitchUser
-        ? selectedUserId ?? users[0]?.id ?? null
-        : companyIdentity?.user.id ?? null;
-    const cacheKey = `${resolvedUserId ?? "none"}|${selectedDayKey}`;
-    setDashboardLoading(true);
-    const snapshot = await loadDashboardSnapshot(selectedDate, resolvedUserId);
-    dashboardCacheRef.current.set(cacheKey, snapshot);
-    setEntries(snapshot.entries);
-    setSummary(snapshot.summary);
-    setDashboardLoading(false);
-    prefetchAdjacentDashboardSnapshots(selectedDate, resolvedUserId);
-    calendarMonthGenerationRef.current += 1;
-    calendarMonthCacheRef.current.clear();
-    calendarMonthRequestRef.current.clear();
-    await calendarResource.reload();
+    await dashboardPageResource.reload();
   }
 
   async function deleteEntry(entryId: number) {
@@ -924,6 +776,16 @@ export function DashboardPage() {
     if (!companySession) return;
     try {
       setTabletPunchSubmitting(true);
+      const preflight = await api.checkStartTimer(companySession.token, {
+        customFieldValues: input.customFieldValues,
+        projectId: input.projectId ?? null,
+        taskId: input.taskId ?? null,
+      });
+      setTabletPunchRequirements(preflight.requirements);
+      if (!preflight.ready) {
+        setTabletPunchSetupOpen(true);
+        return;
+      }
       await api.startTimer(companySession.token, {
         customFieldValues: input.customFieldValues,
         projectId: input.projectId ?? null,
@@ -933,11 +795,23 @@ export function DashboardPage() {
       setTabletPunchValues({});
       setTabletPunchProjectId("");
       setTabletPunchTaskId("");
+      setTabletPunchRequirements([]);
       await refreshDashboardViews();
     } catch (error) {
+      try {
+        const retry = await api.checkStartTimer(companySession.token, {
+          customFieldValues: input.customFieldValues,
+          projectId: input.projectId ?? null,
+          taskId: input.taskId ?? null,
+        });
+        setTabletPunchRequirements(retry.requirements);
+        setTabletPunchSetupOpen(true);
+      } catch {
+        // keep the setup open, but avoid surfacing a stale validation path
+      }
       toast({
         title: t("dashboard.couldNotStartTimer"),
-        description: error instanceof Error ? error.message : "Request failed"
+        description: "Request failed"
       });
     } finally {
       setTabletPunchSubmitting(false);
@@ -964,13 +838,46 @@ export function DashboardPage() {
       return;
     }
 
-    if (requiredTabletWorkFields.length > 0 || settings.projectsEnabled || settings.tasksEnabled) {
-      setTabletPunchSetupOpen(true);
+    setTabletPunchRequirements([]);
+    setTabletPunchSetupOpen(true);
+  }
+
+  useEffect(() => {
+    if (!companySession || !isTabletMode || !tabletPunchSetupOpen) {
       return;
     }
 
-    void startTabletTimer({ customFieldValues: {} });
-  }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void api.checkStartTimer(companySession.token, {
+        customFieldValues: tabletPunchValues,
+        projectId: tabletPunchProjectId ? Number(tabletPunchProjectId) : null,
+        taskId: tabletPunchTaskId ? Number(tabletPunchTaskId) : null,
+      })
+        .then((response) => {
+          if (!cancelled) {
+            setTabletPunchRequirements(response.requirements);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setTabletPunchRequirements([]);
+          }
+        });
+    }, 150);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    companySession,
+    isTabletMode,
+    tabletPunchSetupOpen,
+    tabletPunchProjectId,
+    tabletPunchTaskId,
+    tabletPunchValues,
+  ]);
 
   const createRecordHref = buildRecordEditorHref(
     effectiveUserId,
@@ -1011,7 +918,6 @@ export function DashboardPage() {
     () =>
       [
         "dashboard-dock",
-        dashboardLoading ? "1" : "0",
         isTabletMode ? "1" : "0",
         summary.activeEntry?.id ?? "none",
         dockShowsStop ? "1" : "0",
@@ -1027,7 +933,6 @@ export function DashboardPage() {
       canUseTabletPunch,
       createRecordHref,
       createRecordMessage,
-      dashboardLoading,
       dockShowsPlay,
       dockShowsStop,
       isTabletMode,
@@ -1066,12 +971,28 @@ export function DashboardPage() {
   if (isTabletMode && tabletPunchSetupOpen) {
     return (
       <FormPage className="min-h-0 flex-none">
-        <PageBackAction onClick={() => setTabletPunchSetupOpen(false)} label={t("common.close")} />
+        <PageBackAction onClick={() => {
+          setTabletPunchSetupOpen(false);
+          setTabletPunchRequirements([]);
+        }} label={t("common.close")} />
         <FormSection>
           <PageLabel
             title={t("dashboard.startWork")}
             description={t("dashboard.startWorkDescription", { defaultValue: "Fill the required fields to start a timer." })}
           />
+          {tabletPunchRequirements.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {tabletPunchRequirements.map((requirement, index) => (
+                <Badge
+                  key={`${requirement.kind}-${requirement.fieldId ?? requirement.label}-${index}`}
+                  variant="secondary"
+                  className="rounded-full px-2 py-0 text-[11px] font-medium"
+                >
+                  {requirement.label}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
           <FormFields>
             {settings.projectsEnabled ? (
               <Field label={t("recordEditor.project", { defaultValue: "Project" })}>
@@ -1145,6 +1066,7 @@ export function DashboardPage() {
                   setTabletPunchValues({});
                   setTabletPunchProjectId("");
                   setTabletPunchTaskId("");
+                  setTabletPunchRequirements([]);
                 }}
                 type="button"
                 disabled={tabletPunchSubmitting}
@@ -1160,68 +1082,58 @@ export function DashboardPage() {
 
   if (datePickerOpen) {
     return (
-      <motion.div
-        key="calendar-picker"
-        className="min-h-0 flex-none"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
-        style={{ willChange: "opacity" }}
-      >
-        <FormPage className="min-h-0 flex-none">
-          <PageBackAction onClick={closeDatePicker} label={t("common.close")} />
-          <FormSection>
-            <PageLabel
-              title={t("calendar.selectDate")}
-              description={t("calendar.selectDateHint")}
-            />
-            <Calendar
-              selected={draftDate}
-              month={visibleMonth}
-              onSelect={(date) => {
-                setDraftDate(date);
-                setVisibleMonth(startOfMonth(date));
-                updateContext({ day: date });
-                setDatePickerOpen(false);
-              }}
-              locale={settings.locale}
-              firstDayOfWeek={settings.firstDayOfWeek}
-              weekendDays={settings.weekendDays}
-              holidayDates={calendarHolidayDates}
-              dayStates={calendarDayStates}
-              onMonthChange={setVisibleMonth}
-              compact
-            />
-          </FormSection>
-          <PageDock cacheKey="calendar-picker">
-            <DockActionStack
-              primary={(
-                <div className="flex flex-col items-center gap-2">
-                  <Button
-                    variant={isNowContext ? "secondary" : "default"}
-                    size="sm"
-                    type="button"
-                    className="h-9 rounded-full px-4 text-xs font-medium"
-                    onClick={() => goToToday({ closePicker: true })}
-                    aria-label={t("dashboard.today")}
-                  >
-                    <ClockCounterClockwise size={14} weight="bold" />
-                    <span className="ml-2">{t("dashboard.today")}</span>
-                  </Button>
-                  <CompanyDateDisplay
-                    day={formatLocalDay(draftDate)}
-                    centered
-                    className="gap-0.5"
-                    dateClassName="text-center text-xs font-medium leading-5 text-muted-foreground"
-                    weekdayClassName="text-center text-[11px] leading-4 text-muted-foreground/80"
-                  />
-                </div>
-              )}
-            />
-          </PageDock>
-        </FormPage>
-      </motion.div>
+      <FormPage className="min-h-0 flex-none">
+        <PageBackAction onClick={closeDatePicker} label={t("common.close")} />
+        <FormSection>
+          <PageLabel
+            title={t("calendar.selectDate")}
+            description={t("calendar.selectDateHint")}
+          />
+          <Calendar
+            selected={draftDate}
+            month={visibleMonth}
+            onSelect={(date) => {
+              setDraftDate(date);
+              setVisibleMonth(startOfMonth(date));
+              updateContext({ day: date });
+              setDatePickerOpen(false);
+            }}
+            locale={settings.locale}
+            firstDayOfWeek={settings.firstDayOfWeek}
+            weekendDays={settings.weekendDays}
+            holidayDates={calendarHolidayDates}
+            dayStates={calendarDayStates}
+            onMonthChange={setVisibleMonth}
+            compact
+          />
+        </FormSection>
+        <PageDock cacheKey="calendar-picker">
+          <DockActionStack
+            primary={(
+              <div className="flex flex-col items-center gap-2">
+                <Button
+                  variant={isNowContext ? "secondary" : "default"}
+                  size="sm"
+                  type="button"
+                  className="h-9 rounded-full px-4 text-xs font-medium"
+                  onClick={() => goToToday({ closePicker: true })}
+                  aria-label={t("dashboard.today")}
+                >
+                  <ClockCounterClockwise size={14} weight="bold" />
+                  <span className="ml-2">{t("dashboard.today")}</span>
+                </Button>
+                <CompanyDateDisplay
+                  day={formatLocalDay(draftDate)}
+                  centered
+                  className="gap-0.5"
+                  dateClassName="text-center text-xs font-medium leading-5 text-muted-foreground"
+                  weekdayClassName="text-center text-[11px] leading-4 text-muted-foreground/80"
+                />
+              </div>
+            )}
+          />
+        </PageDock>
+      </FormPage>
     );
   }
 
@@ -1254,8 +1166,8 @@ export function DashboardPage() {
       />
       <PageLoadBoundary
         className="min-h-0 flex-none"
-        loading={dashboardLoading && entries.length === 0}
-        refreshing={dashboardLoading && entries.length > 0}
+        loading={!dashboardPageResource.hasData && !dashboardPageResource.error}
+        refreshing={dashboardPageResource.isRefreshing}
         skeleton={null}
       >
       <Stack gap="lg" className="min-h-full flex-1">
@@ -1364,12 +1276,17 @@ export function DashboardPage() {
                 }).allowed;
                 const canDelete = canEdit;
                 const editHref = `/dashboard/records/${entry.id}/edit?user=${effectiveUserId ?? ""}&day=${formatLocalDay(selectedDate)}`;
-                const supportText = getEntrySupportText(entry, customFieldsById, customFieldValueLabels);
                 const isActiveWorkEntry =
                   entry.entryType === "work" &&
                   summary.activeEntry?.id === entry.id &&
                   !entry.endTime;
                 const entryHeadline = getEntryHeadline(entry, getEntryLabel);
+                const secondaryBadges = buildEntrySecondaryBadges(
+                  entry,
+                  projectData,
+                  customFieldValueLabels,
+                  settings,
+                );
                 const entryMeta =
                   entry.entryType === "work"
                     ? formatMinutes(
@@ -1391,23 +1308,29 @@ export function DashboardPage() {
                         className={entryStateUi[entry.entryType].recordStatusClassName}
                       />
                     </div>
-                    <div className="min-w-0 flex flex-col gap-1 overflow-hidden">
-                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                        <p className="min-w-0 whitespace-normal break-words text-sm font-medium leading-4 text-foreground">
+                    <div className="min-w-0 overflow-hidden">
+                      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium leading-4 text-foreground">
                           {entryHeadline}
                         </p>
-                        <Badge
-                          variant={isActiveWorkEntry ? "destructive" : "secondary"}
-                          className="shrink-0 rounded-full px-2 py-0 text-[11px] leading-5"
-                        >
-                          {entryMeta}
-                        </Badge>
+                        <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
+                          <Badge
+                            variant={isActiveWorkEntry ? "destructive" : "secondary"}
+                            className="shrink-0 rounded-full px-2 py-0 text-[11px] leading-5"
+                          >
+                            {entryMeta}
+                          </Badge>
+                          {secondaryBadges.map((badge) => (
+                            <Badge
+                              key={badge.key}
+                              variant="outline"
+                              className="max-w-[7rem] shrink-0 rounded-full px-2 py-0 text-[11px] leading-5 text-muted-foreground sm:max-w-[9rem]"
+                            >
+                              <span className="block truncate">{badge.label}</span>
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
-                      {supportText ? (
-                        <p className="whitespace-normal break-words text-xs leading-4 text-muted-foreground">
-                          {supportText}
-                        </p>
-                      ) : null}
                     </div>
                     <div className="relative z-10 flex shrink-0 items-center justify-end gap-0.5 self-center">
                       <Button
@@ -1453,7 +1376,7 @@ export function DashboardPage() {
       </PageLoadBoundary>
       <PageDock cacheKey={dashboardDockKey}>
         <DockActionStack
-          primary={dashboardLoading ? null : isTabletMode ? (
+          primary={isTabletMode ? (
             <>
               {dockShowsStop || dockShowsPlay ? (
                 <Button
@@ -1534,12 +1457,12 @@ export function DashboardPage() {
               <Plus size={30} weight="bold" />
             </Button>
           )}
-          secondary={!dashboardLoading && isTabletMode && dockShowsPlay && canAddRecordButton ? (
+          secondary={isTabletMode && dockShowsPlay && canAddRecordButton ? (
             <DockActionButton asChild onPointerDown={triggerHapticFeedback}>
               <Link to={createRecordHref}>{t("recordEditor.addEntry")}</Link>
             </DockActionButton>
           ) : null}
-          message={!dashboardLoading && recordDockMessages.length > 0 ? (
+          message={recordDockMessages.length > 0 ? (
             <HintStack messages={recordDockMessages} className="text-center" />
           ) : null}
         />
