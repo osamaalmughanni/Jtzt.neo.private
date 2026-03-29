@@ -409,6 +409,7 @@ export function DashboardPage() {
     },
   });
   const dashboardPageErrorRef = useRef<unknown>(null);
+  const dashboardPageIsSettled = dashboardPageResource.hasData && !dashboardPageResource.isLoading && !dashboardPageResource.isRefreshing;
   const dashboardSnapshot =
     dashboardPageResource.data ?? {
       summary: defaultSummary,
@@ -1182,8 +1183,7 @@ export function DashboardPage() {
       />
       <PageLoadBoundary
         className="min-h-0 flex-none"
-        loading={!dashboardPageResource.hasData && !dashboardPageResource.error}
-        refreshing={dashboardPageResource.isRefreshing}
+        loading={!dashboardPageResource.hasData || dashboardPageResource.isRefreshing}
         skeleton={null}
       >
       <Stack gap="lg" className="min-h-full flex-1">
@@ -1385,8 +1385,8 @@ export function DashboardPage() {
           </div>
         </div>
       </Stack>
-      </PageLoadBoundary>
-      <PageDock cacheKey={dashboardDockKey}>
+        {dashboardPageIsSettled ? (
+          <PageDock cacheKey={dashboardDockKey}>
         <DockActionStack
           primary={isTabletMode ? (
             <>
@@ -1478,7 +1478,9 @@ export function DashboardPage() {
             <HintStack messages={recordDockMessages} className="text-center" />
           ) : null}
         />
-      </PageDock>
+          </PageDock>
+        ) : null}
+      </PageLoadBoundary>
     </FormPage>
   );
 }
