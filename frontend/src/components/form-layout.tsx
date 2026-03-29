@@ -5,7 +5,7 @@ import type { ComboboxOption } from "@/components/ui/combobox";
 import { cn } from "@/lib/utils";
 
 export function FormPage({ children, className }: { children: ReactNode; className?: string }) {
-  return <Stack gap="xl" className={cn("min-h-full flex-1", className)}>{children}</Stack>;
+  return <Stack gap="xl" className={cn("min-h-0 flex-1", className)}>{children}</Stack>;
 }
 
 export function FormPanel({ children, className }: { children: ReactNode; className?: string }) {

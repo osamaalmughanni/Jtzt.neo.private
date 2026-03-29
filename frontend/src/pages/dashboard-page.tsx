@@ -38,6 +38,7 @@ import { PageDock } from "@/components/page-dock";
 import { PageBackAction } from "@/components/page-back-action";
 import { PageLoadBoundary } from "@/components/page-load-state";
 import { PageLabel } from "@/components/page-label";
+import { CompanyDateDisplay } from "@/components/company-date-display";
 import { Stack } from "@/components/stack";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -327,7 +328,6 @@ export function DashboardPage() {
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const dashboardCacheRef = useRef(new Map<string, DashboardSnapshot>());
   const dashboardRequestIdRef = useRef(0);
-  const dashboardHasLoadedRef = useRef(false);
   const calendarMonthCacheRef = useRef(new Map<string, CalendarSnapshot>());
   const calendarMonthRequestRef = useRef(new Map<string, Promise<CalendarSnapshot>>());
   const calendarMonthGenerationRef = useRef(0);
@@ -394,10 +394,11 @@ export function DashboardPage() {
     setSummaryPeriod((current) => (current === "week" ? "month" : current === "month" ? "year" : "week"));
   }, []);
   const previousSelectedDayKeyRef = useRef(selectedDayKey);
-  const todayDay = getLocalNowSnapshot(new Date(), settings.timeZone).localDay;
+  const companyTimeZone = companySettings?.timeZone ?? settings.timeZone;
+  const todayDay = getLocalNowSnapshot(new Date(), companyTimeZone).localDay;
   const selectedDayPastDistance = getPastDayDistance(selectedDayKey, todayDay);
   const selectedDayFutureDistance = getFutureDayDistance(selectedDayKey, todayDay);
-  const isNowContext = isToday(selectedDate, settings.timeZone);
+  const isNowContext = isToday(selectedDate, companyTimeZone);
   const loadCalendarMonthSnapshot = useCallback(async (targetMonth: Date) => {
     if (!companySession || !effectiveUserId) {
       return {
@@ -691,10 +692,16 @@ export function DashboardPage() {
     setDatePickerOpen(false);
     setDraftDate(selectedDateRef.current);
   }, []);
-  const goToToday = useCallback(() => {
-    const todayDate = parseLocalDay(getLocalNowSnapshot(new Date(), settings.timeZone).localDay) ?? new Date();
+  const goToToday = useCallback((options?: { closePicker?: boolean }) => {
+    const todayDate = parseLocalDay(getLocalNowSnapshot(new Date(), companyTimeZone).localDay) ?? new Date();
     updateContext({ day: todayDate });
-  }, [settings.timeZone, updateContext]);
+    setDraftDate(todayDate);
+    setVisibleMonth(startOfMonth(todayDate));
+
+    if (options?.closePicker) {
+      setDatePickerOpen(false);
+    }
+  }, [companyTimeZone, updateContext]);
   useEffect(() => {
     if (!companySession || !canSwitchUser) {
       setUsers([]);
@@ -773,7 +780,6 @@ export function DashboardPage() {
       setEntries([]);
       setSummary(defaultSummary);
       setDashboardLoading(false);
-      dashboardHasLoadedRef.current = false;
       return;
     }
 
@@ -790,11 +796,8 @@ export function DashboardPage() {
       setEntries(cached.entries);
       setSummary(cached.summary);
       setDashboardLoading(false);
-      dashboardHasLoadedRef.current = true;
-    } else if (!dashboardHasLoadedRef.current) {
-      setDashboardLoading(true);
     } else {
-      setDashboardLoading(false);
+      setDashboardLoading(true);
     }
 
     void loadDashboardSnapshot(selectedDate, resolvedUserId)
@@ -806,7 +809,6 @@ export function DashboardPage() {
         dashboardCacheRef.current.set(cacheKey, snapshot);
         setEntries(snapshot.entries);
         setSummary(snapshot.summary);
-        dashboardHasLoadedRef.current = true;
         setDashboardLoading(false);
         prefetchAdjacentDashboardSnapshots(selectedDate, resolvedUserId);
       })
@@ -819,7 +821,6 @@ export function DashboardPage() {
           title: t("dashboard.couldNotLoadRecords"),
           description: error instanceof Error ? error.message : "Request failed",
         });
-        dashboardHasLoadedRef.current = true;
         setDashboardLoading(false);
       });
   }, [canSwitchUser, companyIdentity?.user.id, companySession, loadDashboardSnapshot, prefetchAdjacentDashboardSnapshots, selectedDate, selectedDayKey, selectedUserId, t, users]);
@@ -873,11 +874,11 @@ export function DashboardPage() {
         ? selectedUserId ?? users[0]?.id ?? null
         : companyIdentity?.user.id ?? null;
     const cacheKey = `${resolvedUserId ?? "none"}|${selectedDayKey}`;
+    setDashboardLoading(true);
     const snapshot = await loadDashboardSnapshot(selectedDate, resolvedUserId);
     dashboardCacheRef.current.set(cacheKey, snapshot);
     setEntries(snapshot.entries);
     setSummary(snapshot.summary);
-    dashboardHasLoadedRef.current = true;
     setDashboardLoading(false);
     prefetchAdjacentDashboardSnapshots(selectedDate, resolvedUserId);
     calendarMonthGenerationRef.current += 1;
@@ -1056,8 +1057,8 @@ export function DashboardPage() {
 
     setHomeAction({
       key: "dashboard-home-today",
-      label: "Today",
-      onClick: goToToday,
+      label: t("dashboard.today"),
+      onClick: () => goToToday(),
     });
     return () => setHomeAction(null);
   }, [closeDatePicker, datePickerOpen, goToToday, setHomeAction, tabletPunchSetupOpen, t]);
@@ -1193,12 +1194,29 @@ export function DashboardPage() {
               compact
             />
           </FormSection>
-          <PageDock cacheKey={`calendar-picker|${formatLocalDay(draftDate)}|${visibleMonth.getFullYear()}|${visibleMonth.getMonth()}`}>
+          <PageDock cacheKey="calendar-picker">
             <DockActionStack
               primary={(
-                <p className="text-center text-xs leading-5 text-muted-foreground">
-                  {formatCompanyDate(formatLocalDay(draftDate), settings.locale)}
-                </p>
+                <div className="flex flex-col items-center gap-2">
+                  <Button
+                    variant={isNowContext ? "secondary" : "default"}
+                    size="sm"
+                    type="button"
+                    className="h-9 rounded-full px-4 text-xs font-medium"
+                    onClick={() => goToToday({ closePicker: true })}
+                    aria-label={t("dashboard.today")}
+                  >
+                    <ClockCounterClockwise size={14} weight="bold" />
+                    <span className="ml-2">{t("dashboard.today")}</span>
+                  </Button>
+                  <CompanyDateDisplay
+                    day={formatLocalDay(draftDate)}
+                    centered
+                    className="gap-0.5"
+                    dateClassName="text-center text-xs font-medium leading-5 text-muted-foreground"
+                    weekdayClassName="text-center text-[11px] leading-4 text-muted-foreground/80"
+                  />
+                </div>
               )}
             />
           </PageDock>
@@ -1263,71 +1281,64 @@ export function DashboardPage() {
               </div>
             </FormSection>
 
-            <div className="flex flex-col gap-1 pt-1">
+            <div className="flex flex-col gap-3 pt-1">
               <button
                 type="button"
-                className="text-left"
+                className="min-w-0 text-left"
                 onClick={() => openDatePicker()}
                 aria-label={t("calendar.openDatePicker")}
               >
-                <div className="flex flex-col gap-1">
-                  <p className="min-w-0 text-3xl font-semibold leading-none tracking-[-0.05em] text-foreground sm:text-4xl">
-                    {formatCompanyDate(formatLocalDay(selectedDate), settings.locale, {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </p>
-                  <p className="min-w-0 text-xs font-medium leading-none tracking-[-0.01em] text-muted-foreground sm:text-sm">
-                    {selectedDate.toLocaleDateString(settings.locale, {
-                      weekday: "long",
-                    })}
-                  </p>
-                </div>
+                <CompanyDateDisplay
+                  day={formatLocalDay(selectedDate)}
+                  className="gap-0.5"
+                  dateClassName="text-3xl font-semibold leading-none tracking-[-0.05em] sm:text-4xl"
+                  weekdayClassName="text-xs font-medium leading-none tracking-[-0.01em] sm:text-sm"
+                />
               </button>
-            </div>
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <div className="flex items-end gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  type="button"
-                  className="h-9 w-9 shrink-0 rounded-full"
-                  onClick={() => openDatePicker()}
-                  aria-label={t("calendar.openDatePicker")}
-                >
-                  <CalendarBlank size={16} weight="bold" />
-                </Button>
-                <Button
-                  variant={isNowContext ? "secondary" : "default"}
-                  size="icon"
-                  className="h-9 w-9 rounded-full"
-                  onClick={goToToday}
-                  type="button"
-                  aria-label={t("dashboard.today")}
+
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    type="button"
+                    className="h-9 w-9 shrink-0 rounded-full"
+                    onClick={() => openDatePicker()}
+                    aria-label={t("calendar.openDatePicker")}
+                  >
+                    <CalendarBlank size={16} weight="bold" />
+                  </Button>
+                  <Button
+                    variant={isNowContext ? "secondary" : "default"}
+                    size="icon"
+                    className="h-9 w-9 rounded-full"
+                    onClick={() => goToToday()}
+                    type="button"
+                    aria-label={t("dashboard.today")}
                   >
                     <ClockCounterClockwise size={16} weight="bold" />
                   </Button>
                 </div>
-              <div className="flex items-end gap-2">
-                <Button
-                  variant="outline"
-                  className="h-9 max-w-[6.5rem] rounded-full px-3 text-xs font-medium"
-                  onClick={cycleSummaryPeriod}
-                  type="button"
-                  aria-label={summaryPeriodLabel}
-                  title={summaryPeriodLabel}
-                >
-                  <span className="truncate">{summaryPeriodLabel}</span>
-                </Button>
-                <Badge
-                  variant="outline"
-                  className="flex h-9 items-center rounded-full px-3 text-xs font-medium whitespace-nowrap text-muted-foreground"
-                >
-                  <span className="truncate">
-                    {t("dashboard.actualLabel")} {formatMinutes(summaryPeriodStats.recordedMinutes)} / {t("dashboard.targetLabel")} {formatMinutes(summaryPeriodStats.expectedMinutes)}
-                  </span>
-                </Badge>
+                <div className="flex min-w-0 flex-nowrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    className="h-9 shrink-0 rounded-full px-3 text-xs font-medium"
+                    onClick={cycleSummaryPeriod}
+                    type="button"
+                    aria-label={summaryPeriodLabel}
+                    title={summaryPeriodLabel}
+                  >
+                    <span className="max-w-[6.5rem] truncate">{summaryPeriodLabel}</span>
+                  </Button>
+                  <Badge
+                    variant="outline"
+                    className="flex h-9 min-w-0 flex-1 items-center justify-start rounded-full px-3 text-xs font-medium text-muted-foreground"
+                  >
+                    <span className="min-w-0 truncate">
+                      {t("dashboard.actualLabel")} {formatMinutes(summaryPeriodStats.recordedMinutes)} / {t("dashboard.targetLabel")} {formatMinutes(summaryPeriodStats.expectedMinutes)}
+                    </span>
+                  </Badge>
+                </div>
               </div>
             </div>
           </div>
@@ -1335,8 +1346,7 @@ export function DashboardPage() {
 
         <div className="rounded-2xl border border-border bg-card p-4">
           <div className="flex flex-col gap-2">
-            <div className="flex flex-col gap-2">
-              {entries.map((entry) => {
+            {entries.map((entry) => {
                 const canEdit = evaluateTimeEntryPolicy({
                   mode: "edit",
                   role: companyIdentity?.user.role,
@@ -1437,7 +1447,6 @@ export function DashboardPage() {
                   </div>
                 </div>
               ) : null}
-            </div>
           </div>
         </div>
       </Stack>

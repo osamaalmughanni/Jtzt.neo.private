@@ -1,5 +1,5 @@
 import { CalendarBlank } from "phosphor-react";
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatLocalDay, getLocalNowSnapshot } from "@shared/utils/time";
 import { Calendar } from "@/components/ui/calendar";
@@ -247,7 +247,7 @@ export const DateInput = forwardRef<
     }
   }, [calendarOpen, selectedDate, timeZone]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!calendarOpen) {
       setPopupPosition(null);
       return;
@@ -287,23 +287,11 @@ export const DateInput = forwardRef<
 
     updatePopupPosition();
 
-    let frame = 0;
-    let rafId = 0;
-    const bootstrap = () => {
-      updatePopupPosition();
-      frame += 1;
-      if (frame < 4) {
-        rafId = window.requestAnimationFrame(bootstrap);
-      }
-    };
-    rafId = window.requestAnimationFrame(bootstrap);
-
     const handleViewportChange = () => updatePopupPosition();
     window.addEventListener("resize", handleViewportChange);
     window.addEventListener("scroll", handleViewportChange, true);
 
     return () => {
-      window.cancelAnimationFrame(rafId);
       window.removeEventListener("resize", handleViewportChange);
       window.removeEventListener("scroll", handleViewportChange, true);
     };

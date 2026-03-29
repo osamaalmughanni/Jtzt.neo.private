@@ -83,6 +83,35 @@ export function formatCompanyDate(day: string, locale: string, options?: Intl.Da
   }
 }
 
+export function formatCompanyDateParts(day: string, locale: string) {
+  const parsed = parseLocalDay(day);
+  if (!parsed) {
+    return {
+      dateLabel: day,
+      weekdayLabel: "",
+    };
+  }
+
+  try {
+    const normalizedLocale = normalizeLocale(locale);
+    return {
+      dateLabel: parsed.toLocaleDateString(normalizedLocale, {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }),
+      weekdayLabel: parsed.toLocaleDateString(normalizedLocale, {
+        weekday: "long",
+      }),
+    };
+  } catch {
+    return {
+      dateLabel: day,
+      weekdayLabel: "",
+    };
+  }
+}
+
 export function formatCompanyDateTime(value: string, locale: string, formatString: string, timeZone?: string | null) {
   const parsed = parseDateTimeValue(value);
   if (!parsed) {

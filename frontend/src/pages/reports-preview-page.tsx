@@ -12,6 +12,7 @@ import { PageBackAction } from "@/components/page-back-action";
 import { PageLabel } from "@/components/page-label";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePageResource } from "@/hooks/use-page-resource";
 import { api } from "@/lib/api";
@@ -569,7 +570,7 @@ export function ReportsPreviewPage() {
         skeleton={<PageLoadingState label={t("reports.creating")} minHeightClassName="min-h-[28rem]" />}
       >
         <AppFullBleed className="flex min-h-0 flex-1 min-w-0 xl:px-12 2xl:px-16">
-          <FormPanel className="flex h-full min-h-0 min-w-0 w-full flex-col gap-5 overflow-hidden">
+          <FormPanel className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col gap-5 overflow-hidden">
             {report ? (
               <>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -607,28 +608,28 @@ export function ReportsPreviewPage() {
                     </div>
                   </div>
 
-                  <TabsContent value="table" className="mt-0 min-h-0 min-w-0 flex-1 overflow-hidden">
-                    <div className="relative h-full w-full min-w-0 overflow-auto rounded-2xl border border-border bg-background max-h-[calc(100dvh-18rem)]">
-                      <table className="w-full min-w-full table-auto border-separate border-spacing-0 text-sm">
-                        <thead className="sticky top-0 z-30">
-                          <tr className="h-11 border-b border-border bg-muted/40 hover:bg-muted/40">
+                  <TabsContent value="table" className="mt-0 min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
+                    <div className="relative min-h-0 w-full min-w-0 flex-1 overflow-auto rounded-2xl border border-border bg-background">
+                      <Table className="w-full min-w-full table-auto border-separate border-spacing-0 text-sm">
+                        <TableHeader>
+                          <TableRow className="h-11 border-b border-border bg-muted/40 hover:bg-muted/40">
                             {resolvedColumns.map((column) => (
-                              <th
+                              <TableHead
                                 key={column.key}
                                 className="min-w-[10rem] whitespace-normal break-words border-b border-border bg-muted/40 px-4 py-3 text-left font-medium leading-5 text-foreground align-middle"
                               >
                                 {getReportColumnLabel(column, t)}
-                              </th>
+                              </TableHead>
                             ))}
-                          </tr>
-                        </thead>
-                        <tbody>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {rowsWithMeta.map(({ row, meta }, index) => {
                             const rowType = typeof row.type === "string" ? row.type : null;
                             return (
-                              <tr key={index} className="border-b border-border/70 last:border-b-0">
+                              <TableRow key={index} className="border-b border-border/70 last:border-b-0">
                                 {resolvedColumns.map((column) => (
-                                  <td key={column.key} className="min-w-[10rem] px-4 py-3 text-muted-foreground align-middle">
+                                  <TableCell key={column.key} className="min-w-[10rem] px-4 py-3 text-muted-foreground align-middle">
                                     {column.kind === "overtime_state" && meta.overtime ? (
                                       <OvertimeStateBadge meta={meta.overtime} />
                                     ) : column.kind === "overtime_timeline" && meta.overtime ? (
@@ -649,18 +650,18 @@ export function ReportsPreviewPage() {
                                         )}
                                       </span>
                                     )}
-                                  </td>
+                                  </TableCell>
                                 ))}
-                              </tr>
+                              </TableRow>
                             );
                           })}
-                        </tbody>
-                      </table>
+                        </TableBody>
+                      </Table>
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="gantt" className="mt-0 min-h-0 flex-1 overflow-hidden">
-                    <div className="flex h-full w-full min-h-0 flex-col gap-4 rounded-2xl border border-border p-4">
+                  <TabsContent value="gantt" className="mt-0 min-h-0 flex flex-1 flex-col overflow-hidden">
+                    <div className="flex w-full min-h-0 flex-1 flex-col gap-4 rounded-2xl border border-border p-4">
                       <p className="text-sm text-muted-foreground">Responsive timeline with condensed lanes for readable large reports.</p>
                       {timelineUsers.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{t("reports.noTimeline")}</p>
@@ -783,7 +784,7 @@ export function ReportsPreviewPage() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="overtime" className="mt-0 min-h-0 flex-1 overflow-hidden">
+                  <TabsContent value="overtime" className="mt-0 min-h-0 flex flex-1 flex-col overflow-hidden">
                     <div className="flex h-full w-full min-h-0 flex-col gap-4 rounded-2xl border border-border p-4">
                       {overtimePreviewRows.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{t("reports.noOvertimePreview")}</p>
@@ -807,8 +808,8 @@ export function ReportsPreviewPage() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="vacation" className="mt-0 min-h-0 flex-1 overflow-hidden">
-                    <div className="flex h-full w-full min-h-0 flex-col gap-4 rounded-2xl border border-border p-4">
+                  <TabsContent value="vacation" className="mt-0 min-h-0 flex flex-1 flex-col overflow-hidden">
+                    <div className="flex w-full min-h-0 flex-1 flex-col gap-4 rounded-2xl border border-border p-4">
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                         <div className="rounded-2xl border border-border bg-background p-4">
                           <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.vacationUsers")}</p>

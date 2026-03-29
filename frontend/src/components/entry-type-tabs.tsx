@@ -42,7 +42,7 @@ export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProp
             title={item.label}
             onClick={() => onValueChange(item.value)}
             className={cn(
-              "inline-flex min-w-0 shrink-0 items-center justify-start rounded-md border px-2.5 py-2 text-sm font-medium leading-none outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              "inline-flex min-w-0 shrink-0 items-center justify-start rounded-md border px-3 py-2.5 text-base font-semibold leading-none outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
               isActive ? "flex-none gap-1.5" : "flex-none gap-0.5",
               isActive
                 ? cn(
@@ -52,10 +52,10 @@ export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProp
                 : "border-border/70 bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground",
             )}
           >
-            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
-              <Icon size={14} weight="duotone" className="shrink-0 opacity-80" />
+            <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
+              <Icon size={18} weight="duotone" className="shrink-0 opacity-90" />
             </span>
-            {isActive ? <span className="min-w-0 whitespace-nowrap">{item.label}</span> : null}
+            {isActive ? <span className="min-w-0 whitespace-nowrap text-base">{item.label}</span> : null}
           </button>
         );
       })}

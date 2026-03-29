@@ -75,18 +75,18 @@ export function PageLoadBoundary({
   }, [refreshing, startLoading, stopLoading]);
 
   if (loading) {
-    return <div className={cn("flex min-h-full flex-1 flex-col", className)} aria-hidden="true" />;
+    return <div className={cn("flex min-h-0 flex-1 flex-col", className)} aria-hidden="true" />;
   }
 
   return (
     <motion.div
-      className={cn("min-h-full flex-1", className)}
+      className={cn("min-h-0 flex-1", className)}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
       style={{ willChange: "opacity" }}
     >
-      <Stack gap={gap} className="min-h-full flex-1">
+      <Stack gap={gap} className="min-h-0 flex-1">
         {intro}
         {children}
       </Stack>
