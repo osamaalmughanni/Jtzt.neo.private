@@ -27,7 +27,7 @@ export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProp
   const entryStateUi = getEntryStateUi(t);
 
   return (
-    <div role="tablist" aria-label={t("recordEditor.entryType")} className="flex w-full min-w-0 gap-1 overflow-x-auto overflow-y-hidden">
+    <div role="tablist" aria-label={t("recordEditor.entryType")} className="flex w-full min-w-0 flex-wrap gap-1">
       {items.map((item) => {
         const Icon = getEntryTypeIcon(item.value);
         const isActive = value === item.value;
@@ -42,8 +42,10 @@ export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProp
             title={item.label}
             onClick={() => onValueChange(item.value)}
             className={cn(
-              "inline-flex min-w-0 shrink-0 items-center justify-start rounded-md border px-3 py-2.5 text-base font-semibold leading-none outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-              isActive ? "flex-none gap-1.5" : "flex-none gap-0.5",
+              "inline-flex min-w-0 items-center justify-center rounded-md border text-sm font-semibold leading-none outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:py-2.5 sm:text-base",
+              isActive
+                ? "flex-1 gap-1.5 px-3 py-2"
+                : "w-10 shrink-0 gap-0 px-0 py-2 sm:w-11",
               isActive
                 ? cn(
                     "shadow-none",
@@ -53,9 +55,9 @@ export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProp
             )}
           >
             <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
-              <Icon size={18} weight="duotone" className="shrink-0 opacity-90" />
+              <Icon size={16} weight="duotone" className="shrink-0 opacity-90 sm:h-[18px] sm:w-[18px]" />
             </span>
-            {isActive ? <span className="min-w-0 whitespace-nowrap text-base">{item.label}</span> : null}
+            {isActive ? <span className="min-w-0 truncate text-center">{item.label}</span> : null}
           </button>
         );
       })}
