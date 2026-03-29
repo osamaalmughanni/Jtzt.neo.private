@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { HTTPException } from "hono/http-exception";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type {
   CompanySnapshot,
   CreateCompanyAdminInput,
@@ -10,6 +11,20 @@ import type {
   InvitationCodeListResponse
 } from "../../shared/types/api";
 import { destroyCompanyDatabase } from "../db/runtime-database";
+import {
+  companies,
+  companySettings,
+  invitationCodes,
+  projectTasks,
+  projectUsers,
+  projects,
+  publicHolidayCache,
+  tasks,
+  timeEntries,
+  userContractScheduleBlocks,
+  userContracts,
+  users,
+} from "../db/schema";
 import { mapCompanySettings, mapCompanyUser, mapProject, mapTask, mapTimeEntry, mapUserContract, mapUserContractScheduleBlock } from "../db/mappers";
 import type { AppDatabase, RuntimeConfig } from "../runtime/types";
 import { systemService } from "./system-service";
@@ -45,42 +60,41 @@ function validateSnapshot(snapshot: CompanySnapshot) {
 }
 
 async function deleteCompanyData(db: AppDatabase, companyId: string) {
-  await db.batch([
-    { sql: "DELETE FROM tasks", params: [] },
-    { sql: "DELETE FROM projects", params: [] },
-    { sql: "DELETE FROM time_entries", params: [] },
-    { sql: "DELETE FROM user_contract_schedule_blocks", params: [] },
-    { sql: "DELETE FROM user_contracts", params: [] },
-    { sql: "DELETE FROM public_holiday_cache", params: [] },
-    { sql: "DELETE FROM company_settings", params: [] },
-    { sql: "DELETE FROM users", params: [] }
-  ]);
+  await db.orm.transaction(async (tx: any) => {
+    await tx.delete(projectTasks).run();
+    await tx.delete(projectUsers).run();
+    await tx.delete(tasks).run();
+    await tx.delete(projects).run();
+    await tx.delete(timeEntries).run();
+    await tx.delete(userContractScheduleBlocks).run();
+    await tx.delete(userContracts).run();
+    await tx.delete(publicHolidayCache).run();
+    await tx.delete(companySettings).run();
+    await tx.delete(users).run();
+  });
 }
 
 async function seedCompanyAdmin(db: AppDatabase, companyId: string, payload: { username: string; password: string; fullName: string }) {
-    const result = await db.run(
-      `INSERT INTO users (
-      username,
-      full_name,
-      password_hash,
-      role,
-      created_at
-    ) VALUES (?, ?, ?, 'admin', ?)`,
-    [payload.username, payload.fullName, bcrypt.hashSync(payload.password, 10), new Date().toISOString()]
-  );
-  return Number(result.lastRowId);
+  const result = await db.orm.insert(users).values({
+    username: payload.username,
+    fullName: payload.fullName,
+    passwordHash: bcrypt.hashSync(payload.password, 10),
+    role: "admin",
+    createdAt: new Date().toISOString(),
+  }).returning({ id: users.id });
+  return Number(result[0]?.id);
 }
 
 async function seedDefaultProjects(db: AppDatabase, companyId: string) {
-  const existing = await db.first<{ count: number }>("SELECT COUNT(*) as count FROM projects", []);
+  const existing = await db.orm.select({ count: sql<number>`count(*)` }).from(projects).get();
   if ((existing?.count ?? 0) > 0) {
     return;
   }
-  await db.run("INSERT INTO projects (name, description, created_at) VALUES (?, ?, ?)", [
-    "General",
-    "Default project",
-    new Date().toISOString()
-  ]);
+  await db.orm.insert(projects).values({
+    name: "General",
+    description: "Default project",
+    createdAt: new Date().toISOString(),
+  }).run();
 }
 
 async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string, snapshot: CompanySnapshot) {
@@ -89,155 +103,98 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
   await deleteCompanyData(db, companyId);
 
   if (snapshot.settings) {
-    await db.run(
-      `INSERT INTO company_settings (
-        currency,
-        locale,
-        time_zone,
-        date_time_format,
-        first_day_of_week,
-        weekend_days_json,
-        edit_days_limit,
-        insert_days_limit,
-        allow_one_record_per_day,
-        allow_intersecting_records,
-        allow_records_on_holidays,
-        allow_records_on_weekends,
-        allow_future_records,
-        country,
-        tablet_idle_timeout_seconds,
-        auto_break_after_minutes,
-        auto_break_duration_minutes,
-        projects_enabled,
-        tasks_enabled,
-        overtime_settings_json,
-        custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-      [
-        snapshot.settings.currency,
-        snapshot.settings.locale,
-        snapshot.settings.timeZone,
-        snapshot.settings.dateTimeFormat,
-        snapshot.settings.firstDayOfWeek,
-        JSON.stringify(snapshot.settings.weekendDays ?? DEFAULT_COMPANY_WEEKEND_DAYS),
-        snapshot.settings.editDaysLimit,
-        snapshot.settings.insertDaysLimit,
-        snapshot.settings.allowOneRecordPerDay ? 1 : 0,
-        snapshot.settings.allowIntersectingRecords ? 1 : 0,
-        snapshot.settings.allowRecordsOnHolidays ? 1 : 0,
-        snapshot.settings.allowRecordsOnWeekends ? 1 : 0,
-        snapshot.settings.allowFutureRecords ? 1 : 0,
-        snapshot.settings.country,
-        snapshot.settings.tabletIdleTimeoutSeconds,
-        snapshot.settings.autoBreakAfterMinutes,
-        snapshot.settings.autoBreakDurationMinutes,
-        snapshot.settings.projectsEnabled ? 1 : 0,
-        snapshot.settings.tasksEnabled ? 1 : 0,
-        JSON.stringify((snapshot.settings as { overtime?: unknown }).overtime ?? createDefaultOvertimeSettings()),
-        JSON.stringify(snapshot.settings.customFields)
-      ]
-    );
+    await db.orm.insert(companySettings).values({
+      currency: snapshot.settings.currency,
+      locale: snapshot.settings.locale,
+      timeZone: snapshot.settings.timeZone,
+      dateTimeFormat: snapshot.settings.dateTimeFormat,
+      firstDayOfWeek: snapshot.settings.firstDayOfWeek,
+      weekendDaysJson: JSON.stringify(snapshot.settings.weekendDays ?? DEFAULT_COMPANY_WEEKEND_DAYS),
+      editDaysLimit: snapshot.settings.editDaysLimit,
+      insertDaysLimit: snapshot.settings.insertDaysLimit,
+      allowOneRecordPerDay: snapshot.settings.allowOneRecordPerDay ? 1 : 0,
+      allowIntersectingRecords: snapshot.settings.allowIntersectingRecords ? 1 : 0,
+      allowRecordsOnHolidays: snapshot.settings.allowRecordsOnHolidays ? 1 : 0,
+      allowRecordsOnWeekends: snapshot.settings.allowRecordsOnWeekends ? 1 : 0,
+      allowFutureRecords: snapshot.settings.allowFutureRecords ? 1 : 0,
+      country: snapshot.settings.country,
+      tabletIdleTimeoutSeconds: snapshot.settings.tabletIdleTimeoutSeconds,
+      autoBreakAfterMinutes: snapshot.settings.autoBreakAfterMinutes,
+      autoBreakDurationMinutes: snapshot.settings.autoBreakDurationMinutes,
+      projectsEnabled: snapshot.settings.projectsEnabled ? 1 : 0,
+      tasksEnabled: snapshot.settings.tasksEnabled ? 1 : 0,
+      overtimeSettingsJson: JSON.stringify((snapshot.settings as { overtime?: unknown }).overtime ?? createDefaultOvertimeSettings()),
+      customFieldsJson: JSON.stringify(snapshot.settings.customFields),
+    }).run();
   }
 
   const userIdMap = new Map<number, number>();
   for (const user of snapshot.users) {
-    const result = await db.run(
-      `INSERT INTO users (
-        username,
-        full_name,
-        password_hash,
-        role,
-        is_active,
-        deleted_at,
-        pin_code,
-        email,
-        custom_field_values_json,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-      [
-        user.username,
-        user.fullName,
-        user.passwordHash,
-        user.role,
-        user.isActive ? 1 : 0,
-        user.deletedAt ?? null,
-        user.pinCode,
-        user.email,
-        JSON.stringify(user.customFieldValues ?? {}),
-        user.createdAt
-      ]
-    );
-    userIdMap.set(user.id, Number(result.lastRowId));
+    const result = await db.orm.insert(users).values({
+      username: user.username,
+      fullName: user.fullName,
+      passwordHash: user.passwordHash,
+      role: user.role,
+      isActive: user.isActive ? 1 : 0,
+      deletedAt: user.deletedAt ?? null,
+      pinCode: user.pinCode,
+      email: user.email,
+      customFieldValuesJson: JSON.stringify(user.customFieldValues ?? {}),
+      createdAt: user.createdAt,
+    }).returning({ id: users.id });
+    userIdMap.set(user.id, Number(result[0]?.id));
   }
 
   const projectIdMap = new Map<number, number>();
   for (const project of snapshot.projects) {
-    const result = await db.run(
-      `INSERT INTO projects (
-        name,
-        description,
-        budget,
-        is_active,
-        allow_all_users,
-        allow_all_tasks,
-        custom_field_values_json,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)` ,
-      [
-        project.name,
-        project.description,
-        project.budget ?? 0,
-        project.isActive ? 1 : 0,
-        project.allowAllUsers ? 1 : 0,
-        project.allowAllTasks ? 1 : 0,
-        JSON.stringify(project.customFieldValues ?? {}),
-        project.createdAt
-      ]
-    );
-    projectIdMap.set(project.id, Number(result.lastRowId));
+    const result = await db.orm.insert(projects).values({
+      name: project.name,
+      description: project.description,
+      budget: project.budget ?? 0,
+      isActive: project.isActive ? 1 : 0,
+      allowAllUsers: project.allowAllUsers ? 1 : 0,
+      allowAllTasks: project.allowAllTasks ? 1 : 0,
+      customFieldValuesJson: JSON.stringify(project.customFieldValues ?? {}),
+      createdAt: project.createdAt,
+    }).returning({ id: projects.id });
+    projectIdMap.set(project.id, Number(result[0]?.id));
   }
 
   const taskIdMap = new Map<number, number>();
   for (const task of snapshot.tasks) {
-    const result = await db.run("INSERT INTO tasks (title, is_active, custom_field_values_json, created_at) VALUES (?, ?, ?, ?)", [
-      task.title,
-      task.isActive ? 1 : 0,
-      JSON.stringify(task.customFieldValues ?? {}),
-      task.createdAt
-    ]);
-    taskIdMap.set(task.id, Number(result.lastRowId));
+    const result = await db.orm.insert(tasks).values({
+      title: task.title,
+      isActive: task.isActive ? 1 : 0,
+      customFieldValuesJson: JSON.stringify(task.customFieldValues ?? {}),
+      createdAt: task.createdAt,
+    }).returning({ id: tasks.id });
+    taskIdMap.set(task.id, Number(result[0]?.id));
   }
 
   for (const contract of snapshot.userContracts) {
     const userId = userIdMap.get(contract.userId);
     if (!userId) continue;
-    const result = await db.run(
-      `INSERT INTO user_contracts (
-        user_id,
-        hours_per_week,
-        start_date,
-        end_date,
-        payment_per_hour,
-        annual_vacation_days,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, contract.annualVacationDays, contract.createdAt]
-    );
-    const contractId = Number(result.lastRowId);
+    const result = await db.orm.insert(userContracts).values({
+      userId,
+      hoursPerWeek: contract.hoursPerWeek,
+      startDate: contract.startDate,
+      endDate: contract.endDate,
+      paymentPerHour: contract.paymentPerHour,
+      annualVacationDays: contract.annualVacationDays,
+      createdAt: contract.createdAt,
+    }).returning({ id: userContracts.id });
+    const contractId = Number(result[0]?.id);
     const schedule = Array.isArray((contract as { schedule?: unknown }).schedule) ? contract.schedule : [];
     for (const day of schedule) {
       for (const [blockIndex, block] of day.blocks.entries()) {
-        await db.run(
-          `INSERT INTO user_contract_schedule_blocks (
-            contract_id,
-            weekday,
-            block_order,
-            start_time,
-            end_time,
-            minutes
-          ) VALUES (?, ?, ?, ?, ?, ?)`,
-          [contractId, day.weekday, blockIndex + 1, block.startTime, block.endTime, block.minutes]
-        );
+        await db.orm.insert(userContractScheduleBlocks).values({
+          contractId,
+          weekday: day.weekday,
+          blockOrder: blockIndex + 1,
+          startTime: block.startTime,
+          endTime: block.endTime,
+          minutes: block.minutes,
+        }).run();
       }
     }
   }
@@ -247,49 +204,34 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
     if (!userId) continue;
     const projectId = entry.projectId != null ? projectIdMap.get(entry.projectId) ?? null : null;
     const taskId = entry.taskId != null ? taskIdMap.get(entry.taskId) ?? null : null;
-    await db.run(
-      `INSERT INTO time_entries (
-        user_id,
-        entry_type,
-        entry_date,
-        end_date,
-        start_time,
-        end_time,
-        notes,
-        project_id,
-        task_id,
-        custom_field_values_json,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
-        entry.entryType,
-        entry.entryDate,
-        entry.endDate,
-        entry.startTime ?? entry.entryDate,
-        entry.endTime,
-        entry.notes,
-        projectId,
-        taskId,
-        JSON.stringify(entry.customFieldValues),
-        entry.createdAt
-      ]
-    );
+    await db.orm.insert(timeEntries).values({
+      userId,
+      entryType: entry.entryType,
+      entryDate: entry.entryDate,
+      endDate: entry.endDate,
+      startTime: entry.startTime ?? entry.entryDate,
+      endTime: entry.endTime,
+      notes: entry.notes,
+      projectId,
+      taskId,
+      customFieldValuesJson: JSON.stringify(entry.customFieldValues),
+      createdAt: entry.createdAt,
+    }).run();
   }
 
   for (const cacheRow of snapshot.publicHolidayCache) {
-    await db.run(
-      `INSERT INTO public_holiday_cache (country_code, year, payload_json, fetched_at)
-       VALUES (?, ?, ?, ?)
-       ON CONFLICT(country_code, year)
-       DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at`,
-      [
-        cacheRow.countryCode,
-        cacheRow.year,
-        cacheRow.payloadJson,
-        cacheRow.fetchedAt
-      ]
-    );
+    await db.orm.insert(publicHolidayCache).values({
+      countryCode: cacheRow.countryCode,
+      year: cacheRow.year,
+      payloadJson: cacheRow.payloadJson,
+      fetchedAt: cacheRow.fetchedAt,
+    }).onConflictDoUpdate({
+      target: [publicHolidayCache.countryCode, publicHolidayCache.year],
+      set: {
+        payloadJson: cacheRow.payloadJson,
+        fetchedAt: cacheRow.fetchedAt,
+      },
+    }).run();
   }
 
   for (const project of snapshot.projects) {
@@ -304,11 +246,11 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         if (!mappedUserId) {
           continue;
         }
-        await db.run("INSERT INTO project_users (project_id, user_id, created_at) VALUES (?, ?, ?)", [
-          mappedProjectId,
-          mappedUserId,
-          project.createdAt
-        ]);
+        await db.orm.insert(projectUsers).values({
+          projectId: mappedProjectId,
+          userId: mappedUserId,
+          createdAt: project.createdAt,
+        }).run();
       }
     }
 
@@ -318,11 +260,11 @@ async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string
         if (!mappedTaskId) {
           continue;
         }
-        await db.run("INSERT INTO project_tasks (project_id, task_id, created_at) VALUES (?, ?, ?)", [
-          mappedProjectId,
-          mappedTaskId,
-          project.createdAt
-        ]);
+        await db.orm.insert(projectTasks).values({
+          projectId: mappedProjectId,
+          taskId: mappedTaskId,
+          createdAt: project.createdAt,
+        }).run();
       }
     }
   }
@@ -336,14 +278,11 @@ export const adminService = {
     }
 
     const createdAt = new Date().toISOString();
-    await systemDb.run(
-      `INSERT INTO companies (
-        id,
-        name,
-        created_at
-      ) VALUES (?, ?, ?)`,
-      [companyId, input.name.trim(), createdAt]
-    );
+    await systemDb.orm.insert(companies).values({
+      id: companyId,
+      name: input.name.trim(),
+      createdAt,
+    }).run();
 
     try {
       if (input.adminUsername && input.adminPassword && input.adminFullName) {
@@ -355,7 +294,7 @@ export const adminService = {
       }
       await seedDefaultProjects(companyDb, companyId);
     } catch (error) {
-      await systemDb.run("DELETE FROM companies WHERE id = ?", [companyId]);
+      await systemDb.orm.delete(companies).where(eq(companies.id, companyId)).run();
       throw error;
     }
 
@@ -370,14 +309,11 @@ export const adminService = {
 
     validateSnapshot(input.snapshot);
     const createdAt = new Date().toISOString();
-    await systemDb.run(
-      `INSERT INTO companies (
-        id,
-        name,
-        created_at
-      ) VALUES (?, ?, ?)`,
-      [companyId, input.name.trim(), createdAt]
-    );
+    await systemDb.orm.insert(companies).values({
+      id: companyId,
+      name: input.name.trim(),
+      createdAt,
+    }).run();
 
     try {
       await replaceCompanySnapshotInternal(companyDb, companyId, {
@@ -388,7 +324,7 @@ export const adminService = {
         }
       });
     } catch (error) {
-      await systemDb.run("DELETE FROM companies WHERE id = ?", [companyId]);
+      await systemDb.orm.delete(companies).where(eq(companies.id, companyId)).run();
       throw error;
     }
 
@@ -416,7 +352,7 @@ export const adminService = {
       throw new HTTPException(404, { message: "Company not found" });
     }
     await deleteCompanyData(companyDb, input.companyId);
-    await systemDb.run("DELETE FROM companies WHERE id = ?", [input.companyId]);
+    await systemDb.orm.delete(companies).where(eq(companies.id, input.companyId)).run();
     if (options?.config) {
       await destroyCompanyDatabase(options.config, input.companyId);
     }
@@ -427,35 +363,30 @@ export const adminService = {
     if (!company) {
       throw new HTTPException(404, { message: "Company not found" });
     }
-    await companyDb.run(
-      `INSERT INTO users (
-        username,
-        full_name,
-        password_hash,
-        role,
-        created_at
-      ) VALUES (?, ?, ?, 'admin', ?)`,
-      [input.username.trim(), input.fullName.trim(), bcrypt.hashSync(input.password, 10), new Date().toISOString()]
-    );
+    await companyDb.orm.insert(users).values({
+      username: input.username.trim(),
+      fullName: input.fullName.trim(),
+      passwordHash: bcrypt.hashSync(input.password, 10),
+      role: "admin",
+      createdAt: new Date().toISOString(),
+    }).run();
   },
 
   async getSystemStats(
     systemDb: AppDatabase,
     resolveCompanyDb: (companyId: string) => Promise<AppDatabase>,
   ) {
-    const companyCount = (await systemDb.first<{ count: number }>("SELECT COUNT(*) as count FROM companies"))?.count ?? 0;
+    const companyCount = (await systemDb.orm.select({ count: sql<number>`count(*)` }).from(companies).get())?.count ?? 0;
     const activeInvitationCodeCount =
-      (await systemDb.first<{ count: number }>(
-        "SELECT COUNT(*) as count FROM invitation_codes WHERE used_at IS NULL"
-      ))?.count ?? 0;
-    const companies = await systemDb.all<{ id: string }>("SELECT id FROM companies");
+      (await systemDb.orm.select({ count: sql<number>`count(*)` }).from(invitationCodes).where(isNull(invitationCodes.usedAt)).get())?.count ?? 0;
+    const companyRows = await systemDb.orm.select({ id: companies.id }).from(companies);
     let totalUsers = 0;
     let activeTimers = 0;
 
-    for (const company of companies) {
+    for (const company of companyRows) {
       const companyDb = await resolveCompanyDb(company.id);
-      totalUsers += (await companyDb.first<{ count: number }>("SELECT COUNT(*) as count FROM users WHERE deleted_at IS NULL"))?.count ?? 0;
-      activeTimers += (await companyDb.first<{ count: number }>("SELECT COUNT(*) as count FROM time_entries WHERE end_time IS NULL"))?.count ?? 0;
+      totalUsers += (await companyDb.orm.select({ count: sql<number>`count(*)` }).from(users).where(isNull(users.deletedAt)).get())?.count ?? 0;
+      activeTimers += (await companyDb.orm.select({ count: sql<number>`count(*)` }).from(timeEntries).where(isNull(timeEntries.endTime)).get())?.count ?? 0;
     }
 
     return {
@@ -467,24 +398,17 @@ export const adminService = {
   },
 
   async listInvitationCodes(systemDb: AppDatabase): Promise<InvitationCodeListResponse["invitationCodes"]> {
-    const rows = await systemDb.all(
-      `SELECT
-        invitation_codes.id,
-        invitation_codes.code,
-        invitation_codes.note,
-        invitation_codes.created_at,
-        invitation_codes.used_at,
-        invitation_codes.used_by_company_id,
-        companies.name AS used_by_company_name
-       FROM invitation_codes
-       LEFT JOIN companies ON companies.id = invitation_codes.used_by_company_id
-       ORDER BY
-         CASE
-           WHEN invitation_codes.used_at IS NULL THEN 0
-           WHEN invitation_codes.used_at IS NOT NULL THEN 1
-         END,
-         invitation_codes.created_at DESC`
-    ) as Array<{
+    const rows = await systemDb.orm.select({
+      id: invitationCodes.id,
+      code: invitationCodes.code,
+      note: invitationCodes.note,
+      created_at: invitationCodes.createdAt,
+      used_at: invitationCodes.usedAt,
+      used_by_company_id: invitationCodes.usedByCompanyId,
+      used_by_company_name: companies.name,
+    }).from(invitationCodes)
+      .leftJoin(companies, eq(companies.id, invitationCodes.usedByCompanyId))
+      .orderBy(sql`CASE WHEN ${invitationCodes.usedAt} IS NULL THEN 0 ELSE 1 END`, desc(invitationCodes.createdAt)) as Array<{
       id: number;
       code: string;
       note: string | null;
@@ -512,12 +436,13 @@ export const adminService = {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const code = createInvitationCodeValue();
       try {
-        const result = await systemDb.run(
-          "INSERT INTO invitation_codes (code, note, created_at) VALUES (?, ?, ?)",
-          [code, note, createdAt]
-        );
+        const result = await systemDb.orm.insert(invitationCodes).values({
+          code,
+          note,
+          createdAt,
+        }).returning({ id: invitationCodes.id });
         return {
-          id: Number(result.lastRowId),
+          id: Number(result[0]?.id),
           code,
           note,
           createdAt,
@@ -536,50 +461,47 @@ export const adminService = {
   },
 
   async deleteInvitationCode(systemDb: AppDatabase, input: DeleteInvitationCodeInput) {
-    const invitationCode = await systemDb.first<{ used_at: string | null }>(
-      "SELECT used_at FROM invitation_codes WHERE id = ?",
-      [input.invitationCodeId]
-    );
+    const invitationCode = await systemDb.orm.select({
+      used_at: invitationCodes.usedAt,
+    }).from(invitationCodes).where(eq(invitationCodes.id, input.invitationCodeId)).get();
 
     if (!invitationCode) {
       throw new HTTPException(404, { message: "Invitation code not found" });
     }
 
-    await systemDb.run("DELETE FROM invitation_codes WHERE id = ?", [input.invitationCodeId]);
+    await systemDb.orm.delete(invitationCodes).where(eq(invitationCodes.id, input.invitationCodeId)).run();
   },
 
   async exportCompanySnapshot(systemDb: AppDatabase, companyDb: AppDatabase, companyId: string): Promise<CompanySnapshot> {
-    const company = await systemDb.first(
-      `SELECT
-        name,
-        tablet_code_value,
-        tablet_code_hash,
-        tablet_code_updated_at,
-        created_at
-       FROM companies
-       WHERE id = ?`,
-      [companyId]
-    ) as
-      | {
-          name: string;
-          tablet_code_value: string | null;
-          tablet_code_hash: string | null;
-          tablet_code_updated_at: string | null;
-          created_at: string;
-        }
-      | null;
+    const company = await systemDb.orm.select({
+      name: companies.name,
+      tablet_code_value: companies.tabletCodeValue,
+      tablet_code_hash: companies.tabletCodeHash,
+      tablet_code_updated_at: companies.tabletCodeUpdatedAt,
+      created_at: companies.createdAt,
+    }).from(companies).where(eq(companies.id, companyId)).get();
 
     if (!company) {
       throw new HTTPException(404, { message: "Company not found" });
     }
 
-    const settingsRow = await companyDb.first("SELECT * FROM company_settings LIMIT 1");
-    const users = (await companyDb.all(
-      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, email, created_at FROM users ORDER BY id ASC",
-      []
-    ))
+    const settingsRow = await companyDb.orm.select().from(companySettings).limit(1).get();
+    const userRows = await companyDb.orm.select({
+      id: users.id,
+      username: users.username,
+      full_name: users.fullName,
+      password_hash: users.passwordHash,
+      role: users.role,
+      is_active: users.isActive,
+      deleted_at: users.deletedAt,
+      pin_code: users.pinCode,
+      email: users.email,
+      custom_field_values_json: users.customFieldValuesJson,
+      created_at: users.createdAt,
+    }).from(users).orderBy(asc(users.id));
+    const usersSnapshot = userRows
       .map(mapCompanyUser)
-      .map((user) => ({
+      .map((user: ReturnType<typeof mapCompanyUser>) => ({
         id: user.id,
         username: user.username,
         fullName: user.fullName,
@@ -593,10 +515,16 @@ export const adminService = {
         createdAt: user.createdAt
       }));
 
-    const contractRows = await companyDb.all(
-      "SELECT id, user_id, hours_per_week, start_date, end_date, payment_per_hour, annual_vacation_days, created_at FROM user_contracts ORDER BY id ASC",
-      []
-    ) as Array<{
+    const contractRows = await companyDb.orm.select({
+      id: userContracts.id,
+      user_id: userContracts.userId,
+      hours_per_week: userContracts.hoursPerWeek,
+      start_date: userContracts.startDate,
+      end_date: userContracts.endDate,
+      payment_per_hour: userContracts.paymentPerHour,
+      annual_vacation_days: userContracts.annualVacationDays,
+      created_at: userContracts.createdAt,
+    }).from(userContracts).orderBy(asc(userContracts.id)) as Array<{
       id: number;
       user_id: number;
       hours_per_week: number;
@@ -606,19 +534,15 @@ export const adminService = {
       annual_vacation_days: number;
       created_at: string;
     }>;
-    const scheduleRows = await companyDb.all(
-      `SELECT
-        contract_id,
-        weekday,
-        block_order,
-        start_time,
-        end_time,
-        minutes
-       FROM user_contract_schedule_blocks
-       WHERE contract_id IN (SELECT id FROM user_contracts)
-       ORDER BY contract_id ASC, weekday ASC, block_order ASC`,
-      []
-    ) as Array<{
+    const scheduleRows = await companyDb.orm.select({
+      contract_id: userContractScheduleBlocks.contractId,
+      weekday: userContractScheduleBlocks.weekday,
+      block_order: userContractScheduleBlocks.blockOrder,
+      start_time: userContractScheduleBlocks.startTime,
+      end_time: userContractScheduleBlocks.endTime,
+      minutes: userContractScheduleBlocks.minutes,
+    }).from(userContractScheduleBlocks)
+      .orderBy(asc(userContractScheduleBlocks.contractId), asc(userContractScheduleBlocks.weekday), asc(userContractScheduleBlocks.blockOrder)) as Array<{
       contract_id: number;
       weekday: number;
       block_order: number;
@@ -632,37 +556,44 @@ export const adminService = {
       next.push(mapUserContractScheduleBlock(row));
       contractScheduleById.set(row.contract_id, next);
     }
-    const userContracts = contractRows.map((contract) => mapUserContract(contract, contractScheduleById.get(contract.id) ?? []));
+    const userContractsSnapshot = contractRows.map((contract: (typeof contractRows)[number]) =>
+      mapUserContract(contract, contractScheduleById.get(contract.id) ?? [])
+    );
 
-    const timeEntries = (await companyDb.all(
-      `SELECT
-        id,
-        user_id,
-        entry_type,
-        entry_date,
-        end_date,
-        start_time,
-        end_time,
-        notes,
-        custom_field_values_json,
-        created_at
-       FROM time_entries
-       ORDER BY id ASC`,
-      []
-    )).map(mapTimeEntry);
+    const timeEntriesSnapshot = (await companyDb.orm.select({
+      id: timeEntries.id,
+      user_id: timeEntries.userId,
+      entry_type: timeEntries.entryType,
+      entry_date: timeEntries.entryDate,
+      end_date: timeEntries.endDate,
+      start_time: timeEntries.startTime,
+      end_time: timeEntries.endTime,
+      notes: timeEntries.notes,
+      project_id: timeEntries.projectId,
+      task_id: timeEntries.taskId,
+      custom_field_values_json: timeEntries.customFieldValuesJson,
+      created_at: timeEntries.createdAt,
+    }).from(timeEntries).orderBy(asc(timeEntries.id))).map(mapTimeEntry);
 
-    const projectRows = await companyDb.all(
-      "SELECT id, name, description, budget, is_active, allow_all_users, allow_all_tasks, custom_field_values_json, created_at FROM projects ORDER BY id ASC",
-      []
-    );
-    const projectUserRows = await companyDb.all<{ project_id: number; user_id: number }>(
-      "SELECT project_id, user_id FROM project_users WHERE project_id IN (SELECT id FROM projects)",
-      []
-    );
-    const projectTaskRows = await companyDb.all<{ project_id: number; task_id: number }>(
-      "SELECT project_id, task_id FROM project_tasks WHERE project_id IN (SELECT id FROM projects)",
-      []
-    );
+    const projectRows = await companyDb.orm.select({
+      id: projects.id,
+      name: projects.name,
+      description: projects.description,
+      budget: projects.budget,
+      is_active: projects.isActive,
+      allow_all_users: projects.allowAllUsers,
+      allow_all_tasks: projects.allowAllTasks,
+      custom_field_values_json: projects.customFieldValuesJson,
+      created_at: projects.createdAt,
+    }).from(projects).orderBy(asc(projects.id));
+    const projectUserRows = await companyDb.orm.select({
+      project_id: projectUsers.projectId,
+      user_id: projectUsers.userId,
+    }).from(projectUsers);
+    const projectTaskRows = await companyDb.orm.select({
+      project_id: projectTasks.projectId,
+      task_id: projectTasks.taskId,
+    }).from(projectTasks);
     const projectUsersByProjectId = new Map<number, number[]>();
     for (const row of projectUserRows) {
       const next = projectUsersByProjectId.get(row.project_id) ?? [];
@@ -675,7 +606,7 @@ export const adminService = {
       next.push(row.task_id);
       projectTasksByProjectId.set(row.project_id, next);
     }
-    const projects = projectRows.map((row) => {
+    const projectsSnapshot = projectRows.map((row: (typeof projectRows)[number]) => {
       const project = mapProject(row);
       return {
         ...project,
@@ -683,11 +614,19 @@ export const adminService = {
         taskIds: project.allowAllTasks ? [] : Array.from(new Set(projectTasksByProjectId.get(project.id) ?? [])),
       };
     });
-    const tasks = (await companyDb.all("SELECT id, title, is_active, custom_field_values_json, created_at FROM tasks ORDER BY id ASC", [])).map(mapTask);
-    const publicHolidayCache = await companyDb.all<{ country_code: string; year: number; payload_json: string; fetched_at: string }>(
-      "SELECT country_code, year, payload_json, fetched_at FROM public_holiday_cache ORDER BY year ASC, country_code ASC",
-      []
-    );
+    const tasksSnapshot = (await companyDb.orm.select({
+      id: tasks.id,
+      title: tasks.title,
+      is_active: tasks.isActive,
+      custom_field_values_json: tasks.customFieldValuesJson,
+      created_at: tasks.createdAt,
+    }).from(tasks).orderBy(asc(tasks.id))).map(mapTask);
+    const publicHolidayCacheSnapshot = await companyDb.orm.select({
+      country_code: publicHolidayCache.countryCode,
+      year: publicHolidayCache.year,
+      payload_json: publicHolidayCache.payloadJson,
+      fetched_at: publicHolidayCache.fetchedAt,
+    }).from(publicHolidayCache).orderBy(asc(publicHolidayCache.year), asc(publicHolidayCache.countryCode));
 
     return {
       company: {
@@ -698,12 +637,12 @@ export const adminService = {
         createdAt: company.created_at
       },
       settings: settingsRow ? mapCompanySettings(settingsRow) : null,
-      users,
-      userContracts,
-      timeEntries,
-      projects,
-      tasks,
-      publicHolidayCache: publicHolidayCache.map((row) => ({
+      users: usersSnapshot,
+      userContracts: userContractsSnapshot,
+      timeEntries: timeEntriesSnapshot,
+      projects: projectsSnapshot,
+      tasks: tasksSnapshot,
+      publicHolidayCache: publicHolidayCacheSnapshot.map((row: (typeof publicHolidayCacheSnapshot)[number]) => ({
         countryCode: row.country_code,
         year: row.year,
         payloadJson: row.payload_json,

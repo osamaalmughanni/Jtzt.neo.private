@@ -7,18 +7,18 @@
     "dev": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
     "dev:frontend": "vite --force --config frontend/vite.config.ts",
     "dev:backend": "concurrently \"npm:dev:backend:build\" \"npm:dev:backend:serve\"",
-    "dev:backend:build": "esbuild backend/server.ts backend/db/schema.ts --bundle --platform=node --format=esm --outdir=dist/backend --packages=external --sourcemap --watch",
+    "dev:backend:build": "node tools/run-esbuild.mjs backend-watch",
     "dev:backend:serve": "node tools/dev-backend-serve.mjs",
     "build": "npm run build:backend && npm run build:frontend",
     "build:frontend": "vite build --config frontend/vite.config.ts",
-    "build:backend": "node -e \"const fs=require('fs');const path=require('path');fs.rmSync('dist/backend',{recursive:true,force:true});\" && esbuild backend/server.ts backend/db/schema.ts --bundle --platform=node --format=esm --outdir=dist/backend --packages=external --sourcemap && node -e \"const fs=require('fs');const path=require('path');const src=path.join(process.cwd(),'backend','services','calculation-presets');const dst=path.join(process.cwd(),'dist','backend','services','calculation-presets');if(fs.existsSync(src)){fs.mkdirSync(dst,{recursive:true});for(const file of fs.readdirSync(src)){if(file.endsWith('.js')) fs.copyFileSync(path.join(src,file),path.join(dst,file));}}\"",
+    "build:backend": "node -e \"const fs=require('fs');const path=require('path');fs.rmSync('dist/backend',{recursive:true,force:true});\" && node tools/run-esbuild.mjs backend && node -e \"const fs=require('fs');const path=require('path');const src=path.join(process.cwd(),'backend','services','calculation-presets');const dst=path.join(process.cwd(),'dist','backend','services','calculation-presets');if(fs.existsSync(src)){fs.mkdirSync(dst,{recursive:true});for(const file of fs.readdirSync(src)){if(file.endsWith('.js')) fs.copyFileSync(path.join(src,file),path.join(dst,file));}}\"",
     "db:generate:system": "drizzle-kit generate --config drizzle.system.config.ts",
     "db:generate:company": "drizzle-kit generate --config drizzle.company.config.ts",
     "db:generate": "npm run db:generate:system && npm run db:generate:company",
     "db:migrate": "tsx tools/run-drizzle-migrations.ts",
     "db:migrate:system": "tsx tools/run-drizzle-migrations.ts system",
     "db:migrate:companies": "tsx tools/run-drizzle-migrations.ts companies",
-    "demo:seed:build": "esbuild tools/seed-demo.ts --bundle --platform=node --format=esm --outfile=dist/tools/seed-demo.js --packages=external --sourcemap",
+    "demo:seed:build": "node tools/run-esbuild.mjs demo-seed",
     "demo:seed": "npm run demo:seed:build && node dist/tools/seed-demo.js",
     "typecheck": "tsc -p tsconfig.backend.json --noEmit && tsc -p frontend/tsconfig.json --noEmit",
     "clean:translations": "node tools/clean-unused-translations.mjs --write",
@@ -47,7 +47,6 @@
     "better-sqlite3": "^11.7.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "drizzle-kit": "0.31.10",
     "drizzle-orm": "0.45.2",
     "framer-motion": "^11.11.17",
     "hono": "^4.6.10",
@@ -77,11 +76,17 @@
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.0.1",
+    "drizzle-kit": "^0.31.10",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.19.1",
     "typescript": "^5.6.3",
     "vite": "^7.1.7"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.27.4"
+    }
   }
 }

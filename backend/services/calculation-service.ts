@@ -1,4 +1,5 @@
 import { HTTPException } from "hono/http-exception";
+import { desc, eq, sql } from "drizzle-orm";
 import type {
   CalculationPresetRecord,
   CalculationRecord,
@@ -11,6 +12,7 @@ import type {
   CreateCalculationInput,
   UpdateCalculationInput,
 } from "../../shared/types/api";
+import { calculations } from "../db/schema";
 import { mapCalculation } from "../db/mappers";
 import type { AppDatabase } from "../runtime/types";
 import { loadBuiltinCalculationPresets } from "./calculation-preset-loader";
@@ -67,7 +69,7 @@ function normalizeChartConfig(config: CalculationChartConfig): CalculationChartC
 
 async function previewSql(db: AppDatabase, sqlText: string, limit = 50) {
   const previewSqlText = `SELECT * FROM (${normalizeSql(sqlText)}) AS calculation_preview LIMIT ${limit}`;
-  return await db.all<PreviewRow>(previewSqlText);
+  return db.sqlite.prepare(previewSqlText).all() as PreviewRow[];
 }
 
 function collectColumns(rows: PreviewRow[]) {
@@ -108,56 +110,52 @@ export const calculationService = {
     const settings = await settingsService.getSettings(db, companyId);
     const presets = await loadBuiltinCalculationPresets(settings);
     const presetsByKey = new Map(presets.map((preset) => [preset.key, preset]));
-    const calculations = (await db.all(
-      `SELECT
-         id,
-         name,
-         description,
-         sql_text,
-         output_mode,
-         chart_type,
-         chart_category_column,
-         chart_value_column,
-         chart_series_column,
-         chart_config_json,
-         chart_stacked,
-         is_builtin,
-         builtin_key,
-         created_at,
-         updated_at
-       FROM calculations
-       ORDER BY is_builtin DESC, name COLLATE NOCASE ASC, created_at DESC`,
-      []
-    )).map(normalizeCalculationRow).map((calculation) => hydrateBuiltinCalculation(calculation, presetsByKey));
+    const calculationRows = await db.orm.select({
+      id: calculations.id,
+      name: calculations.name,
+      description: calculations.description,
+      sql_text: calculations.sqlText,
+      output_mode: calculations.outputMode,
+      chart_type: calculations.chartType,
+      chart_category_column: calculations.chartCategoryColumn,
+      chart_value_column: calculations.chartValueColumn,
+      chart_series_column: calculations.chartSeriesColumn,
+      chart_config_json: calculations.chartConfigJson,
+      chart_stacked: calculations.chartStacked,
+      is_builtin: calculations.isBuiltin,
+      builtin_key: calculations.builtinKey,
+      created_at: calculations.createdAt,
+      updated_at: calculations.updatedAt,
+    }).from(calculations)
+      .orderBy(desc(calculations.isBuiltin), sql`name COLLATE NOCASE ASC`, desc(calculations.createdAt));
+    const hydratedCalculations = calculationRows
+      .map(normalizeCalculationRow)
+      .map((calculation: CalculationRecord) => hydrateBuiltinCalculation(calculation, presetsByKey));
 
     return {
-      calculations,
+      calculations: hydratedCalculations,
       presets,
     };
   },
 
   async getCalculation(db: AppDatabase, companyId: string, calculationId: number) {
-    const calculation = await db.first(
-      `SELECT
-         id,
-         name,
-         description,
-         sql_text,
-         output_mode,
-         chart_type,
-         chart_category_column,
-         chart_value_column,
-         chart_series_column,
-         chart_config_json,
-         chart_stacked,
-         is_builtin,
-         builtin_key,
-         created_at,
-         updated_at
-       FROM calculations
-       WHERE id = ?`,
-      [calculationId]
-    );
+    const calculation = await db.orm.select({
+      id: calculations.id,
+      name: calculations.name,
+      description: calculations.description,
+      sql_text: calculations.sqlText,
+      output_mode: calculations.outputMode,
+      chart_type: calculations.chartType,
+      chart_category_column: calculations.chartCategoryColumn,
+      chart_value_column: calculations.chartValueColumn,
+      chart_series_column: calculations.chartSeriesColumn,
+      chart_config_json: calculations.chartConfigJson,
+      chart_stacked: calculations.chartStacked,
+      is_builtin: calculations.isBuiltin,
+      builtin_key: calculations.builtinKey,
+      created_at: calculations.createdAt,
+      updated_at: calculations.updatedAt,
+    }).from(calculations).where(eq(calculations.id, calculationId)).get();
 
     if (!calculation) {
       throw new HTTPException(404, { message: "Calculation not found" });
@@ -210,46 +208,22 @@ export const calculationService = {
     }
 
     const createdAt = new Date().toISOString();
-    await db.exec("BEGIN IMMEDIATE TRANSACTION");
-    try {
-      const result = await db.run(
-        `INSERT INTO calculations (
-           name,
-           description,
-           sql_text,
-           output_mode,
-           chart_type,
-           chart_category_column,
-           chart_value_column,
-           chart_series_column,
-           chart_config_json,
-           chart_stacked,
-           is_builtin,
-           created_at,
-           updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-        [
-          input.name.trim(),
-          normalizeText(input.description),
-          normalizeSql(input.sqlText),
-          input.outputMode,
-          normalizedChartConfig.type,
-          normalizedChartConfig.categoryColumn,
-          normalizedChartConfig.valueColumn,
-          normalizedChartConfig.seriesColumn,
-          JSON.stringify(normalizedChartConfig),
-          normalizedChartConfig.stacked ? 1 : 0,
-          createdAt,
-          createdAt,
-        ]
-      );
-
-      await db.exec("COMMIT");
-      return Number(result.lastRowId);
-    } catch (error) {
-      await db.exec("ROLLBACK");
-      throw error;
-    }
+    const result = await db.orm.insert(calculations).values({
+      name: input.name.trim(),
+      description: normalizeText(input.description),
+      sqlText: normalizeSql(input.sqlText),
+      outputMode: input.outputMode,
+      chartType: normalizedChartConfig.type,
+      chartCategoryColumn: normalizedChartConfig.categoryColumn,
+      chartValueColumn: normalizedChartConfig.valueColumn,
+      chartSeriesColumn: normalizedChartConfig.seriesColumn,
+      chartConfigJson: JSON.stringify(normalizedChartConfig),
+      chartStacked: normalizedChartConfig.stacked ? 1 : 0,
+      isBuiltin: 0,
+      createdAt,
+      updatedAt: createdAt,
+    }).returning({ id: calculations.id });
+    return Number(result[0]?.id);
   },
 
   async updateCalculation(db: AppDatabase, companyId: string, input: UpdateCalculationInput) {
@@ -267,33 +241,19 @@ export const calculationService = {
     }
 
     const updatedAt = new Date().toISOString();
-    await db.exec("BEGIN IMMEDIATE TRANSACTION");
-    try {
-      await db.run(
-       `UPDATE calculations
-         SET name = ?, description = ?, sql_text = ?, output_mode = ?, chart_type = ?, chart_category_column = ?, chart_value_column = ?, chart_series_column = ?, chart_config_json = ?, chart_stacked = ?, updated_at = ?
-         WHERE id = ?`,
-        [
-          input.name.trim(),
-          normalizeText(input.description),
-          normalizeSql(input.sqlText),
-          input.outputMode,
-          normalizedChartConfig.type,
-          normalizedChartConfig.categoryColumn,
-          normalizedChartConfig.valueColumn,
-          normalizedChartConfig.seriesColumn,
-          JSON.stringify(normalizedChartConfig),
-          normalizedChartConfig.stacked ? 1 : 0,
-          updatedAt,
-          input.calculationId,
-        ]
-      );
-
-      await db.exec("COMMIT");
-    } catch (error) {
-      await db.exec("ROLLBACK");
-      throw error;
-    }
+    await db.orm.update(calculations).set({
+      name: input.name.trim(),
+      description: normalizeText(input.description),
+      sqlText: normalizeSql(input.sqlText),
+      outputMode: input.outputMode,
+      chartType: normalizedChartConfig.type,
+      chartCategoryColumn: normalizedChartConfig.categoryColumn,
+      chartValueColumn: normalizedChartConfig.valueColumn,
+      chartSeriesColumn: normalizedChartConfig.seriesColumn,
+      chartConfigJson: JSON.stringify(normalizedChartConfig),
+      chartStacked: normalizedChartConfig.stacked ? 1 : 0,
+      updatedAt,
+    }).where(eq(calculations.id, input.calculationId)).run();
   },
 
   async deleteCalculation(db: AppDatabase, companyId: string, calculationId: number) {
@@ -302,7 +262,7 @@ export const calculationService = {
       throw new HTTPException(400, { message: "Built-in calculations cannot be deleted" });
     }
 
-    await db.run("DELETE FROM calculations WHERE id = ?", [calculationId]);
+    await db.orm.delete(calculations).where(eq(calculations.id, calculationId)).run();
   },
 
   async createFromPreset(db: AppDatabase, companyId: string, input: CreateCalculationFromPresetInput) {

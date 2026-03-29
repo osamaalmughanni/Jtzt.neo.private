@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
+import { and, eq, isNull } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import type {
   AdminLoginInput,
@@ -14,6 +15,7 @@ import { verifyWorkspaceKeyToken } from "../auth/jwt";
 import { systemService } from "./system-service";
 import { adminService } from "./admin-service";
 import type { AppDatabase, RuntimeConfig } from "../runtime/types";
+import { invitationCodes, users } from "../db/schema";
 
 function compareProofs(expected: string, provided: string) {
   const expectedBuffer = Buffer.from(expected, "utf8");
@@ -102,13 +104,10 @@ export const authService = {
 
   async registerCompany(systemDb: AppDatabase, companyDb: AppDatabase, config: RuntimeConfig, input: RegisterCompanyInput, companyId: string) {
     const invitationCode = normalizeInvitationCode(input.invitationCode);
-    const invitationRow = await systemDb.first(
-      `SELECT id
-       FROM invitation_codes
-       WHERE code = ?
-         AND used_at IS NULL`,
-      [invitationCode]
-    ) as { id: number } | null;
+    const invitationRow = await systemDb.orm.select({ id: invitationCodes.id })
+      .from(invitationCodes)
+      .where(and(eq(invitationCodes.code, invitationCode), isNull(invitationCodes.usedAt)))
+      .get();
 
     if (!invitationRow) {
       throw new HTTPException(403, { message: "Invitation code is invalid or already used" });
@@ -124,15 +123,24 @@ export const authService = {
       throw new HTTPException(500, { message: "Company could not be created" });
     }
 
-    await systemDb.run(
-      "UPDATE invitation_codes SET used_at = ?, used_by_company_id = ? WHERE id = ?",
-      [new Date().toISOString(), company.id, invitationRow.id]
-    );
+    await systemDb.orm.update(invitationCodes).set({
+      usedAt: new Date().toISOString(),
+      usedByCompanyId: company.id,
+    }).where(eq(invitationCodes.id, invitationRow.id)).run();
 
-    const userRow = await companyDb.first(
-      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE username = ? AND deleted_at IS NULL",
-      [input.adminUsername]
-    );
+    const userRow = await companyDb.orm.select({
+      id: users.id,
+      username: users.username,
+      full_name: users.fullName,
+      password_hash: users.passwordHash,
+      role: users.role,
+      is_active: users.isActive,
+      deleted_at: users.deletedAt,
+      pin_code: users.pinCode,
+      email: users.email,
+      custom_field_values_json: users.customFieldValuesJson,
+      created_at: users.createdAt,
+    }).from(users).where(and(eq(users.username, input.adminUsername), isNull(users.deletedAt))).get();
 
     const user = userRow ? mapCompanyUser(userRow) : null;
     if (!user) {
@@ -152,10 +160,19 @@ export const authService = {
       throw new HTTPException(401, { message: "Invalid company credentials" });
     }
 
-    const userRow = await companyDb.first(
-      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE username = ? AND deleted_at IS NULL",
-      [input.username]
-    );
+    const userRow = await companyDb.orm.select({
+      id: users.id,
+      username: users.username,
+      full_name: users.fullName,
+      password_hash: users.passwordHash,
+      role: users.role,
+      is_active: users.isActive,
+      deleted_at: users.deletedAt,
+      pin_code: users.pinCode,
+      email: users.email,
+      custom_field_values_json: users.customFieldValuesJson,
+      created_at: users.createdAt,
+    }).from(users).where(and(eq(users.username, input.username), isNull(users.deletedAt))).get();
 
     const user = userRow ? mapCompanyUser(userRow) : null;
     if (!user || !bcrypt.compareSync(input.password, user.passwordHash)) {
@@ -210,10 +227,19 @@ export const authService = {
       throw new HTTPException(401, { message: "Invalid tablet code" });
     }
 
-    const userRow = await companyDb.first(
-      "SELECT id, username, full_name, password_hash, role, is_active, deleted_at, pin_code, created_at FROM users WHERE pin_code = ? AND deleted_at IS NULL",
-      [input.pinCode.trim()]
-    ) as Record<string, unknown> | null;
+    const userRow = await companyDb.orm.select({
+      id: users.id,
+      username: users.username,
+      full_name: users.fullName,
+      password_hash: users.passwordHash,
+      role: users.role,
+      is_active: users.isActive,
+      deleted_at: users.deletedAt,
+      pin_code: users.pinCode,
+      email: users.email,
+      custom_field_values_json: users.customFieldValuesJson,
+      created_at: users.createdAt,
+    }).from(users).where(and(eq(users.pinCode, input.pinCode.trim()), isNull(users.deletedAt))).get() as Record<string, unknown> | null;
 
     const user = userRow ? mapCompanyUser(userRow) : null;
     if (!user) {
@@ -237,9 +263,12 @@ export const authService = {
       throw new HTTPException(404, { message: "Company not found" });
     }
 
-    const row = await companyDb.first("SELECT id, username, full_name, role FROM users WHERE id = ? AND deleted_at IS NULL", [
-      payload.userId
-    ]);
+    const row = await companyDb.orm.select({
+      id: users.id,
+      username: users.username,
+      full_name: users.fullName,
+      role: users.role,
+    }).from(users).where(and(eq(users.id, payload.userId), isNull(users.deletedAt))).get();
 
     if (!row) {
       throw new HTTPException(404, { message: "User not found" });

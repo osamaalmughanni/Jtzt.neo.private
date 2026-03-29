@@ -1,4 +1,5 @@
 import { HTTPException } from "hono/http-exception";
+import { and, eq } from "drizzle-orm";
 import type { UpdateOvertimeSettingsInput, UpdateSettingsInput } from "../../shared/types/api";
 import type { PublicHolidayRecord, TimeEntryType } from "../../shared/types/models";
 import {
@@ -13,6 +14,7 @@ import {
 import { getLocalNowSnapshot, normalizeTimeZone } from "../../shared/utils/time";
 import { createDefaultOvertimeSettings, normalizeOvertimeSettings } from "../../shared/utils/overtime";
 import { normalizeCustomFields, sanitizeCustomFieldValuesForTarget } from "../../shared/utils/custom-fields";
+import { companySettings, projects, publicHolidayCache, tasks, timeEntries, users } from "../db/schema";
 import { mapCompanySettings } from "../db/mappers";
 import type { AppDatabase } from "../runtime/types";
 
@@ -98,9 +100,11 @@ async function cleanupCustomFieldValuesForTable(
   target: { scope: "user" | "project" | "task" | "time_entry"; entryType?: TimeEntryType },
 ) {
   if (table === "time_entries") {
-    const rows = await db.all<{ id: number; entry_type: TimeEntryType; custom_field_values_json: string }>(
-      "SELECT id, entry_type, custom_field_values_json FROM time_entries"
-    );
+    const rows = await db.orm.select({
+      id: timeEntries.id,
+      entry_type: timeEntries.entryType,
+      custom_field_values_json: timeEntries.customFieldValuesJson,
+    }).from(timeEntries) as Array<{ id: number; entry_type: TimeEntryType; custom_field_values_json: string }>;
 
     for (const row of rows) {
       const parsedValues = parseCustomFieldValuesJson(row.custom_field_values_json);
@@ -114,18 +118,23 @@ async function cleanupCustomFieldValuesForTable(
         continue;
       }
 
-      await db.run(
-        "UPDATE time_entries SET custom_field_values_json = ? WHERE id = ?",
-        [stringifyCustomFieldValues(resolvedValues), row.id]
-      );
+      await db.orm.update(timeEntries).set({
+        customFieldValuesJson: stringifyCustomFieldValues(resolvedValues),
+      }).where(eq(timeEntries.id, row.id)).run();
     }
 
     return;
   }
 
-  const rows = await db.all<{ id: number; custom_field_values_json: string }>(
-    `SELECT id, custom_field_values_json FROM ${table}`
-  );
+  const tableConfig = table === "users"
+    ? { source: users, id: users.id, customFieldValuesJson: users.customFieldValuesJson }
+    : table === "projects"
+      ? { source: projects, id: projects.id, customFieldValuesJson: projects.customFieldValuesJson }
+      : { source: tasks, id: tasks.id, customFieldValuesJson: tasks.customFieldValuesJson };
+  const rows = await db.orm.select({
+    id: tableConfig.id,
+    custom_field_values_json: tableConfig.customFieldValuesJson,
+  }).from(tableConfig.source);
 
   for (const row of rows) {
     const parsedValues = parseCustomFieldValuesJson(row.custom_field_values_json);
@@ -135,67 +144,41 @@ async function cleanupCustomFieldValuesForTable(
       continue;
     }
 
-    await db.run(
-      `UPDATE ${table} SET custom_field_values_json = ? WHERE id = ?`,
-      [stringifyCustomFieldValues(resolvedValues), row.id]
-    );
+    await db.orm.update(tableConfig.source).set({
+      customFieldValuesJson: stringifyCustomFieldValues(resolvedValues),
+    }).where(eq(tableConfig.id, row.id)).run();
   }
 }
 
 async function ensureSettingsRow(db: AppDatabase, companyId: string) {
-  const existing = await db.first("SELECT rowid FROM company_settings LIMIT 1");
+  const existing = await db.orm.select({ currency: companySettings.currency }).from(companySettings).limit(1).get();
   if (existing) {
     return;
   }
 
-  await db.run(
-    `INSERT INTO company_settings (
-        currency,
-        locale,
-        time_zone,
-        date_time_format,
-        first_day_of_week,
-        weekend_days_json,
-        edit_days_limit,
-        insert_days_limit,
-        allow_one_record_per_day,
-        allow_intersecting_records,
-        allow_records_on_holidays,
-        allow_records_on_weekends,
-        allow_future_records,
-        country,
-        tablet_idle_timeout_seconds,
-        auto_break_after_minutes,
-        auto_break_duration_minutes,
-        projects_enabled,
-        tasks_enabled,
-        overtime_settings_json,
-        custom_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      "EUR",
-      DEFAULT_COMPANY_LOCALE,
-      DEFAULT_COMPANY_TIME_ZONE,
-      DEFAULT_COMPANY_DATE_TIME_FORMAT,
-      1,
-      JSON.stringify(DEFAULT_COMPANY_WEEKEND_DAYS),
-      30,
-      30,
-      0,
-      0,
-      1,
-      1,
-      0,
-      "AT",
-      10,
-      300,
-      30,
-      0,
-      0,
-      JSON.stringify(createDefaultOvertimeSettings()),
-      "[]",
-    ]
-  );
+  await db.orm.insert(companySettings).values({
+    currency: "EUR",
+    locale: DEFAULT_COMPANY_LOCALE,
+    timeZone: DEFAULT_COMPANY_TIME_ZONE,
+    dateTimeFormat: DEFAULT_COMPANY_DATE_TIME_FORMAT,
+    firstDayOfWeek: 1,
+    weekendDaysJson: JSON.stringify(DEFAULT_COMPANY_WEEKEND_DAYS),
+    editDaysLimit: 30,
+    insertDaysLimit: 30,
+    allowOneRecordPerDay: 0,
+    allowIntersectingRecords: 0,
+    allowRecordsOnHolidays: 1,
+    allowRecordsOnWeekends: 1,
+    allowFutureRecords: 0,
+    country: "AT",
+    tabletIdleTimeoutSeconds: 10,
+    autoBreakAfterMinutes: 300,
+    autoBreakDurationMinutes: 30,
+    projectsEnabled: 0,
+    tasksEnabled: 0,
+    overtimeSettingsJson: JSON.stringify(createDefaultOvertimeSettings()),
+    customFieldsJson: "[]",
+  }).run();
 }
 
 function normalizeSettingsTimeZone(value: string) {
@@ -357,13 +340,37 @@ async function fetchHolidaySource(
 export const settingsService = {
   async getSettings(db: AppDatabase, companyId: string) {
     await ensureSettingsRow(db, companyId);
-    const row = await db.first("SELECT * FROM company_settings LIMIT 1");
+    const row = await db.orm.select({
+      currency: companySettings.currency,
+      locale: companySettings.locale,
+      time_zone: companySettings.timeZone,
+      date_time_format: companySettings.dateTimeFormat,
+      first_day_of_week: companySettings.firstDayOfWeek,
+      weekend_days_json: companySettings.weekendDaysJson,
+      edit_days_limit: companySettings.editDaysLimit,
+      insert_days_limit: companySettings.insertDaysLimit,
+      allow_one_record_per_day: companySettings.allowOneRecordPerDay,
+      allow_intersecting_records: companySettings.allowIntersectingRecords,
+      allow_records_on_holidays: companySettings.allowRecordsOnHolidays,
+      allow_records_on_weekends: companySettings.allowRecordsOnWeekends,
+      allow_future_records: companySettings.allowFutureRecords,
+      country: companySettings.country,
+      tablet_idle_timeout_seconds: companySettings.tabletIdleTimeoutSeconds,
+      auto_break_after_minutes: companySettings.autoBreakAfterMinutes,
+      auto_break_duration_minutes: companySettings.autoBreakDurationMinutes,
+      projects_enabled: companySettings.projectsEnabled,
+      tasks_enabled: companySettings.tasksEnabled,
+      custom_fields_json: companySettings.customFieldsJson,
+      overtime_settings_json: companySettings.overtimeSettingsJson,
+    }).from(companySettings).limit(1).get();
     return mapCompanySettings(row);
   },
 
   async updateSettings(db: AppDatabase, companyId: string, input: UpdateSettingsInput) {
     await ensureSettingsRow(db, companyId);
-    const previousRow = await db.first<{ custom_fields_json: string }>("SELECT custom_fields_json FROM company_settings LIMIT 1");
+    const previousRow = await db.orm.select({
+      custom_fields_json: companySettings.customFieldsJson,
+    }).from(companySettings).limit(1).get() as { custom_fields_json: string } | undefined;
     const previousCustomFields = normalizeCustomFields(
       previousRow ? JSON.parse(previousRow.custom_fields_json || "[]") : []
     );
@@ -379,79 +386,49 @@ export const settingsService = {
       throw new HTTPException(400, { message: "Tasks require projects to be enabled" });
     }
 
-    await db.exec("BEGIN IMMEDIATE TRANSACTION");
-    try {
-      await db.run(
-          `UPDATE company_settings
-             SET
-               currency = ?,
-               locale = ?,
-               time_zone = ?,
-             date_time_format = ?,
-             first_day_of_week = ?,
-             weekend_days_json = ?,
-             edit_days_limit = ?,
-             insert_days_limit = ?,
-             allow_one_record_per_day = ?,
-             allow_intersecting_records = ?,
-             allow_records_on_holidays = ?,
-             allow_records_on_weekends = ?,
-             allow_future_records = ?,
-             country = ?,
-             tablet_idle_timeout_seconds = ?,
-             auto_break_after_minutes = ?,
-             auto_break_duration_minutes = ?,
-             projects_enabled = ?,
-             tasks_enabled = ?,
-             overtime_settings_json = ?,
-             custom_fields_json = ?`,
-        [
-          input.currency,
-          nextLocale,
-          nextTimeZone,
-          nextDateTimeFormat,
-          input.firstDayOfWeek,
-          JSON.stringify(nextWeekendDays),
-          input.editDaysLimit,
-          input.insertDaysLimit,
-          input.allowOneRecordPerDay ? 1 : 0,
-          input.allowIntersectingRecords ? 1 : 0,
-          input.allowRecordsOnHolidays ? 1 : 0,
-          input.allowRecordsOnWeekends ? 1 : 0,
-          input.allowFutureRecords ? 1 : 0,
-          input.country,
-          input.tabletIdleTimeoutSeconds,
-          input.autoBreakAfterMinutes,
-          input.autoBreakDurationMinutes,
-          nextProjectsEnabled ? 1 : 0,
-          nextTasksEnabled ? 1 : 0,
-          nextOvertimeJson,
-          JSON.stringify(nextCustomFields),
-        ]
-      );
-
+    await db.orm.transaction(async (tx: any) => {
+      await tx.update(companySettings).set({
+        currency: input.currency,
+        locale: nextLocale,
+        timeZone: nextTimeZone,
+        dateTimeFormat: nextDateTimeFormat,
+        firstDayOfWeek: input.firstDayOfWeek,
+        weekendDaysJson: JSON.stringify(nextWeekendDays),
+        editDaysLimit: input.editDaysLimit,
+        insertDaysLimit: input.insertDaysLimit,
+        allowOneRecordPerDay: input.allowOneRecordPerDay ? 1 : 0,
+        allowIntersectingRecords: input.allowIntersectingRecords ? 1 : 0,
+        allowRecordsOnHolidays: input.allowRecordsOnHolidays ? 1 : 0,
+        allowRecordsOnWeekends: input.allowRecordsOnWeekends ? 1 : 0,
+        allowFutureRecords: input.allowFutureRecords ? 1 : 0,
+        country: input.country,
+        tabletIdleTimeoutSeconds: input.tabletIdleTimeoutSeconds,
+        autoBreakAfterMinutes: input.autoBreakAfterMinutes,
+        autoBreakDurationMinutes: input.autoBreakDurationMinutes,
+        projectsEnabled: nextProjectsEnabled ? 1 : 0,
+        tasksEnabled: nextTasksEnabled ? 1 : 0,
+        overtimeSettingsJson: nextOvertimeJson,
+        customFieldsJson: JSON.stringify(nextCustomFields),
+      }).run();
       if (JSON.stringify(previousCustomFields) !== JSON.stringify(nextCustomFields)) {
         await cleanupCustomFieldValuesForTable(db, "users", nextCustomFields, { scope: "user" });
         await cleanupCustomFieldValuesForTable(db, "projects", nextCustomFields, { scope: "project" });
         await cleanupCustomFieldValuesForTable(db, "tasks", nextCustomFields, { scope: "task" });
         await cleanupCustomFieldValuesForTable(db, "time_entries", nextCustomFields, { scope: "time_entry" });
       }
-
-      await db.exec("COMMIT");
-    } catch (error) {
-      await db.exec("ROLLBACK");
-      throw error;
-    }
+    });
 
     return this.getSettings(db, companyId);
   },
 
   async getPublicHolidays(db: AppDatabase, companyId: string, countryCode: string, year: number) {
     const normalizedCountry = countryCode.trim().toUpperCase();
-    const cached = await db.first(
-      "SELECT payload_json, fetched_at FROM public_holiday_cache WHERE country_code = ? AND year = ?",
-      [normalizedCountry, year]
-    ) as { payload_json: string; fetched_at: string } | null;
+    const cached = await db.orm.select({
+      payload_json: publicHolidayCache.payloadJson,
+      fetched_at: publicHolidayCache.fetchedAt,
+    }).from(publicHolidayCache)
+      .where(and(eq(publicHolidayCache.countryCode, normalizedCountry), eq(publicHolidayCache.year, year)))
+      .get() as { payload_json: string; fetched_at: string } | undefined;
 
     if (cached && isFreshForYear(cached.fetched_at, year)) {
       return {
@@ -473,12 +450,19 @@ export const settingsService = {
         const holidays = await fetchHolidaySource(source, normalizedCountry, year);
         markHolidaySourceHealthy(source);
 
-        await db.run(
-          `INSERT INTO public_holiday_cache (country_code, year, payload_json, fetched_at)
-           VALUES (?, ?, ?, ?)
-           ON CONFLICT(country_code, year)
-           DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at`,
-        [normalizedCountry, year, JSON.stringify(holidays), new Date().toISOString()]);
+        const fetchedAt = new Date().toISOString();
+        await db.orm.insert(publicHolidayCache).values({
+          countryCode: normalizedCountry,
+          year,
+          payloadJson: JSON.stringify(holidays),
+          fetchedAt,
+        }).onConflictDoUpdate({
+          target: [publicHolidayCache.countryCode, publicHolidayCache.year],
+          set: {
+            payloadJson: JSON.stringify(holidays),
+            fetchedAt,
+          },
+        }).run();
 
         return {
           holidays,
@@ -537,12 +521,9 @@ export const settingsService = {
 
   async updateOvertimeSettings(db: AppDatabase, companyId: string, input: UpdateOvertimeSettingsInput) {
     await ensureSettingsRow(db, companyId);
-    await db.run(
-      `UPDATE company_settings
-         SET overtime_settings_json = ?
-       WHERE rowid = (SELECT rowid FROM company_settings LIMIT 1)`,
-      [JSON.stringify(normalizeOvertimeSettings(input.overtime))]
-    );
+    await db.orm.update(companySettings).set({
+      overtimeSettingsJson: JSON.stringify(normalizeOvertimeSettings(input.overtime)),
+    }).run();
 
     return this.getOvertimeSettings(db, companyId);
   }

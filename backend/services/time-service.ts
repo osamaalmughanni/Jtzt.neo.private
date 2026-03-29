@@ -1,7 +1,9 @@
 import { HTTPException } from "hono/http-exception";
+import { and, desc, eq, gte, isNull, lte, ne, or } from "drizzle-orm";
 import type { CreateManualTimeEntryInput, StartTimerInput, StopTimerInput, UpdateTimeEntryInput } from "../../shared/types/api";
 import type { TimeEntryType } from "../../shared/types/models";
 import { combineLocalDayAndTimeToIsoInTimeZone, formatLocalDay, getLocalNowSnapshot, parseLocalDay } from "../../shared/utils/time";
+import { timeEntries } from "../db/schema";
 import { mapTimeEntryView } from "../db/mappers";
 import { settingsService } from "./settings-service";
 import type { AppDatabase } from "../runtime/types";
@@ -83,13 +85,23 @@ async function normalizeManualEntryInput(db: AppDatabase, companyId: string, inp
 }
 
 async function getOpenEntry(db: AppDatabase, companyId: string, userId: number) {
-  return await db.first(
-    `SELECT te.*
-     FROM time_entries te
-     WHERE te.user_id = ? AND te.entry_type = 'work' AND te.end_time IS NULL
-     ORDER BY te.start_time DESC LIMIT 1`,
-    [userId]
-  ) as
+  return await db.orm.select({
+    id: timeEntries.id,
+    user_id: timeEntries.userId,
+    entry_type: timeEntries.entryType,
+    entry_date: timeEntries.entryDate,
+    end_date: timeEntries.endDate,
+    start_time: timeEntries.startTime,
+    end_time: timeEntries.endTime,
+    notes: timeEntries.notes,
+    project_id: timeEntries.projectId,
+    task_id: timeEntries.taskId,
+    custom_field_values_json: timeEntries.customFieldValuesJson,
+    created_at: timeEntries.createdAt,
+  }).from(timeEntries)
+    .where(and(eq(timeEntries.userId, userId), eq(timeEntries.entryType, "work"), isNull(timeEntries.endTime)))
+    .orderBy(desc(timeEntries.startTime))
+    .get() as
     | {
         id: number;
         user_id: number;
@@ -130,49 +142,33 @@ export const timeService = {
   async createManualEntry(db: AppDatabase, companyId: string, userId: number, input: CreateManualTimeEntryInput) {
     const normalized = await normalizeManualEntryInput(db, companyId, input);
     const createdAt = new Date().toISOString();
-    const result = await db.run(
-      `INSERT INTO time_entries (
-          user_id,
-          entry_type,
-          entry_date,
-          end_date,
-          start_time,
-          end_time,
-          notes,
-          project_id,
-          task_id,
-          custom_field_values_json,
-          created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
-        normalized.entryType,
-        normalized.entryDate,
-        normalized.endDate,
-        normalized.startTime,
-        normalized.endTime,
-        input.notes.trim() || null,
-        input.projectId ?? null,
-        input.taskId ?? null,
-        JSON.stringify(normalized.customFieldValues),
-        createdAt
-      ]
-    );
+    const result = await db.orm.insert(timeEntries).values({
+      userId,
+      entryType: normalized.entryType,
+      entryDate: normalized.entryDate,
+      endDate: normalized.endDate,
+      startTime: normalized.startTime,
+      endTime: normalized.endTime,
+      notes: input.notes.trim() || null,
+      projectId: input.projectId ?? null,
+      taskId: input.taskId ?? null,
+      customFieldValuesJson: JSON.stringify(normalized.customFieldValues),
+      createdAt
+    }).returning({ id: timeEntries.id });
 
-    return this.getEntryById(db, companyId, Number(result.lastRowId));
+    return this.getEntryById(db, companyId, Number(result[0]?.id));
   },
 
   async hasEntryOnRange(db: AppDatabase, companyId: string, userId: number, startDay: string, endDay: string, excludeEntryId?: number) {
-    const row = await db.first(
-      `SELECT id
-         FROM time_entries
-         WHERE user_id = ?
-           AND (? IS NULL OR id != ?)
-           AND entry_date <= ?
-           AND COALESCE(end_date, entry_date) >= ?
-         LIMIT 1`,
-      [userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
-    );
+    const row = await db.orm.select({ id: timeEntries.id })
+      .from(timeEntries)
+      .where(and(
+        eq(timeEntries.userId, userId),
+        excludeEntryId ? ne(timeEntries.id, excludeEntryId) : undefined,
+        lte(timeEntries.entryDate, endDay),
+        or(gte(timeEntries.endDate, startDay), and(isNull(timeEntries.endDate), gte(timeEntries.entryDate, startDay)))
+      ))
+      .get();
 
     return Boolean(row);
   },
@@ -190,16 +186,28 @@ export const timeService = {
     },
     excludeEntryId?: number
   ) {
-    const rows = await db.all(
-      `SELECT id, entry_type, entry_date, end_date, start_time, end_time
-         FROM time_entries
-         WHERE user_id = ?
-           AND (? IS NULL OR id != ?)
-           AND entry_date <= ?
-           AND COALESCE(end_date, entry_date) >= ?
-         ORDER BY entry_date ASC, start_time ASC`,
-      [userId, excludeEntryId ?? null, excludeEntryId ?? null, candidate.endDate ?? candidate.entryDate, candidate.entryDate]
-    ) as Array<{ id: number; entry_type: TimeEntryType; entry_date: string; end_date: string | null; start_time: string | null; end_time: string | null }>;
+    const rows = await db.orm.select({
+      id: timeEntries.id,
+      entry_type: timeEntries.entryType,
+      entry_date: timeEntries.entryDate,
+      end_date: timeEntries.endDate,
+      start_time: timeEntries.startTime,
+      end_time: timeEntries.endTime,
+    }).from(timeEntries)
+      .where(and(
+        eq(timeEntries.userId, userId),
+        excludeEntryId ? ne(timeEntries.id, excludeEntryId) : undefined,
+        lte(timeEntries.entryDate, candidate.endDate ?? candidate.entryDate),
+        or(gte(timeEntries.endDate, candidate.entryDate), and(isNull(timeEntries.endDate), gte(timeEntries.entryDate, candidate.entryDate)))
+      ))
+      .orderBy(timeEntries.entryDate, timeEntries.startTime) as Array<{
+        id: number;
+        entry_type: TimeEntryType;
+        entry_date: string;
+        end_date: string | null;
+        start_time: string | null;
+        end_time: string | null;
+      }>;
 
     const candidateEndDay = candidate.endDate ?? candidate.entryDate;
     return rows.some((row) => {
@@ -224,17 +232,16 @@ export const timeService = {
     endDay: string,
     excludeEntryId?: number,
   ) {
-    const row = await db.first(
-      `SELECT id
-         FROM time_entries
-         WHERE user_id = ?
-           AND entry_type = 'work'
-           AND (? IS NULL OR id != ?)
-           AND entry_date <= ?
-           AND COALESCE(end_date, entry_date) >= ?
-         LIMIT 1`,
-      [userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
-    );
+    const row = await db.orm.select({ id: timeEntries.id })
+      .from(timeEntries)
+      .where(and(
+        eq(timeEntries.userId, userId),
+        eq(timeEntries.entryType, "work"),
+        excludeEntryId ? ne(timeEntries.id, excludeEntryId) : undefined,
+        lte(timeEntries.entryDate, endDay),
+        or(gte(timeEntries.endDate, startDay), and(isNull(timeEntries.endDate), gte(timeEntries.entryDate, startDay)))
+      ))
+      .get();
 
     return Boolean(row);
   },
@@ -247,17 +254,16 @@ export const timeService = {
     endDay: string,
     excludeEntryId?: number,
   ) {
-    const row = await db.first(
-      `SELECT id
-         FROM time_entries
-         WHERE user_id = ?
-           AND entry_type != 'work'
-           AND (? IS NULL OR id != ?)
-           AND entry_date <= ?
-           AND COALESCE(end_date, entry_date) >= ?
-         LIMIT 1`,
-      [userId, excludeEntryId ?? null, excludeEntryId ?? null, endDay, startDay]
-    );
+    const row = await db.orm.select({ id: timeEntries.id })
+      .from(timeEntries)
+      .where(and(
+        eq(timeEntries.userId, userId),
+        ne(timeEntries.entryType, "work"),
+        excludeEntryId ? ne(timeEntries.id, excludeEntryId) : undefined,
+        lte(timeEntries.entryDate, endDay),
+        or(gte(timeEntries.endDate, startDay), and(isNull(timeEntries.endDate), gte(timeEntries.entryDate, startDay)))
+      ))
+      .get();
 
     return Boolean(row);
   },
@@ -268,44 +274,36 @@ export const timeService = {
       throw new HTTPException(400, { message: "A timer is already running" });
     }
 
-    const result = await db.run(
-      `INSERT INTO time_entries (
-          user_id,
-          entry_type,
-          entry_date,
-          end_date,
-          start_time,
-          end_time,
-          notes,
-          project_id,
-          task_id,
-          custom_field_values_json,
-          created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
-        "work",
-        snapshot.localDay,
-        snapshot.localDay,
-        snapshot.instantIso,
-        null,
-        input.notes?.trim() || null,
-        input.projectId ?? null,
-        input.taskId ?? null,
-        JSON.stringify(input.customFieldValues ?? {}),
-        snapshot.instantIso
-      ]
-    );
+    const result = await db.orm.insert(timeEntries).values({
+      userId,
+      entryType: "work",
+      entryDate: snapshot.localDay,
+      endDate: snapshot.localDay,
+      startTime: snapshot.instantIso,
+      endTime: null,
+      notes: input.notes?.trim() || null,
+      projectId: input.projectId ?? null,
+      taskId: input.taskId ?? null,
+      customFieldValuesJson: JSON.stringify(input.customFieldValues ?? {}),
+      createdAt: snapshot.instantIso
+    }).returning({ id: timeEntries.id });
 
-    return this.getEntryById(db, companyId, Number(result.lastRowId));
+    return this.getEntryById(db, companyId, Number(result[0]?.id));
   },
 
   async stopTimer(db: AppDatabase, companyId: string, userId: number, input: StopTimerInput) {
     const target = (
       input.entryId
-        ? await db.first("SELECT id, user_id, entry_date, end_time, entry_type FROM time_entries WHERE id = ?", [input.entryId])
+        ? await db.orm.select({
+            id: timeEntries.id,
+            user_id: timeEntries.userId,
+            entry_date: timeEntries.entryDate,
+            end_time: timeEntries.endTime,
+            entry_type: timeEntries.entryType,
+            notes: timeEntries.notes,
+          }).from(timeEntries).where(eq(timeEntries.id, input.entryId)).get()
         : await getOpenEntry(db, companyId, userId)
-    ) as { id: number; user_id: number; entry_date: string; end_time: string | null; entry_type: TimeEntryType } | undefined;
+    ) as { id: number; user_id: number; entry_date: string; end_time: string | null; entry_type: TimeEntryType; notes?: string | null } | undefined;
 
     if (!target || target.user_id !== userId || target.entry_type !== "work" || target.end_time) {
       throw new HTTPException(404, { message: "Open time entry not found" });
@@ -315,16 +313,20 @@ export const timeService = {
     const snapshot = await settingsService.getBusinessNowSnapshot(db, companyId, stoppedAt);
     const resolvedEndDate = snapshot.localDay;
 
-    await db.run(
-      "UPDATE time_entries SET end_time = ?, end_date = ?, notes = COALESCE(?, notes) WHERE id = ?",
-      [stoppedAt.toISOString(), resolvedEndDate, input.notes?.trim() || null, target.id]
-    );
+    await db.orm.update(timeEntries).set({
+      endTime: stoppedAt.toISOString(),
+      endDate: resolvedEndDate,
+      notes: (input.notes?.trim() || target.notes) ?? null,
+    }).where(eq(timeEntries.id, target.id)).run();
 
     return this.getEntryById(db, companyId, target.id);
   },
 
   async updateEntry(db: AppDatabase, companyId: string, userId: number, input: UpdateTimeEntryInput) {
-    const existing = await db.first("SELECT id, user_id FROM time_entries WHERE id = ?", [input.entryId]) as
+    const existing = await db.orm.select({
+      id: timeEntries.id,
+      user_id: timeEntries.userId,
+    }).from(timeEntries).where(eq(timeEntries.id, input.entryId)).get() as
       | { id: number; user_id: number }
       | undefined;
 
@@ -333,40 +335,27 @@ export const timeService = {
     }
 
     const normalized = await normalizeManualEntryInput(db, companyId, input);
-    await db.run(
-      `UPDATE time_entries
-       SET
-         user_id = ?,
-         entry_type = ?,
-         entry_date = ?,
-        end_date = ?,
-        start_time = ?,
-        end_time = ?,
-        notes = ?,
-        project_id = ?,
-        task_id = ?,
-        custom_field_values_json = ?
-      WHERE id = ?`,
-      [
-        userId,
-        normalized.entryType,
-        normalized.entryDate,
-        normalized.endDate,
-        normalized.startTime,
-        normalized.endTime,
-        input.notes.trim(),
-        input.projectId ?? null,
-        input.taskId ?? null,
-        JSON.stringify(normalized.customFieldValues),
-        input.entryId
-      ]
-    );
+    await db.orm.update(timeEntries).set({
+      userId,
+      entryType: normalized.entryType,
+      entryDate: normalized.entryDate,
+      endDate: normalized.endDate,
+      startTime: normalized.startTime,
+      endTime: normalized.endTime,
+      notes: input.notes.trim(),
+      projectId: input.projectId ?? null,
+      taskId: input.taskId ?? null,
+      customFieldValuesJson: JSON.stringify(normalized.customFieldValues),
+    }).where(eq(timeEntries.id, input.entryId)).run();
 
     return this.getEntryById(db, companyId, input.entryId);
   },
 
   async deleteEntry(db: AppDatabase, companyId: string, userId: number, entryId: number) {
-    const existing = await db.first("SELECT id, user_id FROM time_entries WHERE id = ?", [entryId]) as
+    const existing = await db.orm.select({
+      id: timeEntries.id,
+      user_id: timeEntries.userId,
+    }).from(timeEntries).where(eq(timeEntries.id, entryId)).get() as
       | { id: number; user_id: number }
       | undefined;
 
@@ -374,21 +363,34 @@ export const timeService = {
       throw new HTTPException(404, { message: "Time entry not found" });
     }
 
-    await db.run("DELETE FROM time_entries WHERE id = ?", [entryId]);
+    await db.orm.delete(timeEntries).where(eq(timeEntries.id, entryId)).run();
   },
 
   async listEntries(db: AppDatabase, companyId: string, userId: number, filters: { from?: string; to?: string }) {
     const fromDay = toFilterDay(filters.from);
     const toDay = toFilterDay(filters.to);
-    const rows = await db.all(
-      `SELECT te.*
-         FROM time_entries te
-         WHERE te.user_id = ?
-           AND (? IS NULL OR COALESCE(te.end_date, te.entry_date) >= ?)
-           AND (? IS NULL OR te.entry_date <= ?)
-         ORDER BY te.entry_date DESC, te.start_time DESC, te.id DESC`,
-      [userId, fromDay, fromDay, toDay, toDay]
-    );
+    const rows = await db.orm.select({
+      id: timeEntries.id,
+      user_id: timeEntries.userId,
+      entry_type: timeEntries.entryType,
+      entry_date: timeEntries.entryDate,
+      end_date: timeEntries.endDate,
+      start_time: timeEntries.startTime,
+      end_time: timeEntries.endTime,
+      notes: timeEntries.notes,
+      project_id: timeEntries.projectId,
+      task_id: timeEntries.taskId,
+      custom_field_values_json: timeEntries.customFieldValuesJson,
+      created_at: timeEntries.createdAt,
+    }).from(timeEntries)
+      .where(and(
+        eq(timeEntries.userId, userId),
+        fromDay
+          ? or(gte(timeEntries.endDate, fromDay), and(isNull(timeEntries.endDate), gte(timeEntries.entryDate, fromDay)))
+          : undefined,
+        toDay ? lte(timeEntries.entryDate, toDay) : undefined
+      ))
+      .orderBy(desc(timeEntries.entryDate), desc(timeEntries.startTime), desc(timeEntries.id));
 
     return rows.map(mapTimeEntryView);
   },
@@ -404,15 +406,32 @@ export const timeService = {
     const activeEntry = await this.getActiveEntry(db, companyId, userId);
 
     return {
-      todayMinutes: todayEntries.filter((entry) => entry.entryType === "work").reduce((sum, entry) => sum + entry.durationMinutes, 0),
-      weekMinutes: weekEntries.filter((entry) => entry.entryType === "work").reduce((sum, entry) => sum + entry.durationMinutes, 0),
+      todayMinutes: todayEntries
+        .filter((entry: (typeof todayEntries)[number]) => entry.entryType === "work")
+        .reduce((sum: number, entry: (typeof todayEntries)[number]) => sum + entry.durationMinutes, 0),
+      weekMinutes: weekEntries
+        .filter((entry: (typeof weekEntries)[number]) => entry.entryType === "work")
+        .reduce((sum: number, entry: (typeof weekEntries)[number]) => sum + entry.durationMinutes, 0),
       activeEntry,
       recentEntries: (await this.listEntries(db, companyId, userId, {})).slice(0, 5)
     };
   },
 
   async getEntryById(db: AppDatabase, companyId: string, entryId: number) {
-    const row = await db.first("SELECT te.* FROM time_entries te WHERE te.id = ?", [entryId]);
+    const row = await db.orm.select({
+      id: timeEntries.id,
+      user_id: timeEntries.userId,
+      entry_type: timeEntries.entryType,
+      entry_date: timeEntries.entryDate,
+      end_date: timeEntries.endDate,
+      start_time: timeEntries.startTime,
+      end_time: timeEntries.endTime,
+      notes: timeEntries.notes,
+      project_id: timeEntries.projectId,
+      task_id: timeEntries.taskId,
+      custom_field_values_json: timeEntries.customFieldValuesJson,
+      created_at: timeEntries.createdAt,
+    }).from(timeEntries).where(eq(timeEntries.id, entryId)).get();
 
     if (!row) {
       throw new HTTPException(404, { message: "Time entry not found" });

@@ -1,10 +1,12 @@
 import { Hono } from "hono";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { diffCalendarDays, enumerateLocalDays, isWeekendDay } from "../../../shared/utils/time";
 import { evaluateTimeEntryPolicy, getRangeEndDay } from "../../../shared/utils/time-entry-policy";
 import { getCustomFieldsForTarget, hasCustomFieldValue, normalizeCustomFieldValue, validateCustomFieldValuesForTarget } from "../../../shared/utils/custom-fields";
 import { authMiddleware, companyDbMiddleware, hasCompanyAccess, requireCompanyUser } from "../../auth/middleware";
 import type { CompanyTokenPayload, SessionTokenPayload } from "../../auth/jwt";
+import { projectTasks, projectUsers, projects, tasks, users } from "../../db/schema";
 import { settingsService } from "../../services/settings-service";
 import { timeOffInLieuService } from "../../services/time-off-in-lieu-service";
 import { timeService } from "../../services/time-service";
@@ -95,14 +97,11 @@ async function resolveTargetUserId(
       return normalizedRequestedUserId;
     }
 
-    const firstActiveUser = await db.first<{ id: number }>(
-      `SELECT id
-       FROM users
-       WHERE deleted_at IS NULL
-       ORDER BY is_active DESC, full_name COLLATE NOCASE ASC, id ASC
-       LIMIT 1`,
-      []
-    );
+    const firstActiveUser = await db.orm.select({ id: users.id })
+      .from(users)
+      .where(isNull(users.deletedAt))
+      .orderBy(desc(users.isActive), sql`full_name COLLATE NOCASE ASC`, users.id)
+      .get();
     if (!firstActiveUser) {
       throw new Error("No active users found");
     }
@@ -152,15 +151,20 @@ async function resolveProjectTaskSelection(
     return { projectId: null, taskId: null };
   }
 
-  const project = await db.first("SELECT id, is_active FROM projects WHERE id = ?", [projectId]) as
+  const project = await db.orm.select({
+    id: projects.id,
+    is_active: projects.isActive,
+  }).from(projects).where(eq(projects.id, projectId)).get() as
     | { id: number; is_active: number }
     | undefined;
   if (!project || !project.is_active) {
     throw new Error("Project not found");
   }
 
-  const projectUsers = await db.all<{ user_id: number }>("SELECT user_id FROM project_users WHERE project_id = ?", [projectId]);
-  if (projectUsers.length > 0 && !projectUsers.some((row) => row.user_id === userId)) {
+  const projectUserRows = await db.orm.select({ user_id: projectUsers.userId })
+    .from(projectUsers)
+    .where(eq(projectUsers.projectId, projectId));
+  if (projectUserRows.length > 0 && !projectUserRows.some((row: (typeof projectUserRows)[number]) => row.user_id === userId)) {
     throw new Error("Project is not assigned to this user");
   }
 
@@ -168,15 +172,20 @@ async function resolveProjectTaskSelection(
     return { projectId, taskId: null };
   }
 
-  const task = await db.first("SELECT id, is_active FROM tasks WHERE id = ?", [taskId]) as
+  const task = await db.orm.select({
+    id: tasks.id,
+    is_active: tasks.isActive,
+  }).from(tasks).where(eq(tasks.id, taskId)).get() as
     | { id: number; is_active: number }
     | undefined;
   if (!task || !task.is_active) {
     throw new Error("Task not found");
   }
 
-  const projectTasks = await db.all<{ task_id: number }>("SELECT task_id FROM project_tasks WHERE project_id = ?", [projectId]);
-  if (projectTasks.length > 0 && !projectTasks.some((row) => row.task_id === taskId)) {
+  const projectTaskRows = await db.orm.select({ task_id: projectTasks.taskId })
+    .from(projectTasks)
+    .where(eq(projectTasks.projectId, projectId));
+  if (projectTaskRows.length > 0 && !projectTaskRows.some((row: (typeof projectTaskRows)[number]) => row.task_id === taskId)) {
     throw new Error("Task is not assigned to this project");
   }
 
@@ -239,14 +248,19 @@ async function inspectStartTimerRequirements(
     if (!projectId) {
       requirements.push({ kind: "project", label: "Project" });
     } else {
-      const project = await db.first("SELECT id, is_active FROM projects WHERE id = ?", [projectId]) as
+      const project = await db.orm.select({
+        id: projects.id,
+        is_active: projects.isActive,
+      }).from(projects).where(eq(projects.id, projectId)).get() as
         | { id: number; is_active: number }
         | undefined;
       if (!project || !project.is_active) {
         requirements.push({ kind: "project", label: "Project" });
       } else {
-        const projectUsers = await db.all<{ user_id: number }>("SELECT user_id FROM project_users WHERE project_id = ?", [projectId]);
-        if (projectUsers.length > 0 && !projectUsers.some((row) => row.user_id === userId)) {
+        const projectUserRows = await db.orm.select({ user_id: projectUsers.userId })
+          .from(projectUsers)
+          .where(eq(projectUsers.projectId, projectId));
+        if (projectUserRows.length > 0 && !projectUserRows.some((row: (typeof projectUserRows)[number]) => row.user_id === userId)) {
           requirements.push({ kind: "project", label: "Project" });
         }
       }
@@ -258,14 +272,19 @@ async function inspectStartTimerRequirements(
     if (!taskId) {
       requirements.push({ kind: "task", label: "Task" });
     } else {
-      const task = await db.first("SELECT id, is_active FROM tasks WHERE id = ?", [taskId]) as
+      const task = await db.orm.select({
+        id: tasks.id,
+        is_active: tasks.isActive,
+      }).from(tasks).where(eq(tasks.id, taskId)).get() as
         | { id: number; is_active: number }
         | undefined;
       if (!task || !task.is_active) {
         requirements.push({ kind: "task", label: "Task" });
       } else if (settings.projectsEnabled && input.projectId) {
-        const projectTasks = await db.all<{ task_id: number }>("SELECT task_id FROM project_tasks WHERE project_id = ?", [input.projectId]);
-        if (projectTasks.length > 0 && !projectTasks.some((row) => row.task_id === taskId)) {
+        const projectTaskRows = await db.orm.select({ task_id: projectTasks.taskId })
+          .from(projectTasks)
+          .where(eq(projectTasks.projectId, input.projectId));
+        if (projectTaskRows.length > 0 && !projectTaskRows.some((row: (typeof projectTaskRows)[number]) => row.task_id === taskId)) {
           requirements.push({ kind: "task", label: "Task" });
         }
       }
@@ -588,7 +607,11 @@ async function enrichEntriesWithDayMetrics(
   entries: Awaited<ReturnType<typeof timeService.listEntries>>,
   contractsByUser?: Map<number, Awaited<ReturnType<typeof userService.listUserContracts>>>
 ) {
-  return Promise.all(entries.map((entry) => enrichEntryWithDayMetrics(db, companyId, entry, contractsByUser?.get(entry.userId))));
+  return Promise.all(
+    entries.map((entry: Awaited<ReturnType<typeof timeService.listEntries>>[number]) =>
+      enrichEntryWithDayMetrics(db, companyId, entry, contractsByUser?.get(entry.userId))
+    )
+  );
 }
 
 async function getHolidaySetForRange(db: AppDatabase, companyId: string, country: string, startDay: string, endDay: string) {
@@ -629,8 +652,12 @@ async function buildDashboardSummaryWithContext(
   const contracts = await userService.listUserContracts(db, companyId, userId);
   const allEntries = await timeService.listEntries(db, companyId, userId, {});
   const currentContract =
-    contracts.find((contract) => contract.startDate <= focusDay && (contract.endDate === null || contract.endDate >= focusDay)) ?? null;
-  const historyStartDay = [...contracts.map((contract) => contract.startDate), ...allEntries.map((entry) => entry.entryDate), focusDay].sort(
+    contracts.find((contract: Awaited<ReturnType<typeof userService.listUserContracts>>[number]) => contract.startDate <= focusDay && (contract.endDate === null || contract.endDate >= focusDay)) ?? null;
+  const historyStartDay = [
+    ...contracts.map((contract: Awaited<ReturnType<typeof userService.listUserContracts>>[number]) => contract.startDate),
+    ...allEntries.map((entry: Awaited<ReturnType<typeof timeService.listEntries>>[number]) => entry.entryDate),
+    focusDay
+  ].sort(
     (left, right) => left.localeCompare(right)
   )[0];
   const holidaySet = await getHolidaySetForRange(db, companyId, settings.country, historyStartDay, focusDay);
@@ -714,7 +741,7 @@ async function buildDashboardPageSnapshot(
   ]);
 
   const entries = sameMonth
-    ? monthEntries.filter((entry) => entry.entryDate <= focusDay && (entry.endDate ?? entry.entryDate) >= focusDay)
+    ? monthEntries.filter((entry: Awaited<ReturnType<typeof timeService.listEntries>>[number]) => entry.entryDate <= focusDay && (entry.endDate ?? entry.entryDate) >= focusDay)
     : selectedDayEntries ?? [];
   const dayStates: Record<string, "work" | "sick_leave" | "vacation" | "time_off_in_lieu" | "mixed"> = {};
   for (const entry of monthEntries) {
@@ -1011,8 +1038,8 @@ timeRoutes.get("/sick-leave/summary", async (c) => {
   const yearStart = `${yearEnd.slice(0, 4)}-01-01`;
   const entries = await timeService.listEntries(db, session.companyId, targetUserId, { from: yearStart, to: yearEnd });
   const usedDays = entries
-    .filter((entry) => entry.entryType === "sick_leave")
-    .reduce((sum, entry) => sum + entry.totalDayCount, 0);
+    .filter((entry: Awaited<ReturnType<typeof timeService.listEntries>>[number]) => entry.entryType === "sick_leave")
+    .reduce((sum: number, entry: Awaited<ReturnType<typeof timeService.listEntries>>[number]) => sum + entry.totalDayCount, 0);
 
   return c.json({
     summary: {

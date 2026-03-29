@@ -1,7 +1,9 @@
 import type { Context, Next } from "hono";
+import { and, eq, isNull } from "drizzle-orm";
 import { createMiddleware } from "hono/factory";
 import { HTTPException } from "hono/http-exception";
 import { createCompanyDatabase } from "../db/runtime-database";
+import { users } from "../db/schema";
 import type { SessionTokenPayload } from "./jwt";
 import { verifySessionToken } from "./jwt";
 import { systemService } from "../services/system-service";
@@ -55,17 +57,14 @@ export const authMiddleware = createMiddleware<{
     }
 
     const companyDb = await createCompanyDatabase(c.get("config"), session.companyId);
-    const user = await companyDb.first<{
-      id: number;
-      role: "employee" | "manager" | "admin";
-      is_active: number;
-      deleted_at: string | null;
-    }>(
-      "SELECT id, role, is_active, deleted_at FROM users WHERE id = ?",
-      [session.userId]
-    );
+    const user = await companyDb.orm.select({
+      id: users.id,
+      role: users.role,
+      is_active: users.isActive,
+      deleted_at: users.deletedAt,
+    }).from(users).where(and(eq(users.id, session.userId), isNull(users.deletedAt))).get();
 
-    if (!user || user.deleted_at !== null || !user.is_active) {
+    if (!user || !user.is_active) {
       throw new Error("Inactive or missing company user");
     }
 

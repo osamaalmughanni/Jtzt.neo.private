@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
-import { mapCompanyRecord } from "../db/mappers";
+import { companies, developerAccessTokens } from "../db/schema";
 import type { AppDatabase, RuntimeConfig } from "../runtime/types";
 import type { DeveloperAccessTokenRecord } from "../../shared/types/models";
 import { signWorkspaceKeyToken, verifyWorkspaceKeyToken } from "../auth/jwt";
@@ -48,18 +49,33 @@ function formatDeveloperAccessTokenRecord(row: {
 
 export const systemService = {
   async listCompanies(db: AppDatabase) {
-    const rows = await db.all("SELECT id, name, tablet_code_updated_at, created_at FROM companies ORDER BY created_at DESC");
-    return rows.map(mapCompanyRecord);
+    const rows = await db.orm.select({
+      id: companies.id,
+      name: companies.name,
+      tabletCodeUpdatedAt: companies.tabletCodeUpdatedAt,
+      createdAt: companies.createdAt,
+    }).from(companies).orderBy(desc(companies.createdAt));
+    return rows;
   },
 
   async getCompanyById(db: AppDatabase, companyId: string) {
-    const row = await db.first("SELECT id, name, tablet_code_updated_at, created_at FROM companies WHERE id = ?", [companyId]);
-    return row ? mapCompanyRecord(row) : null;
+    const row = await db.orm.select({
+      id: companies.id,
+      name: companies.name,
+      tabletCodeUpdatedAt: companies.tabletCodeUpdatedAt,
+      createdAt: companies.createdAt,
+    }).from(companies).where(eq(companies.id, companyId)).get();
+    return row ?? null;
   },
 
   async getCompanyByName(db: AppDatabase, companyName: string) {
-    const row = await db.first("SELECT id, name, tablet_code_updated_at, created_at FROM companies WHERE lower(name) = lower(?)", [companyName]);
-    return row ? mapCompanyRecord(row) : null;
+    const row = await db.orm.select({
+      id: companies.id,
+      name: companies.name,
+      tabletCodeUpdatedAt: companies.tabletCodeUpdatedAt,
+      createdAt: companies.createdAt,
+    }).from(companies).where(sql`lower(${companies.name}) = lower(${companyName})`).get();
+    return row ?? null;
   },
 
   async getCompanyByTabletCode(db: AppDatabase, code: string) {
@@ -68,26 +84,35 @@ export const systemService = {
       return null;
     }
 
-    const row = await db.first(
-      "SELECT id, name, tablet_code_updated_at, created_at FROM companies WHERE tablet_code_value = ? OR tablet_code_hash = ?",
-      [normalized, hashTabletCode(normalized)]
-    );
-    return row ? mapCompanyRecord(row) : null;
+    const row = await db.orm.select({
+      id: companies.id,
+      name: companies.name,
+      tabletCodeUpdatedAt: companies.tabletCodeUpdatedAt,
+      createdAt: companies.createdAt,
+    }).from(companies).where(
+      or(
+        eq(companies.tabletCodeValue, normalized),
+        eq(companies.tabletCodeHash, hashTabletCode(normalized)),
+      ),
+    ).get();
+    return row ?? null;
   },
 
   async getTabletCodeStatus(db: AppDatabase, companyId: string) {
-    const row = await db.first("SELECT tablet_code_value, tablet_code_hash, tablet_code_updated_at FROM companies WHERE id = ?", [companyId]) as
-      | { tablet_code_value: string | null; tablet_code_hash: string | null; tablet_code_updated_at: string | null }
-      | null;
+    const row = await db.orm.select({
+      tabletCodeValue: companies.tabletCodeValue,
+      tabletCodeHash: companies.tabletCodeHash,
+      tabletCodeUpdatedAt: companies.tabletCodeUpdatedAt,
+    }).from(companies).where(eq(companies.id, companyId)).get();
 
     if (!row) {
       return null;
     }
 
     return {
-      configured: Boolean(row.tablet_code_hash),
-      code: row.tablet_code_value ? normalizeTabletCode(row.tablet_code_value) : null,
-      updatedAt: row.tablet_code_updated_at ?? null
+      configured: Boolean(row.tabletCodeHash),
+      code: row.tabletCodeValue ? normalizeTabletCode(row.tabletCodeValue) : null,
+      updatedAt: row.tabletCodeUpdatedAt ?? null
     };
   },
 
@@ -99,12 +124,11 @@ export const systemService = {
 
     const updatedAt = normalized.length > 0 ? new Date().toISOString() : null;
     try {
-      await db.run("UPDATE companies SET tablet_code_value = ?, tablet_code_hash = ?, tablet_code_updated_at = ? WHERE id = ?", [
-        normalized.length > 0 ? normalized : null,
-        normalized.length > 0 ? hashTabletCode(normalized) : null,
-        updatedAt,
-        companyId
-      ]);
+      await db.orm.update(companies).set({
+        tabletCodeValue: normalized.length > 0 ? normalized : null,
+        tabletCodeHash: normalized.length > 0 ? hashTabletCode(normalized) : null,
+        tabletCodeUpdatedAt: updatedAt,
+      }).where(eq(companies.id, companyId)).run();
     } catch (error) {
       if (error instanceof Error && (error.message.includes("idx_companies_tablet_code_value") || error.message.includes("UNIQUE constraint failed: companies.tablet_code_value"))) {
         throw new HTTPException(409, { message: "Tablet code is already used by another company" });
@@ -128,35 +152,29 @@ export const systemService = {
   ,
 
   async listDeveloperAccessTokens(db: AppDatabase) {
-    const rows = await db.all<{
-      company_id: string;
-      company_name: string;
-      token_hint: string;
-      created_at: string;
-      rotated_at: string;
-    }>(
-      `SELECT developer_access_tokens.company_id, companies.name AS company_name, developer_access_tokens.token_hint, developer_access_tokens.created_at, developer_access_tokens.rotated_at
-       FROM developer_access_tokens
-       JOIN companies ON companies.id = developer_access_tokens.company_id
-       ORDER BY companies.created_at DESC`
-    );
+    const rows = await db.orm.select({
+      company_id: developerAccessTokens.companyId,
+      company_name: companies.name,
+      token_hint: developerAccessTokens.tokenHint,
+      created_at: developerAccessTokens.createdAt,
+      rotated_at: developerAccessTokens.rotatedAt,
+    }).from(developerAccessTokens)
+      .innerJoin(companies, eq(companies.id, developerAccessTokens.companyId))
+      .orderBy(desc(companies.createdAt));
     return rows.map(formatDeveloperAccessTokenRecord);
   },
 
   async getDeveloperAccessTokenStatus(db: AppDatabase, companyId: string) {
-    const row = await db.first<{
-      company_id: string;
-      company_name: string;
-      token_hint: string;
-      created_at: string;
-      rotated_at: string;
-    }>(
-      `SELECT developer_access_tokens.company_id, companies.name AS company_name, developer_access_tokens.token_hint, developer_access_tokens.created_at, developer_access_tokens.rotated_at
-       FROM developer_access_tokens
-       JOIN companies ON companies.id = developer_access_tokens.company_id
-       WHERE developer_access_tokens.company_id = ?`,
-      [companyId]
-    );
+    const row = await db.orm.select({
+      company_id: developerAccessTokens.companyId,
+      company_name: companies.name,
+      token_hint: developerAccessTokens.tokenHint,
+      created_at: developerAccessTokens.createdAt,
+      rotated_at: developerAccessTokens.rotatedAt,
+    }).from(developerAccessTokens)
+      .innerJoin(companies, eq(companies.id, developerAccessTokens.companyId))
+      .where(eq(developerAccessTokens.companyId, companyId))
+      .get();
     return row ? formatDeveloperAccessTokenRecord(row) : null;
   },
 
@@ -176,20 +194,20 @@ export const systemService = {
     const now = new Date().toISOString();
     const tokenHint = token.slice(-6);
 
-    await db.run(
-      `INSERT INTO developer_access_tokens (
-        company_id,
-        token_hash,
-        token_hint,
-        created_at,
-        rotated_at
-      ) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(company_id) DO UPDATE SET
-        token_hash = excluded.token_hash,
-        token_hint = excluded.token_hint,
-        rotated_at = excluded.rotated_at`,
-      [companyId, tokenHash, tokenHint, now, now]
-    );
+    await db.orm.insert(developerAccessTokens).values({
+      companyId,
+      tokenHash,
+      tokenHint,
+      createdAt: now,
+      rotatedAt: now,
+    }).onConflictDoUpdate({
+      target: developerAccessTokens.companyId,
+      set: {
+        tokenHash,
+        tokenHint,
+        rotatedAt: now,
+      },
+    }).run();
 
     return {
       token,
@@ -204,7 +222,10 @@ export const systemService = {
   },
 
   async verifyDeveloperAccessToken(db: AppDatabase, config: RuntimeConfig, companyId: string, token: string) {
-    const row = await db.first<{ token_hash: string }>("SELECT token_hash FROM developer_access_tokens WHERE company_id = ?", [companyId]);
+    const row = await db.orm.select({ token_hash: developerAccessTokens.tokenHash })
+      .from(developerAccessTokens)
+      .where(eq(developerAccessTokens.companyId, companyId))
+      .get();
     if (!row) {
       return false;
     }

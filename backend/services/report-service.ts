@@ -1,4 +1,5 @@
 import { HTTPException } from "hono/http-exception";
+import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { ReportColumnDefinition, ReportRequestInput, ReportRowMeta } from "../../shared/types/api";
 import type { CompanyCustomField, TimeEntryType, UserContract } from "../../shared/types/models";
 import { diffCalendarDays, enumerateLocalDays } from "../../shared/utils/time";
@@ -17,6 +18,7 @@ import { vacationBalanceService } from "./vacation-balance-service";
 import type { AppDatabase } from "../runtime/types";
 import { mapUserContractScheduleBlock } from "../db/mappers";
 import { buildUserContract } from "./user-contract-schedule";
+import { projectTasks, projects, tasks, timeEntries, userContractScheduleBlocks, userContracts, users } from "../db/schema";
 
 type ReportRow = {
   id: number;
@@ -73,10 +75,6 @@ function parseJsonRecord(value: string) {
   } catch {
     return {};
   }
-}
-
-function buildInClause(values: number[]) {
-  return values.map(() => "?").join(", ");
 }
 
 function normalizeRole(role: string) {
@@ -267,48 +265,41 @@ export const reportService = {
     const customFieldValueLabels = buildCustomFieldValueLabelLookup(settings.customFields);
     const timeEntryCustomFields = getCustomFieldsForTarget(settings.customFields, { scope: "time_entry" });
     const holidaySet = await getHolidaySet(db, companyId, settings.country, input.startDate, input.endDate);
-    const placeholders = buildInClause(input.userIds);
-    const rows = await db.all(
-      `SELECT
-        te.id,
-        te.user_id,
-        u.full_name,
-        u.role,
-        p.name AS project_name,
-        t.title AS task_title,
-        te.entry_type,
-        te.entry_date,
-        te.end_date,
-        te.start_time,
-        te.end_time,
-        te.notes,
-        te.custom_field_values_json
-       FROM time_entries te
-       INNER JOIN users u ON u.id = te.user_id AND u.deleted_at IS NULL AND u.is_active = 1
-       LEFT JOIN projects p ON p.id = te.project_id
-       LEFT JOIN tasks t ON t.id = te.task_id
-       WHERE 1=1
-         AND te.user_id IN (${placeholders})
-         AND te.entry_date <= ?
-         AND COALESCE(te.end_date, te.entry_date) >= ?
-       ORDER BY u.full_name COLLATE NOCASE ASC, te.entry_date ASC, te.start_time ASC, te.id ASC`
-    , [...input.userIds, input.endDate, input.startDate]) as ReportRow[];
+    const rows = await db.orm.select({
+      id: timeEntries.id,
+      user_id: timeEntries.userId,
+      full_name: users.fullName,
+      role: users.role,
+      project_name: projects.name,
+      task_title: tasks.title,
+      entry_type: timeEntries.entryType,
+      entry_date: timeEntries.entryDate,
+      end_date: timeEntries.endDate,
+      start_time: timeEntries.startTime,
+      end_time: timeEntries.endTime,
+      notes: timeEntries.notes,
+      custom_field_values_json: timeEntries.customFieldValuesJson,
+    }).from(timeEntries)
+      .innerJoin(users, and(eq(users.id, timeEntries.userId), isNull(users.deletedAt), eq(users.isActive, 1)))
+      .leftJoin(projects, eq(projects.id, timeEntries.projectId))
+      .leftJoin(tasks, eq(tasks.id, timeEntries.taskId))
+      .where(and(
+        inArray(timeEntries.userId, input.userIds),
+        lte(timeEntries.entryDate, input.endDate),
+        or(sql`coalesce(${timeEntries.endDate}, ${timeEntries.entryDate}) >= ${input.startDate}`)
+      ))
+      .orderBy(sql`${users.fullName} COLLATE NOCASE ASC`, asc(timeEntries.entryDate), asc(timeEntries.startTime), asc(timeEntries.id)) as ReportRow[];
 
-    const contractRows = await db.all(
-      `SELECT
-        id,
-        user_id,
-        hours_per_week,
-        start_date,
-        end_date,
-        payment_per_hour,
-        annual_vacation_days,
-        created_at
-       FROM user_contracts
-       WHERE 1=1
-         AND user_id IN (${placeholders})
-       ORDER BY start_date ASC`
-    , [...input.userIds]) as Array<{
+    const contractRows = await db.orm.select({
+      id: userContracts.id,
+      user_id: userContracts.userId,
+      hours_per_week: userContracts.hoursPerWeek,
+      start_date: userContracts.startDate,
+      end_date: userContracts.endDate,
+      payment_per_hour: userContracts.paymentPerHour,
+      annual_vacation_days: userContracts.annualVacationDays,
+      created_at: userContracts.createdAt,
+    }).from(userContracts).where(inArray(userContracts.userId, input.userIds)).orderBy(asc(userContracts.startDate)) as Array<{
       id: number;
       user_id: number;
       hours_per_week: number;
@@ -320,19 +311,16 @@ export const reportService = {
     }>;
     const contractScheduleRows = contractRows.length === 0
       ? []
-      : await db.all(
-          `SELECT
-            contract_id,
-            weekday,
-            block_order,
-            start_time,
-            end_time,
-            minutes
-           FROM user_contract_schedule_blocks
-           WHERE contract_id IN (${contractRows.map(() => "?").join(", ")})
-           ORDER BY contract_id ASC, weekday ASC, block_order ASC`,
-          contractRows.map((row) => row.id)
-        ) as Array<{
+      : await db.orm.select({
+          contract_id: userContractScheduleBlocks.contractId,
+          weekday: userContractScheduleBlocks.weekday,
+          block_order: userContractScheduleBlocks.blockOrder,
+          start_time: userContractScheduleBlocks.startTime,
+          end_time: userContractScheduleBlocks.endTime,
+          minutes: userContractScheduleBlocks.minutes,
+        }).from(userContractScheduleBlocks)
+          .where(inArray(userContractScheduleBlocks.contractId, contractRows.map((row) => row.id)))
+          .orderBy(asc(userContractScheduleBlocks.contractId), asc(userContractScheduleBlocks.weekday), asc(userContractScheduleBlocks.blockOrder)) as Array<{
           contract_id: number;
           weekday: number;
           block_order: number;

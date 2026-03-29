@@ -169,15 +169,18 @@ async function getUsedVacationDaysThroughDay(
 ) {
   const settings = await settingsService.getSettings(db, companyId);
   const entries = (await timeService.listEntries(db, companyId, userId, {}))
-    .filter((entry) => entry.entryType === "vacation" && (excludeEntryId ? entry.id !== excludeEntryId : true));
+    .filter((entry: Awaited<ReturnType<typeof timeService.listEntries>>[number]) => entry.entryType === "vacation" && (excludeEntryId ? entry.id !== excludeEntryId : true));
 
   if (entries.length === 0) {
     return 0;
   }
 
-  const firstEntryDay = entries.reduce((earliest, entry) => (entry.entryDate < earliest ? entry.entryDate : earliest), entries[0]!.entryDate);
+  const firstEntryDay = entries.reduce(
+    (earliest: string, entry: (typeof entries)[number]) => (entry.entryDate < earliest ? entry.entryDate : earliest),
+    entries[0]!.entryDate
+  );
   const lastEntryDay = entries.reduce(
-    (latest, entry) => ((entry.endDate ?? entry.entryDate) > latest ? (entry.endDate ?? entry.entryDate) : latest),
+    (latest: string, entry: (typeof entries)[number]) => ((entry.endDate ?? entry.entryDate) > latest ? (entry.endDate ?? entry.entryDate) : latest),
     entries[0]!.endDate ?? entries[0]!.entryDate,
   );
   const holidaySet = await getHolidaySetForRange(db, companyId, firstEntryDay, lastEntryDay);

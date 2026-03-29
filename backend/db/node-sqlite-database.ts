@@ -1,15 +1,15 @@
 import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { hardenSchemaForDatabase, type DatabaseKind } from "./app-database";
 import { runSqliteMigrations } from "./drizzle-migrations";
-import type { AppDatabase, RunResult, SqlStatement, SqlValue } from "../runtime/types";
+import { companies } from "./schema/system";
+import * as companySchema from "./schema/company";
+import * as systemSchema from "./schema/system";
+import type { AppDatabase } from "../runtime/types";
 
 const nodeConnections = new Map<string, Database.Database>();
-
-function normalizeParams(params?: SqlValue[]) {
-  return params ?? [];
-}
 
 export function initializeSqliteConnection(databasePath: string, kind: DatabaseKind): Database.Database {
   const existing = nodeConnections.get(databasePath);
@@ -40,6 +40,9 @@ export function closeNodeDatabaseConnection(databasePath: string) {
 
 export async function createNodeDatabase(databasePath: string, kind: DatabaseKind): Promise<AppDatabase> {
   const connection = initializeSqliteConnection(databasePath, kind);
+  const orm = kind === "system"
+    ? (drizzle(connection, { schema: systemSchema }) as unknown as AppDatabase["orm"])
+    : (drizzle(connection, { schema: companySchema }) as unknown as AppDatabase["orm"]);
   let schemaReadyPromise: Promise<void> | null = null;
 
   async function ensureSchemaReady() {
@@ -56,45 +59,10 @@ export async function createNodeDatabase(databasePath: string, kind: DatabaseKin
     await schemaReadyPromise;
   }
 
+  await ensureSchemaReady();
+
   return {
-    async all<T>(sql: string, params?: SqlValue[]) {
-      await ensureSchemaReady();
-      return connection.prepare(sql).all(...normalizeParams(params)) as T[];
-    },
-
-    async first<T>(sql: string, params?: SqlValue[]) {
-      await ensureSchemaReady();
-      return (connection.prepare(sql).get(...normalizeParams(params)) as T | undefined) ?? null;
-    },
-
-    async run(sql: string, params?: SqlValue[]): Promise<RunResult> {
-      await ensureSchemaReady();
-      const result = connection.prepare(sql).run(...normalizeParams(params));
-      return {
-        changes: result.changes,
-        lastRowId: typeof result.lastInsertRowid === "bigint" ? Number(result.lastInsertRowid) : Number(result.lastInsertRowid ?? 0) || null,
-      };
-    },
-
-    async batch(statements: SqlStatement[]) {
-      await ensureSchemaReady();
-      const results: RunResult[] = [];
-      const transaction = connection.transaction(() => {
-        for (const statement of statements) {
-          const result = connection.prepare(statement.sql).run(...normalizeParams(statement.params));
-          results.push({
-            changes: result.changes,
-            lastRowId: typeof result.lastInsertRowid === "bigint" ? Number(result.lastInsertRowid) : Number(result.lastInsertRowid ?? 0) || null,
-          });
-        }
-      });
-      transaction();
-      return results;
-    },
-
-    async exec(sql: string) {
-      await ensureSchemaReady();
-      connection.exec(sql);
-    },
+    sqlite: connection,
+    orm,
   };
 }

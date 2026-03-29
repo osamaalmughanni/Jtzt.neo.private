@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { HTTPException } from "hono/http-exception";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import type {
   CompanyApiDocsResponse,
@@ -12,6 +13,7 @@ import type {
   CompanyApiSchemaResponse,
   CompanyApiTableSchema,
 } from "../../shared/types/api";
+import { companies } from "../db/schema";
 import type { AppDatabase, SqlValue } from "../runtime/types";
 
 const API_KEY_PREFIX = "jtzt_";
@@ -48,8 +50,24 @@ function toSqlValues(values: Array<string | number | boolean | null>): SqlValue[
   return values.map(normalizeSqlValue);
 }
 
+function runAll<T extends Record<string, unknown>>(db: AppDatabase, query: string, params: SqlValue[] = []) {
+  return db.sqlite.prepare(query).all(...params) as T[];
+}
+
+function runFirst<T extends Record<string, unknown>>(db: AppDatabase, query: string, params: SqlValue[] = []) {
+  return (db.sqlite.prepare(query).get(...params) as T | undefined) ?? null;
+}
+
+function runWrite(db: AppDatabase, query: string, params: SqlValue[] = []) {
+  const result = db.sqlite.prepare(query).run(...params);
+  return {
+    changes: result.changes,
+    lastRowId: typeof result.lastInsertRowid === "bigint" ? Number(result.lastInsertRowid) : Number(result.lastInsertRowid ?? 0),
+  };
+}
+
 async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTableSchema[]> {
-  const tables = await db.all<{ name: string }>(
+  const tables = runAll<{ name: string }>(db,
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC",
   );
 
@@ -63,14 +81,14 @@ async function readCompanyScopedTables(db: AppDatabase): Promise<CompanyApiTable
       continue;
     }
 
-    const columns = await db.all<{
+    const columns = runAll<{
       cid: number;
       name: string;
       type: string;
       notnull: number;
       pk: number;
       dflt_value: string | null;
-    }>(`PRAGMA table_info(${quoteIdentifier(table.name)})`);
+    }>(db, `PRAGMA table_info(${quoteIdentifier(table.name)})`);
 
     const normalizedColumns: CompanyApiSchemaColumn[] = columns.map((column) => ({
       name: column.name,
@@ -351,10 +369,10 @@ function buildMarkdownDocs(docs: Omit<CompanyApiDocsResponse["docs"], "markdown"
 
 export const companyApiService = {
   async getApiKeyStatus(db: AppDatabase, companyId: string) {
-    const row = await db.first<{ api_key_hash: string | null; api_key_created_at: string | null }>(
-      "SELECT api_key_hash, api_key_created_at FROM companies WHERE id = ?",
-      [companyId],
-    );
+    const row = await db.orm.select({
+      api_key_hash: companies.apiKeyHash,
+      api_key_created_at: companies.apiKeyCreatedAt,
+    }).from(companies).where(eq(companies.id, companyId)).get();
     if (!row) {
       throw new HTTPException(404, { message: "Company not found" });
     }
@@ -368,10 +386,10 @@ export const companyApiService = {
   async rotateApiKey(db: AppDatabase, companyId: string) {
     const apiKey = buildApiKey();
     const createdAt = new Date().toISOString();
-    const result = await db.run(
-      "UPDATE companies SET api_key_hash = ?, api_key_created_at = ? WHERE id = ?",
-      [hashApiKey(apiKey), createdAt, companyId],
-    );
+    const result = await db.orm.update(companies).set({
+      apiKeyHash: hashApiKey(apiKey),
+      apiKeyCreatedAt: createdAt,
+    }).where(eq(companies.id, companyId)).run();
     if (result.changes === 0) {
       throw new HTTPException(404, { message: "Company not found" });
     }
@@ -387,10 +405,7 @@ export const companyApiService = {
 
   async getCompanyByApiKey(db: AppDatabase, apiKey: string) {
     const hash = hashApiKey(apiKey.trim());
-    return db.first<{ id: string; name: string }>(
-      "SELECT id, name FROM companies WHERE api_key_hash = ?",
-      [hash],
-    );
+    return db.orm.select({ id: companies.id, name: companies.name }).from(companies).where(eq(companies.apiKeyHash, hash)).get();
   },
 
   async getSchema(db: AppDatabase): Promise<CompanyApiSchemaResponse> {
@@ -416,11 +431,11 @@ export const companyApiService = {
     const limit = input.limit ?? 250;
     const offset = input.offset ?? 0;
     const tableName = quoteIdentifier(table.name);
-    const rows = await db.all<Record<string, unknown>>(
+    const rows = runAll<Record<string, unknown>>(db,
       `SELECT ${selectColumns.join(", ")} FROM ${tableName} ${where.sql} ${orderBy} LIMIT ? OFFSET ?`,
       [...where.params, limit, offset],
     );
-    const totalRow = await db.first<{ count: number | string }>(
+    const totalRow = runFirst<{ count: number | string }>(db,
       `SELECT COUNT(*) as count FROM ${tableName} ${where.sql}`,
       where.params,
     );
@@ -445,7 +460,8 @@ export const companyApiService = {
       const columns = values.map(([column]) => quoteIdentifier(column));
       const params: SqlValue[] = values.map(([, value]) => normalizeSqlValue(value));
       const placeholders = columns.map(() => "?").join(", ");
-      const result = await db.run(
+      const result = runWrite(
+        db,
         `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${placeholders})`,
         params,
       );
@@ -468,7 +484,8 @@ export const companyApiService = {
       const values = validateWritableColumns(input.values ?? {}, table);
       const assignments = values.map(([column]) => `${quoteIdentifier(column)} = ?`);
       const params = [...values.map(([, value]) => normalizeSqlValue(value)), ...where.params];
-      const result = await db.run(
+      const result = runWrite(
+        db,
         `UPDATE ${tableName} SET ${assignments.join(", ")} ${where.sql}`,
         params,
       );
@@ -481,7 +498,7 @@ export const companyApiService = {
       };
     }
 
-    const result = await db.run(`DELETE FROM ${tableName} ${where.sql}`, where.params);
+    const result = runWrite(db, `DELETE FROM ${tableName} ${where.sql}`, where.params);
     return {
       action: input.action,
       table: table.name,

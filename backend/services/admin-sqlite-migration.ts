@@ -3,7 +3,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { HTTPException } from "hono/http-exception";
+import { eq } from "drizzle-orm";
 import { runSqliteMigrations } from "../db/drizzle-migrations";
+import { companies } from "../db/schema";
 import type { AppDatabase, SqlValue } from "../runtime/types";
 import { systemService } from "./system-service";
 
@@ -102,6 +104,14 @@ function coerceSqlValue(value: unknown): SqlValue {
 
 function quoteIdentifier(value: string) {
   return `"${value.replace(/"/g, "\"\"")}"`;
+}
+
+function runAll<T extends Record<string, unknown>>(db: AppDatabase, query: string, params: SqlValue[] = []) {
+  return db.sqlite.prepare(query).all(...params) as T[];
+}
+
+function runWrite(db: AppDatabase, query: string, params: SqlValue[] = []) {
+  return db.sqlite.prepare(query).run(...params);
 }
 
 const COLUMN_CONSTRAINT_KEYWORDS = new Set([
@@ -272,7 +282,7 @@ function parseColumnsFromCreateTableSql(createTableSql: string) {
 }
 
 async function readTablesFromDatabase(db: AppDatabase) {
-  const rows = await db.all<{ name: string; sql: string | null }>(
+  const rows = runAll<{ name: string; sql: string | null }>(db,
     "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name ASC",
   );
 
@@ -520,29 +530,24 @@ async function loadMigrationTables(db: AppDatabase) {
 async function exportTableRows(db: AppDatabase, table: MigrationTable) {
   const columnNames = getPackageColumns(table).map((column) => column.name);
   const sql = `SELECT ${columnNames.map(quoteIdentifier).join(", ")} FROM ${quoteIdentifier(table.name)}${buildOrderByClause(table)}`;
-  const rows = await db.all<Record<string, unknown>>(sql, []);
+  const rows = runAll<Record<string, unknown>>(db, sql, []);
   return rows;
 }
 
 async function clearImportedTables(db: AppDatabase, orderedTables: MigrationTable[]) {
-  const statements = orderedTables
-    .slice()
-    .reverse()
-    .map((table) => ({ sql: `DELETE FROM ${quoteIdentifier(table.name)}` }));
-
-  for (let index = 0; index < statements.length; index += 25) {
-    await db.batch(statements.slice(index, index + 25));
+  for (const table of orderedTables.slice().reverse()) {
+    runWrite(db, `DELETE FROM ${quoteIdentifier(table.name)}`);
   }
 }
 
 async function runInTransaction(db: AppDatabase, work: () => Promise<void>) {
-  await db.exec("BEGIN IMMEDIATE");
+  db.sqlite.exec("BEGIN IMMEDIATE");
   try {
     await work();
-    await db.exec("COMMIT");
+    db.sqlite.exec("COMMIT");
   } catch (error) {
     try {
-      await db.exec("ROLLBACK");
+      db.sqlite.exec("ROLLBACK");
     } catch {
       // Ignore rollback errors and rethrow the original failure.
     }
@@ -576,7 +581,9 @@ async function importTableData(
     for (let index = 0; index < statements.length; index += 250) {
       const chunk = statements.slice(index, index + 250);
       if (chunk.length > 0) {
-        await db.batch(chunk);
+        for (const statement of chunk) {
+          runWrite(db, statement.sql, statement.params);
+        }
       }
     }
   }
@@ -1153,27 +1160,15 @@ export const adminSqliteMigrationService = {
   },
 
   async exportCompany(systemDb: AppDatabase, companyDb: AppDatabase, companyId: string) {
-    const company = await systemDb.first<{
-      name: string;
-      api_key_hash: string | null;
-      api_key_created_at: string | null;
-      tablet_code_value: string | null;
-      tablet_code_hash: string | null;
-      tablet_code_updated_at: string | null;
-      created_at: string;
-    }>(
-      `SELECT
-        name,
-        api_key_hash,
-        api_key_created_at,
-        tablet_code_value,
-        tablet_code_hash,
-        tablet_code_updated_at,
-        created_at
-       FROM companies
-       WHERE id = ?`,
-      [companyId],
-    );
+    const company = await systemDb.orm.select({
+      name: companies.name,
+      api_key_hash: companies.apiKeyHash,
+      api_key_created_at: companies.apiKeyCreatedAt,
+      tablet_code_value: companies.tabletCodeValue,
+      tablet_code_hash: companies.tabletCodeHash,
+      tablet_code_updated_at: companies.tabletCodeUpdatedAt,
+      created_at: companies.createdAt,
+    }).from(companies).where(eq(companies.id, companyId)).get();
 
     if (!company) {
       throw new HTTPException(404, { message: "Company not found" });
@@ -1301,28 +1296,16 @@ export const adminSqliteMigrationService = {
         throw new HTTPException(409, { message: "Company already exists", cause: report });
       }
 
-      await systemDb.run(
-        `INSERT INTO companies (
-          id,
-          name,
-          api_key_hash,
-          api_key_created_at,
-          tablet_code_value,
-          tablet_code_hash,
-          tablet_code_updated_at,
-          created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          companyId,
-          finalCompanyName,
-          metadata?.api_key_hash ?? null,
-          metadata?.api_key_created_at ?? null,
-          metadata?.tablet_code_value ?? null,
-          metadata?.tablet_code_hash ?? null,
-          metadata?.tablet_code_updated_at ?? null,
-          metadata?.created_at ?? new Date().toISOString(),
-          ],
-      );
+      await systemDb.orm.insert(companies).values({
+        id: companyId,
+        name: finalCompanyName,
+        apiKeyHash: metadata?.api_key_hash ?? null,
+        apiKeyCreatedAt: metadata?.api_key_created_at ?? null,
+        tabletCodeValue: metadata?.tablet_code_value ?? null,
+        tabletCodeHash: metadata?.tablet_code_hash ?? null,
+        tabletCodeUpdatedAt: metadata?.tablet_code_updated_at ?? null,
+        createdAt: metadata?.created_at ?? new Date().toISOString(),
+      }).run();
 
       const liveOrderedTables = await loadMigrationTables(companyDb);
 
@@ -1333,7 +1316,7 @@ export const adminSqliteMigrationService = {
           await importTableData(companyDb, liveOrderedTables, packageDb);
         });
       } catch (error) {
-        await systemDb.run("DELETE FROM companies WHERE id = ?", [companyId]);
+        await systemDb.orm.delete(companies).where(eq(companies.id, companyId)).run();
         throw new HTTPException(400, {
           message: "SQLite import failed while writing to the target database",
           cause: {
@@ -1439,28 +1422,15 @@ export const adminSqliteMigrationService = {
         await importTableData(companyDb, liveOrderedTables, packageDb);
       });
 
-      await systemDb.run(
-        `UPDATE companies
-         SET
-           name = ?,
-           api_key_hash = ?,
-           api_key_created_at = ?,
-           tablet_code_value = ?,
-           tablet_code_hash = ?,
-           tablet_code_updated_at = ?,
-           created_at = ?
-         WHERE id = ?`,
-        [
-          targetName,
-          metadata.api_key_hash,
-          metadata.api_key_created_at,
-          metadata.tablet_code_value,
-          metadata.tablet_code_hash,
-          metadata.tablet_code_updated_at,
-          metadata.created_at,
-          input.companyId,
-        ],
-      );
+      await systemDb.orm.update(companies).set({
+        name: targetName,
+        apiKeyHash: metadata.api_key_hash,
+        apiKeyCreatedAt: metadata.api_key_created_at,
+        tabletCodeValue: metadata.tablet_code_value,
+        tabletCodeHash: metadata.tablet_code_hash,
+        tabletCodeUpdatedAt: metadata.tablet_code_updated_at,
+        createdAt: metadata.created_at,
+      }).where(eq(companies.id, input.companyId)).run();
 
       report.success = true;
       return {

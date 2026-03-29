@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";
 import { HTTPException } from "hono/http-exception";
+import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { CreateUserInput, UpdateUserInput, UserContractInput } from "../../shared/types/api";
+import { userContractScheduleBlocks, userContracts, users } from "../db/schema";
 import { mapCompanyUserDetail, mapCompanyUserListItem, mapUserContract, mapUserContractScheduleBlock } from "../db/mappers";
 import type { AppDatabase } from "../runtime/types";
 import { buildContractInputWithDerivedHours } from "./user-contract-schedule";
@@ -16,9 +18,12 @@ async function ensureAdminRoleWillRemainAsync(
   userId: number,
   nextRole?: "employee" | "manager" | "admin"
 ) {
-  const target = await db.first("SELECT role FROM users WHERE id = ? AND deleted_at IS NULL", [userId]) as
+  const target = await db.orm.select({ role: users.role })
+    .from(users)
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+    .get() as
     | { role: "employee" | "manager" | "admin" }
-    | null;
+    | undefined;
   if (!target) {
     throw new HTTPException(404, { message: "User not found" });
   }
@@ -28,16 +33,24 @@ async function ensureAdminRoleWillRemainAsync(
     return;
   }
 
-  const adminCountRow = await db.first("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND deleted_at IS NULL") as { count: number } | null;
+  const adminCountRow = await db.orm.select({ count: sql<number>`count(*)` })
+    .from(users)
+    .where(and(eq(users.role, "admin"), isNull(users.deletedAt)))
+    .get();
   if ((adminCountRow?.count ?? 0) <= 1) {
     throw new HTTPException(400, { message: "At least one admin is required" });
   }
 }
 
 async function ensureUniquePin(db: AppDatabase, companyId: string, pinCode: string, userId?: number) {
-  const existing = userId
-    ? await db.first("SELECT id FROM users WHERE pin_code = ? AND id != ? AND deleted_at IS NULL", [pinCode, userId])
-    : await db.first("SELECT id FROM users WHERE pin_code = ? AND deleted_at IS NULL", [pinCode]);
+  const existing = await db.orm.select({ id: users.id })
+    .from(users)
+    .where(
+      userId
+        ? and(eq(users.pinCode, pinCode), ne(users.id, userId), isNull(users.deletedAt))
+        : and(eq(users.pinCode, pinCode), isNull(users.deletedAt))
+    )
+    .get();
 
   if (existing) {
     throw new HTTPException(409, { message: "PIN code already exists" });
@@ -93,77 +106,63 @@ function validateContracts(contracts: UserContractInput[], todayDay: string) {
 
 async function saveContracts(db: AppDatabase, companyId: string, userId: number, contracts: UserContractInput[], todayDay: string) {
   const normalizedContracts = validateContracts(contracts, todayDay);
-  const contractIds = await db.all<{ id: number }>("SELECT id FROM user_contracts WHERE user_id = ?", [userId]);
-  const statements = [
-    ...contractIds.map((row) => ({
-      sql: "DELETE FROM user_contract_schedule_blocks WHERE contract_id = ?",
-      params: [row.id] as const
-    })),
-    { sql: "DELETE FROM user_contracts WHERE user_id = ?", params: [userId] as const },
-  ];
-  await db.batch(statements.map((statement) => ({ sql: statement.sql, params: [...statement.params] })));
+  await db.orm.transaction(async (tx: any) => {
+    await tx.delete(userContracts).where(eq(userContracts.userId, userId)).run();
 
-  for (const contract of normalizedContracts) {
-    const createdAt = new Date().toISOString();
-    const result = await db.run(
-      `INSERT INTO user_contracts (
-        user_id,
-        hours_per_week,
-        start_date,
-        end_date,
-        payment_per_hour,
-        annual_vacation_days,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [userId, contract.hoursPerWeek, contract.startDate, contract.endDate, contract.paymentPerHour, contract.annualVacationDays, createdAt]
-    );
-    const contractId = Number(result.lastRowId);
-    for (const day of contract.schedule) {
-      for (const [blockIndex, block] of day.blocks.entries()) {
-        await db.run(
-          `INSERT INTO user_contract_schedule_blocks (
-            contract_id,
-            weekday,
-            block_order,
-            start_time,
-            end_time,
-            minutes
-          ) VALUES (?, ?, ?, ?, ?, ?)`,
-          [contractId, day.weekday, blockIndex + 1, block.startTime, block.endTime, block.minutes]
-        );
+    for (const contract of normalizedContracts) {
+      const createdAt = new Date().toISOString();
+      const insertedContracts = await tx.insert(userContracts).values({
+        userId,
+        hoursPerWeek: contract.hoursPerWeek,
+        startDate: contract.startDate,
+        endDate: contract.endDate,
+        paymentPerHour: contract.paymentPerHour,
+        annualVacationDays: contract.annualVacationDays,
+        createdAt,
+      }).returning({ id: userContracts.id });
+      const contractId = Number(insertedContracts[0]?.id);
+
+      for (const day of contract.schedule) {
+        for (const [blockIndex, block] of day.blocks.entries()) {
+          await tx.insert(userContractScheduleBlocks).values({
+            contractId,
+            weekday: day.weekday,
+            blockOrder: blockIndex + 1,
+            startTime: block.startTime,
+            endTime: block.endTime,
+            minutes: block.minutes,
+          }).run();
+        }
       }
     }
-  }
+  });
 }
 
 export const userService = {
   async listUsers(db: AppDatabase, companyId: string, options?: { activeOnly?: boolean }) {
-    const rows = await db.all(
-      `SELECT id, full_name, is_active, role
-       FROM users
-       WHERE deleted_at IS NULL ${options?.activeOnly ? "AND is_active = 1" : ""}
-       ORDER BY full_name COLLATE NOCASE ASC`,
-      []
-    );
+    const rows = await db.orm.select({
+      id: users.id,
+      full_name: users.fullName,
+      is_active: users.isActive,
+      role: users.role,
+    }).from(users)
+      .where(and(isNull(users.deletedAt), options?.activeOnly ? eq(users.isActive, 1) : undefined))
+      .orderBy(sql`full_name COLLATE NOCASE ASC`);
     return rows.map(mapCompanyUserListItem);
   },
 
   async getUser(db: AppDatabase, companyId: string, userId: number) {
-    const row = await db.first(
-      `SELECT
-        id,
-        username,
-        full_name,
-        is_active,
-        role,
-        pin_code,
-        email,
-        custom_field_values_json,
-        created_at
-      FROM users
-      WHERE id = ? AND deleted_at IS NULL`,
-      [userId]
-    );
+    const row = await db.orm.select({
+      id: users.id,
+      username: users.username,
+      full_name: users.fullName,
+      is_active: users.isActive,
+      role: users.role,
+      pin_code: users.pinCode,
+      email: users.email,
+      custom_field_values_json: users.customFieldValuesJson,
+      created_at: users.createdAt,
+    }).from(users).where(and(eq(users.id, userId), isNull(users.deletedAt))).get();
 
     if (!row) {
       throw new HTTPException(404, { message: "User not found" });
@@ -175,56 +174,35 @@ export const userService = {
   },
 
   async listUserContracts(db: AppDatabase, companyId: string, userId: number) {
-    const contracts = await db.all(
-      `SELECT
-        id,
-        user_id,
-        hours_per_week,
-        start_date,
-        end_date,
-        payment_per_hour,
-        annual_vacation_days,
-        created_at
-      FROM user_contracts
-      WHERE user_id = ?
-      ORDER BY start_date ASC`,
-      [userId]
-    ) as Array<{
-      id: number;
-      user_id: number;
-      hours_per_week: number;
-      start_date: string;
-      end_date: string | null;
-      payment_per_hour: number;
-      annual_vacation_days: number;
-      created_at: string;
-    }>;
+    const contracts = await db.orm.select({
+      id: userContracts.id,
+      user_id: userContracts.userId,
+      hours_per_week: userContracts.hoursPerWeek,
+      start_date: userContracts.startDate,
+      end_date: userContracts.endDate,
+      payment_per_hour: userContracts.paymentPerHour,
+      annual_vacation_days: userContracts.annualVacationDays,
+      created_at: userContracts.createdAt,
+    }).from(userContracts).where(eq(userContracts.userId, userId)).orderBy(asc(userContracts.startDate));
 
     if (contracts.length === 0) {
       return [];
     }
 
-    const placeholders = contracts.map(() => "?").join(", ");
-    const scheduleRows = await db.all(
-      `SELECT
-        contract_id,
-        weekday,
-        block_order,
-        start_time,
-        end_time,
-        minutes
-      FROM user_contract_schedule_blocks
-      WHERE contract_id IN (${placeholders})
-      ORDER BY contract_id ASC, weekday ASC, block_order ASC`,
-      contracts.map((contract) => contract.id)
-    ) as Array<{
-      contract_id: number;
-      weekday: number;
-      block_order: number;
-      start_time: string | null;
-      end_time: string | null;
-      minutes: number;
-    }>;
+    const scheduleRows = await db.orm.select({
+      contract_id: userContractScheduleBlocks.contractId,
+      weekday: userContractScheduleBlocks.weekday,
+      block_order: userContractScheduleBlocks.blockOrder,
+      start_time: userContractScheduleBlocks.startTime,
+      end_time: userContractScheduleBlocks.endTime,
+      minutes: userContractScheduleBlocks.minutes,
+    }).from(userContractScheduleBlocks)
+      .where(inArray(userContractScheduleBlocks.contractId, contracts.map((contract: (typeof contracts)[number]) => contract.id)))
+      .orderBy(
+        asc(userContractScheduleBlocks.contractId),
+        asc(userContractScheduleBlocks.weekday),
+        asc(userContractScheduleBlocks.blockOrder)
+      );
 
     const scheduleByContract = new Map<number, ReturnType<typeof mapUserContractScheduleBlock>[]>();
     for (const row of scheduleRows) {
@@ -233,57 +211,50 @@ export const userService = {
       scheduleByContract.set(row.contract_id, next);
     }
 
-    return contracts.map((contract) => mapUserContract(contract, scheduleByContract.get(contract.id) ?? []));
+    return contracts.map((contract: (typeof contracts)[number]) => mapUserContract(contract, scheduleByContract.get(contract.id) ?? []));
   },
 
   async createUser(db: AppDatabase, companyId: string, input: CreateUserInput, todayDay: string) {
-    const existing = await db.first("SELECT id FROM users WHERE username = ? AND deleted_at IS NULL", [input.username.trim()]);
+    const existing = await db.orm.select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.username, input.username.trim()), isNull(users.deletedAt)))
+      .get();
     if (existing) {
       throw new HTTPException(409, { message: "Username already exists" });
     }
 
     await ensureUniquePin(db, companyId, input.pinCode);
     validateContracts(input.contracts, todayDay);
-    const result = await db.run(
-      `INSERT INTO users (
-        username,
-        full_name,
-        password_hash,
-        role,
-        is_active,
-        pin_code,
-        email,
-        custom_field_values_json,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        input.username.trim(),
-        input.fullName.trim(),
-        bcrypt.hashSync(input.password, 10),
-        input.role,
-        input.isActive ? 1 : 0,
-        input.pinCode,
-        normalizeOptionalText(input.email),
-        JSON.stringify(input.customFieldValues ?? {}),
-        new Date().toISOString()
-      ]
-    );
+    const result = await db.orm.insert(users).values({
+      username: input.username.trim(),
+      fullName: input.fullName.trim(),
+      passwordHash: bcrypt.hashSync(input.password, 10),
+      role: input.role,
+      isActive: input.isActive ? 1 : 0,
+      pinCode: input.pinCode,
+      email: normalizeOptionalText(input.email),
+      customFieldValuesJson: JSON.stringify(input.customFieldValues ?? {}),
+      createdAt: new Date().toISOString()
+    }).returning({ id: users.id });
 
-    const userId = Number(result.lastRowId);
+    const userId = Number(result[0]?.id);
     await saveContracts(db, companyId, userId, input.contracts, todayDay);
     return userId;
   },
 
   async updateUser(db: AppDatabase, companyId: string, input: UpdateUserInput, todayDay: string) {
-    const existing = await db.first("SELECT id FROM users WHERE id = ? AND deleted_at IS NULL", [input.userId]);
+    const existing = await db.orm.select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, input.userId), isNull(users.deletedAt)))
+      .get();
     if (!existing) {
       throw new HTTPException(404, { message: "User not found" });
     }
 
-    const duplicateUsername = await db.first("SELECT id FROM users WHERE username = ? AND id != ? AND deleted_at IS NULL", [
-      input.username.trim(),
-      input.userId
-    ]);
+    const duplicateUsername = await db.orm.select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.username, input.username.trim()), ne(users.id, input.userId), isNull(users.deletedAt)))
+      .get();
     if (duplicateUsername) {
       throw new HTTPException(409, { message: "Username already exists" });
     }
@@ -295,47 +266,32 @@ export const userService = {
         input.password && input.password.trim().length > 0
         ? bcrypt.hashSync(input.password, 10)
         : (
-            await db.first("SELECT password_hash FROM users WHERE id = ? AND deleted_at IS NULL", [input.userId]) as { password_hash: string }
+            await db.orm.select({ password_hash: users.passwordHash })
+              .from(users)
+              .where(and(eq(users.id, input.userId), isNull(users.deletedAt)))
+              .get() as { password_hash: string }
           ).password_hash;
 
-    await db.run(
-      `UPDATE users
-       SET
-         username = ?,
-         full_name = ?,
-         password_hash = ?,
-         role = ?,
-         is_active = ?,
-         pin_code = ?,
-         email = ?,
-         custom_field_values_json = ?
-       WHERE id = ? AND deleted_at IS NULL`,
-      [
-        input.username.trim(),
-        input.fullName.trim(),
-        passwordHash,
-        input.role,
-        input.isActive ? 1 : 0,
-        input.pinCode,
-        normalizeOptionalText(input.email),
-        JSON.stringify(input.customFieldValues ?? {}),
-        input.userId
-      ]
-    );
+    await db.orm.update(users).set({
+      username: input.username.trim(),
+      fullName: input.fullName.trim(),
+      passwordHash,
+      role: input.role,
+      isActive: input.isActive ? 1 : 0,
+      pinCode: input.pinCode,
+      email: normalizeOptionalText(input.email),
+      customFieldValuesJson: JSON.stringify(input.customFieldValues ?? {}),
+    }).where(and(eq(users.id, input.userId), isNull(users.deletedAt))).run();
 
     await saveContracts(db, companyId, input.userId, input.contracts, todayDay);
   },
 
   async deleteUser(db: AppDatabase, companyId: string, userId: number) {
     await ensureAdminRoleWillRemainAsync(db, companyId, userId);
-    const result = await db.run(
-      `UPDATE users
-       SET
-         is_active = 0,
-         deleted_at = ?
-       WHERE id = ? AND deleted_at IS NULL`,
-      [new Date().toISOString(), userId]
-    );
+    const result = await db.orm.update(users).set({
+      isActive: 0,
+      deletedAt: new Date().toISOString(),
+    }).where(and(eq(users.id, userId), isNull(users.deletedAt))).run();
     if (result.changes === 0) {
       throw new HTTPException(404, { message: "User not found" });
     }

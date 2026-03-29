@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { createCompanyDatabase, createSystemDatabase } from "../backend/db/runtime-database";
+import { calculations } from "../backend/db/schema";
 import { adminService } from "../backend/services/admin-service";
 import { calculationService } from "../backend/services/calculation-service";
 import { systemService } from "../backend/services/system-service";
@@ -820,53 +821,30 @@ ORDER BY hours DESC, worker ASC`.trim();
 }
 
 async function seedCalculations(companyDb: Awaited<ReturnType<typeof createCompanyDatabase>>, companyId: string, year: number) {
-  await companyDb.run("DELETE FROM calculations WHERE company_id = ?", [companyId]);
+  await companyDb.orm.delete(calculations).run();
   const createdAt = new Date().toISOString();
   const chartConfig = { type: "bar", categoryColumn: null, valueColumn: null, seriesColumn: null, stacked: false };
 
-  await companyDb.exec("BEGIN IMMEDIATE TRANSACTION");
-  try {
+  await companyDb.orm.transaction(async (tx: any) => {
     for (const calculation of buildCalculationSql(year)) {
-      await companyDb.run(
-        `INSERT INTO calculations (
-           company_id,
-           name,
-           description,
-           sql_text,
-           output_mode,
-           chart_type,
-           chart_category_column,
-           chart_value_column,
-           chart_series_column,
-           chart_config_json,
-           chart_stacked,
-           is_builtin,
-           created_at,
-           updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-        [
-          companyId,
-          calculation.name,
-          calculation.description,
-          calculation.sqlText,
-          "table",
-          chartConfig.type,
-          chartConfig.categoryColumn,
-          chartConfig.valueColumn,
-          chartConfig.seriesColumn,
-          JSON.stringify(chartConfig),
-          chartConfig.stacked ? 1 : 0,
-          createdAt,
-          createdAt,
-        ]
-      );
+      await tx.insert(calculations).values({
+        name: calculation.name,
+        description: calculation.description,
+        sqlText: calculation.sqlText,
+        outputMode: "table",
+        chartType: chartConfig.type,
+        chartCategoryColumn: chartConfig.categoryColumn,
+        chartValueColumn: chartConfig.valueColumn,
+        chartSeriesColumn: chartConfig.seriesColumn,
+        chartConfigJson: JSON.stringify(chartConfig),
+        chartStacked: chartConfig.stacked ? 1 : 0,
+        isBuiltin: 0,
+        createdAt,
+        updatedAt: createdAt,
+      }).run();
       console.log(`Seeded calculation: ${calculation.name}`);
     }
-    await companyDb.exec("COMMIT");
-  } catch (error) {
-    await companyDb.exec("ROLLBACK");
-    throw error;
-  }
+  });
 }
 
 async function main() {
