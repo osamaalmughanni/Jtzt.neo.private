@@ -106,8 +106,8 @@ export const taskService = {
     if (!allowAllTasks && nextTaskIds.length === 0) {
       throw new HTTPException(400, { message: "Select at least one task or enable all tasks" });
     }
-    await db.orm.transaction(async (tx: any) => {
-      const result = await tx.insert(projects).values({
+    await db.orm.transaction((tx: any) => {
+      const result = tx.insert(projects).values({
         name: input.name.trim(),
         description: normalizeText(input.description),
         budget: Number(input.budget ?? 0),
@@ -119,18 +119,18 @@ export const taskService = {
       }).returning({ id: projects.id });
       const projectId = Number(result[0]?.id);
       for (const userId of nextUserIds) {
-        const user = await tx.select({ id: users.id }).from(users).where(and(eq(users.id, userId), isNull(users.deletedAt))).get();
+        const user = tx.select({ id: users.id }).from(users).where(and(eq(users.id, userId), isNull(users.deletedAt))).get();
         if (!user) {
           continue;
         }
-        await tx.insert(projectUsers).values({ projectId, userId, createdAt }).run();
+        tx.insert(projectUsers).values({ projectId, userId, createdAt }).run();
       }
       for (const taskId of nextTaskIds) {
-        const task = await tx.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).get();
+        const task = tx.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).get();
         if (!task) {
           continue;
         }
-        await tx.insert(projectTasks).values({ projectId, taskId, createdAt }).run();
+        tx.insert(projectTasks).values({ projectId, taskId, createdAt }).run();
       }
     });
   },
@@ -149,8 +149,8 @@ export const taskService = {
     if (!allowAllTasks && nextTaskIds.length === 0) {
       throw new HTTPException(400, { message: "Select at least one task or enable all tasks" });
     }
-    await db.orm.transaction(async (tx: any) => {
-      await tx.update(projects).set({
+    await db.orm.transaction((tx: any) => {
+      tx.update(projects).set({
         name: input.name.trim(),
         description: normalizeText(input.description),
         budget: Number(input.budget ?? 0),
@@ -159,18 +159,18 @@ export const taskService = {
         allowAllTasks: allowAllTasks ? 1 : 0,
         customFieldValuesJson: JSON.stringify(input.customFieldValues ?? {}),
       }).where(eq(projects.id, input.projectId)).run();
-      await tx.delete(projectUsers).where(eq(projectUsers.projectId, input.projectId)).run();
-      await tx.delete(projectTasks).where(eq(projectTasks.projectId, input.projectId)).run();
+      tx.delete(projectUsers).where(eq(projectUsers.projectId, input.projectId)).run();
+      tx.delete(projectTasks).where(eq(projectTasks.projectId, input.projectId)).run();
       for (const userId of nextUserIds) {
-        const user = await tx.select({ id: users.id }).from(users).where(and(eq(users.id, userId), isNull(users.deletedAt))).get();
+        const user = tx.select({ id: users.id }).from(users).where(and(eq(users.id, userId), isNull(users.deletedAt))).get();
         if (user) {
-          await tx.insert(projectUsers).values({ projectId: input.projectId, userId, createdAt: new Date().toISOString() }).run();
+          tx.insert(projectUsers).values({ projectId: input.projectId, userId, createdAt: new Date().toISOString() }).run();
         }
       }
       for (const taskId of nextTaskIds) {
-        const task = await tx.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).get();
+        const task = tx.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).get();
         if (task) {
-          await tx.insert(projectTasks).values({ projectId: input.projectId, taskId, createdAt: new Date().toISOString() }).run();
+          tx.insert(projectTasks).values({ projectId: input.projectId, taskId, createdAt: new Date().toISOString() }).run();
         }
       }
     });
@@ -178,10 +178,10 @@ export const taskService = {
 
   async deleteProject(db: AppDatabase, companyId: string, input: DeleteProjectInput) {
     await ensureProjectExists(db, companyId, input.projectId);
-    await db.orm.transaction(async (tx: any) => {
-      await tx.delete(projectTasks).where(eq(projectTasks.projectId, input.projectId)).run();
-      await tx.delete(projectUsers).where(eq(projectUsers.projectId, input.projectId)).run();
-      await tx.delete(projects).where(eq(projects.id, input.projectId)).run();
+    await db.orm.transaction((tx: any) => {
+      tx.delete(projectTasks).where(eq(projectTasks.projectId, input.projectId)).run();
+      tx.delete(projectUsers).where(eq(projectUsers.projectId, input.projectId)).run();
+      tx.delete(projects).where(eq(projects.id, input.projectId)).run();
     });
   },
 
@@ -209,28 +209,28 @@ export const taskService = {
 
   async setProjectUsers(db: AppDatabase, companyId: string, projectId: number, userIds: number[]) {
     await ensureProjectExists(db, companyId, projectId);
-    await db.orm.transaction(async (tx: any) => {
-      await tx.delete(projectUsers).where(eq(projectUsers.projectId, projectId)).run();
+    await db.orm.transaction((tx: any) => {
+      tx.delete(projectUsers).where(eq(projectUsers.projectId, projectId)).run();
       for (const userId of Array.from(new Set(userIds))) {
-        const user = await tx.select({ id: users.id }).from(users).where(and(eq(users.id, userId), isNull(users.deletedAt))).get();
+        const user = tx.select({ id: users.id }).from(users).where(and(eq(users.id, userId), isNull(users.deletedAt))).get();
         if (!user) {
           continue;
         }
-        await tx.insert(projectUsers).values({ projectId, userId, createdAt: new Date().toISOString() }).run();
+        tx.insert(projectUsers).values({ projectId, userId, createdAt: new Date().toISOString() }).run();
       }
     });
   },
 
   async setProjectTasks(db: AppDatabase, companyId: string, projectId: number, taskIds: number[]) {
     await ensureProjectExists(db, companyId, projectId);
-    await db.orm.transaction(async (tx: any) => {
-      await tx.delete(projectTasks).where(eq(projectTasks.projectId, projectId)).run();
+    await db.orm.transaction((tx: any) => {
+      tx.delete(projectTasks).where(eq(projectTasks.projectId, projectId)).run();
       for (const taskId of Array.from(new Set(taskIds))) {
-        const task = await tx.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).get();
+        const task = tx.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, taskId)).get();
         if (!task) {
           continue;
         }
-        await tx.insert(projectTasks).values({ projectId, taskId, createdAt: new Date().toISOString() }).run();
+        tx.insert(projectTasks).values({ projectId, taskId, createdAt: new Date().toISOString() }).run();
       }
     });
   }

@@ -60,17 +60,17 @@ function validateSnapshot(snapshot: CompanySnapshot) {
 }
 
 async function deleteCompanyData(db: AppDatabase, companyId: string) {
-  await db.orm.transaction(async (tx: any) => {
-    await tx.delete(projectTasks).run();
-    await tx.delete(projectUsers).run();
-    await tx.delete(tasks).run();
-    await tx.delete(projects).run();
-    await tx.delete(timeEntries).run();
-    await tx.delete(userContractScheduleBlocks).run();
-    await tx.delete(userContracts).run();
-    await tx.delete(publicHolidayCache).run();
-    await tx.delete(companySettings).run();
-    await tx.delete(users).run();
+  await db.orm.transaction((tx: any) => {
+    tx.delete(projectTasks).run();
+    tx.delete(projectUsers).run();
+    tx.delete(tasks).run();
+    tx.delete(projects).run();
+    tx.delete(timeEntries).run();
+    tx.delete(userContractScheduleBlocks).run();
+    tx.delete(userContracts).run();
+    tx.delete(publicHolidayCache).run();
+    tx.delete(companySettings).run();
+    tx.delete(users).run();
   });
 }
 
@@ -100,174 +100,185 @@ async function seedDefaultProjects(db: AppDatabase, companyId: string) {
 async function replaceCompanySnapshotInternal(db: AppDatabase, companyId: string, snapshot: CompanySnapshot) {
   validateSnapshot(snapshot);
 
-  await deleteCompanyData(db, companyId);
+  await db.orm.transaction((tx: any) => {
+    tx.delete(projectTasks).run();
+    tx.delete(projectUsers).run();
+    tx.delete(tasks).run();
+    tx.delete(projects).run();
+    tx.delete(timeEntries).run();
+    tx.delete(userContractScheduleBlocks).run();
+    tx.delete(userContracts).run();
+    tx.delete(publicHolidayCache).run();
+    tx.delete(companySettings).run();
+    tx.delete(users).run();
 
-  if (snapshot.settings) {
-    await db.orm.insert(companySettings).values({
-      currency: snapshot.settings.currency,
-      locale: snapshot.settings.locale,
-      timeZone: snapshot.settings.timeZone,
-      dateTimeFormat: snapshot.settings.dateTimeFormat,
-      firstDayOfWeek: snapshot.settings.firstDayOfWeek,
-      weekendDaysJson: JSON.stringify(snapshot.settings.weekendDays ?? DEFAULT_COMPANY_WEEKEND_DAYS),
-      editDaysLimit: snapshot.settings.editDaysLimit,
-      insertDaysLimit: snapshot.settings.insertDaysLimit,
-      allowOneRecordPerDay: snapshot.settings.allowOneRecordPerDay ? 1 : 0,
-      allowIntersectingRecords: snapshot.settings.allowIntersectingRecords ? 1 : 0,
-      allowRecordsOnHolidays: snapshot.settings.allowRecordsOnHolidays ? 1 : 0,
-      allowRecordsOnWeekends: snapshot.settings.allowRecordsOnWeekends ? 1 : 0,
-      allowFutureRecords: snapshot.settings.allowFutureRecords ? 1 : 0,
-      country: snapshot.settings.country,
-      tabletIdleTimeoutSeconds: snapshot.settings.tabletIdleTimeoutSeconds,
-      autoBreakAfterMinutes: snapshot.settings.autoBreakAfterMinutes,
-      autoBreakDurationMinutes: snapshot.settings.autoBreakDurationMinutes,
-      projectsEnabled: snapshot.settings.projectsEnabled ? 1 : 0,
-      tasksEnabled: snapshot.settings.tasksEnabled ? 1 : 0,
-      overtimeSettingsJson: JSON.stringify((snapshot.settings as { overtime?: unknown }).overtime ?? createDefaultOvertimeSettings()),
-      customFieldsJson: JSON.stringify(snapshot.settings.customFields),
-    }).run();
-  }
+    if (snapshot.settings) {
+      tx.insert(companySettings).values({
+        currency: snapshot.settings.currency,
+        locale: snapshot.settings.locale,
+        timeZone: snapshot.settings.timeZone,
+        dateTimeFormat: snapshot.settings.dateTimeFormat,
+        firstDayOfWeek: snapshot.settings.firstDayOfWeek,
+        weekendDaysJson: JSON.stringify(snapshot.settings.weekendDays ?? DEFAULT_COMPANY_WEEKEND_DAYS),
+        editDaysLimit: snapshot.settings.editDaysLimit,
+        insertDaysLimit: snapshot.settings.insertDaysLimit,
+        allowOneRecordPerDay: snapshot.settings.allowOneRecordPerDay ? 1 : 0,
+        allowIntersectingRecords: snapshot.settings.allowIntersectingRecords ? 1 : 0,
+        allowRecordsOnHolidays: snapshot.settings.allowRecordsOnHolidays ? 1 : 0,
+        allowRecordsOnWeekends: snapshot.settings.allowRecordsOnWeekends ? 1 : 0,
+        allowFutureRecords: snapshot.settings.allowFutureRecords ? 1 : 0,
+        country: snapshot.settings.country,
+        tabletIdleTimeoutSeconds: snapshot.settings.tabletIdleTimeoutSeconds,
+        autoBreakAfterMinutes: snapshot.settings.autoBreakAfterMinutes,
+        autoBreakDurationMinutes: snapshot.settings.autoBreakDurationMinutes,
+        projectsEnabled: snapshot.settings.projectsEnabled ? 1 : 0,
+        tasksEnabled: snapshot.settings.tasksEnabled ? 1 : 0,
+        overtimeSettingsJson: JSON.stringify((snapshot.settings as { overtime?: unknown }).overtime ?? createDefaultOvertimeSettings()),
+        customFieldsJson: JSON.stringify(snapshot.settings.customFields),
+      }).run();
+    }
 
-  const userIdMap = new Map<number, number>();
-  for (const user of snapshot.users) {
-    const result = await db.orm.insert(users).values({
-      username: user.username,
-      fullName: user.fullName,
-      passwordHash: user.passwordHash,
-      role: user.role,
-      isActive: user.isActive ? 1 : 0,
-      deletedAt: user.deletedAt ?? null,
-      pinCode: user.pinCode,
-      email: user.email,
-      customFieldValuesJson: JSON.stringify(user.customFieldValues ?? {}),
-      createdAt: user.createdAt,
-    }).returning({ id: users.id });
-    userIdMap.set(user.id, Number(result[0]?.id));
-  }
+    const userIdMap = new Map<number, number>();
+    for (const user of snapshot.users) {
+      const result = tx.insert(users).values({
+        username: user.username,
+        fullName: user.fullName,
+        passwordHash: user.passwordHash,
+        role: user.role,
+        isActive: user.isActive ? 1 : 0,
+        deletedAt: user.deletedAt ?? null,
+        pinCode: user.pinCode,
+        email: user.email,
+        customFieldValuesJson: JSON.stringify(user.customFieldValues ?? {}),
+        createdAt: user.createdAt,
+      }).returning({ id: users.id });
+      userIdMap.set(user.id, Number(result[0]?.id));
+    }
 
-  const projectIdMap = new Map<number, number>();
-  for (const project of snapshot.projects) {
-    const result = await db.orm.insert(projects).values({
-      name: project.name,
-      description: project.description,
-      budget: project.budget ?? 0,
-      isActive: project.isActive ? 1 : 0,
-      allowAllUsers: project.allowAllUsers ? 1 : 0,
-      allowAllTasks: project.allowAllTasks ? 1 : 0,
-      customFieldValuesJson: JSON.stringify(project.customFieldValues ?? {}),
-      createdAt: project.createdAt,
-    }).returning({ id: projects.id });
-    projectIdMap.set(project.id, Number(result[0]?.id));
-  }
+    const projectIdMap = new Map<number, number>();
+    for (const project of snapshot.projects) {
+      const result = tx.insert(projects).values({
+        name: project.name,
+        description: project.description,
+        budget: project.budget ?? 0,
+        isActive: project.isActive ? 1 : 0,
+        allowAllUsers: project.allowAllUsers ? 1 : 0,
+        allowAllTasks: project.allowAllTasks ? 1 : 0,
+        customFieldValuesJson: JSON.stringify(project.customFieldValues ?? {}),
+        createdAt: project.createdAt,
+      }).returning({ id: projects.id });
+      projectIdMap.set(project.id, Number(result[0]?.id));
+    }
 
-  const taskIdMap = new Map<number, number>();
-  for (const task of snapshot.tasks) {
-    const result = await db.orm.insert(tasks).values({
-      title: task.title,
-      isActive: task.isActive ? 1 : 0,
-      customFieldValuesJson: JSON.stringify(task.customFieldValues ?? {}),
-      createdAt: task.createdAt,
-    }).returning({ id: tasks.id });
-    taskIdMap.set(task.id, Number(result[0]?.id));
-  }
+    const taskIdMap = new Map<number, number>();
+    for (const task of snapshot.tasks) {
+      const result = tx.insert(tasks).values({
+        title: task.title,
+        isActive: task.isActive ? 1 : 0,
+        customFieldValuesJson: JSON.stringify(task.customFieldValues ?? {}),
+        createdAt: task.createdAt,
+      }).returning({ id: tasks.id });
+      taskIdMap.set(task.id, Number(result[0]?.id));
+    }
 
-  for (const contract of snapshot.userContracts) {
-    const userId = userIdMap.get(contract.userId);
-    if (!userId) continue;
-    const result = await db.orm.insert(userContracts).values({
-      userId,
-      hoursPerWeek: contract.hoursPerWeek,
-      startDate: contract.startDate,
-      endDate: contract.endDate,
-      paymentPerHour: contract.paymentPerHour,
-      annualVacationDays: contract.annualVacationDays,
-      createdAt: contract.createdAt,
-    }).returning({ id: userContracts.id });
-    const contractId = Number(result[0]?.id);
-    const schedule = Array.isArray((contract as { schedule?: unknown }).schedule) ? contract.schedule : [];
-    for (const day of schedule) {
-      for (const [blockIndex, block] of day.blocks.entries()) {
-        await db.orm.insert(userContractScheduleBlocks).values({
-          contractId,
-          weekday: day.weekday,
-          blockOrder: blockIndex + 1,
-          startTime: block.startTime,
-          endTime: block.endTime,
-          minutes: block.minutes,
-        }).run();
+    for (const contract of snapshot.userContracts) {
+      const userId = userIdMap.get(contract.userId);
+      if (!userId) continue;
+      const result = tx.insert(userContracts).values({
+        userId,
+        hoursPerWeek: contract.hoursPerWeek,
+        startDate: contract.startDate,
+        endDate: contract.endDate,
+        paymentPerHour: contract.paymentPerHour,
+        annualVacationDays: contract.annualVacationDays,
+        createdAt: contract.createdAt,
+      }).returning({ id: userContracts.id });
+      const contractId = Number(result[0]?.id);
+      const schedule = Array.isArray((contract as { schedule?: unknown }).schedule) ? contract.schedule : [];
+      for (const day of schedule) {
+        for (const [blockIndex, block] of day.blocks.entries()) {
+          tx.insert(userContractScheduleBlocks).values({
+            contractId,
+            weekday: day.weekday,
+            blockOrder: blockIndex + 1,
+            startTime: block.startTime,
+            endTime: block.endTime,
+            minutes: block.minutes,
+          }).run();
+        }
       }
     }
-  }
 
-  for (const entry of snapshot.timeEntries) {
-    const userId = userIdMap.get(entry.userId);
-    if (!userId) continue;
-    const projectId = entry.projectId != null ? projectIdMap.get(entry.projectId) ?? null : null;
-    const taskId = entry.taskId != null ? taskIdMap.get(entry.taskId) ?? null : null;
-    await db.orm.insert(timeEntries).values({
-      userId,
-      entryType: entry.entryType,
-      entryDate: entry.entryDate,
-      endDate: entry.endDate,
-      startTime: entry.startTime ?? entry.entryDate,
-      endTime: entry.endTime,
-      notes: entry.notes,
-      projectId,
-      taskId,
-      customFieldValuesJson: JSON.stringify(entry.customFieldValues),
-      createdAt: entry.createdAt,
-    }).run();
-  }
+    for (const entry of snapshot.timeEntries) {
+      const userId = userIdMap.get(entry.userId);
+      if (!userId) continue;
+      const projectId = entry.projectId != null ? projectIdMap.get(entry.projectId) ?? null : null;
+      const taskId = entry.taskId != null ? taskIdMap.get(entry.taskId) ?? null : null;
+      tx.insert(timeEntries).values({
+        userId,
+        entryType: entry.entryType,
+        entryDate: entry.entryDate,
+        endDate: entry.endDate,
+        startTime: entry.startTime ?? entry.entryDate,
+        endTime: entry.endTime,
+        notes: entry.notes,
+        projectId,
+        taskId,
+        customFieldValuesJson: JSON.stringify(entry.customFieldValues),
+        createdAt: entry.createdAt,
+      }).run();
+    }
 
-  for (const cacheRow of snapshot.publicHolidayCache) {
-    await db.orm.insert(publicHolidayCache).values({
-      countryCode: cacheRow.countryCode,
-      year: cacheRow.year,
-      payloadJson: cacheRow.payloadJson,
-      fetchedAt: cacheRow.fetchedAt,
-    }).onConflictDoUpdate({
-      target: [publicHolidayCache.countryCode, publicHolidayCache.year],
-      set: {
+    for (const cacheRow of snapshot.publicHolidayCache) {
+      tx.insert(publicHolidayCache).values({
+        countryCode: cacheRow.countryCode,
+        year: cacheRow.year,
         payloadJson: cacheRow.payloadJson,
         fetchedAt: cacheRow.fetchedAt,
-      },
-    }).run();
-  }
-
-  for (const project of snapshot.projects) {
-    const mappedProjectId = projectIdMap.get(project.id);
-    if (!mappedProjectId) {
-      continue;
+      }).onConflictDoUpdate({
+        target: [publicHolidayCache.countryCode, publicHolidayCache.year],
+        set: {
+          payloadJson: cacheRow.payloadJson,
+          fetchedAt: cacheRow.fetchedAt,
+        },
+      }).run();
     }
 
-    if (!project.allowAllUsers) {
-      for (const userId of Array.from(new Set(project.userIds ?? []))) {
-        const mappedUserId = userIdMap.get(userId);
-        if (!mappedUserId) {
-          continue;
+    for (const project of snapshot.projects) {
+      const mappedProjectId = projectIdMap.get(project.id);
+      if (!mappedProjectId) {
+        continue;
+      }
+
+      if (!project.allowAllUsers) {
+        for (const userId of Array.from(new Set(project.userIds ?? []))) {
+          const mappedUserId = userIdMap.get(userId);
+          if (!mappedUserId) {
+            continue;
+          }
+          tx.insert(projectUsers).values({
+            projectId: mappedProjectId,
+            userId: mappedUserId,
+            createdAt: project.createdAt,
+          }).run();
         }
-        await db.orm.insert(projectUsers).values({
-          projectId: mappedProjectId,
-          userId: mappedUserId,
-          createdAt: project.createdAt,
-        }).run();
+      }
+
+      if (!project.allowAllTasks) {
+        for (const taskId of Array.from(new Set(project.taskIds ?? []))) {
+          const mappedTaskId = taskIdMap.get(taskId);
+          if (!mappedTaskId) {
+            continue;
+          }
+          tx.insert(projectTasks).values({
+            projectId: mappedProjectId,
+            taskId: mappedTaskId,
+            createdAt: project.createdAt,
+          }).run();
+        }
       }
     }
-
-    if (!project.allowAllTasks) {
-      for (const taskId of Array.from(new Set(project.taskIds ?? []))) {
-        const mappedTaskId = taskIdMap.get(taskId);
-        if (!mappedTaskId) {
-          continue;
-        }
-        await db.orm.insert(projectTasks).values({
-          projectId: mappedProjectId,
-          taskId: mappedTaskId,
-          createdAt: project.createdAt,
-        }).run();
-      }
-    }
-  }
+  });
 }
 
 export const adminService = {

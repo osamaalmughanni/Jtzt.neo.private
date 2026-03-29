@@ -106,12 +106,12 @@ function validateContracts(contracts: UserContractInput[], todayDay: string) {
 
 async function saveContracts(db: AppDatabase, companyId: string, userId: number, contracts: UserContractInput[], todayDay: string) {
   const normalizedContracts = validateContracts(contracts, todayDay);
-  await db.orm.transaction(async (tx: any) => {
-    await tx.delete(userContracts).where(eq(userContracts.userId, userId)).run();
+  await db.orm.transaction((tx: any) => {
+    tx.delete(userContracts).where(eq(userContracts.userId, userId)).run();
 
     for (const contract of normalizedContracts) {
       const createdAt = new Date().toISOString();
-      const insertedContracts = await tx.insert(userContracts).values({
+      const insertedContracts = tx.insert(userContracts).values({
         userId,
         hoursPerWeek: contract.hoursPerWeek,
         startDate: contract.startDate,
@@ -124,7 +124,7 @@ async function saveContracts(db: AppDatabase, companyId: string, userId: number,
 
       for (const day of contract.schedule) {
         for (const [blockIndex, block] of day.blocks.entries()) {
-          await tx.insert(userContractScheduleBlocks).values({
+          tx.insert(userContractScheduleBlocks).values({
             contractId,
             weekday: day.weekday,
             blockOrder: blockIndex + 1,

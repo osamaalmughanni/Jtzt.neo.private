@@ -93,18 +93,20 @@ function stringifyCustomFieldValues(values: CustomFieldValues) {
   return JSON.stringify(values);
 }
 
-async function cleanupCustomFieldValuesForTable(
-  db: AppDatabase,
+function cleanupCustomFieldValuesForTable(
+  db: AppDatabase | { orm: any },
   table: "users" | "projects" | "tasks" | "time_entries",
   customFields: UpdateSettingsInput["customFields"],
   target: { scope: "user" | "project" | "task" | "time_entry"; entryType?: TimeEntryType },
 ) {
+  const orm = "orm" in db ? db.orm : db;
+
   if (table === "time_entries") {
-    const rows = await db.orm.select({
+    const rows = orm.select({
       id: timeEntries.id,
       entry_type: timeEntries.entryType,
       custom_field_values_json: timeEntries.customFieldValuesJson,
-    }).from(timeEntries) as Array<{ id: number; entry_type: TimeEntryType; custom_field_values_json: string }>;
+    }).from(timeEntries).all() as Array<{ id: number; entry_type: TimeEntryType; custom_field_values_json: string }>;
 
     for (const row of rows) {
       const parsedValues = parseCustomFieldValuesJson(row.custom_field_values_json);
@@ -118,7 +120,7 @@ async function cleanupCustomFieldValuesForTable(
         continue;
       }
 
-      await db.orm.update(timeEntries).set({
+      orm.update(timeEntries).set({
         customFieldValuesJson: stringifyCustomFieldValues(resolvedValues),
       }).where(eq(timeEntries.id, row.id)).run();
     }
@@ -131,10 +133,10 @@ async function cleanupCustomFieldValuesForTable(
     : table === "projects"
       ? { source: projects, id: projects.id, customFieldValuesJson: projects.customFieldValuesJson }
       : { source: tasks, id: tasks.id, customFieldValuesJson: tasks.customFieldValuesJson };
-  const rows = await db.orm.select({
+  const rows = orm.select({
     id: tableConfig.id,
     custom_field_values_json: tableConfig.customFieldValuesJson,
-  }).from(tableConfig.source);
+  }).from(tableConfig.source).all() as Array<{ id: number; custom_field_values_json: string }>;
 
   for (const row of rows) {
     const parsedValues = parseCustomFieldValuesJson(row.custom_field_values_json);
@@ -144,7 +146,7 @@ async function cleanupCustomFieldValuesForTable(
       continue;
     }
 
-    await db.orm.update(tableConfig.source).set({
+    orm.update(tableConfig.source).set({
       customFieldValuesJson: stringifyCustomFieldValues(resolvedValues),
     }).where(eq(tableConfig.id, row.id)).run();
   }
@@ -386,8 +388,8 @@ export const settingsService = {
       throw new HTTPException(400, { message: "Tasks require projects to be enabled" });
     }
 
-    await db.orm.transaction(async (tx: any) => {
-      await tx.update(companySettings).set({
+    db.orm.transaction((tx: any) => {
+      tx.update(companySettings).set({
         currency: input.currency,
         locale: nextLocale,
         timeZone: nextTimeZone,
@@ -411,10 +413,10 @@ export const settingsService = {
         customFieldsJson: JSON.stringify(nextCustomFields),
       }).run();
       if (JSON.stringify(previousCustomFields) !== JSON.stringify(nextCustomFields)) {
-        await cleanupCustomFieldValuesForTable(db, "users", nextCustomFields, { scope: "user" });
-        await cleanupCustomFieldValuesForTable(db, "projects", nextCustomFields, { scope: "project" });
-        await cleanupCustomFieldValuesForTable(db, "tasks", nextCustomFields, { scope: "task" });
-        await cleanupCustomFieldValuesForTable(db, "time_entries", nextCustomFields, { scope: "time_entry" });
+        cleanupCustomFieldValuesForTable(tx, "users", nextCustomFields, { scope: "user" });
+        cleanupCustomFieldValuesForTable(tx, "projects", nextCustomFields, { scope: "project" });
+        cleanupCustomFieldValuesForTable(tx, "tasks", nextCustomFields, { scope: "task" });
+        cleanupCustomFieldValuesForTable(tx, "time_entries", nextCustomFields, { scope: "time_entry" });
       }
     });
 

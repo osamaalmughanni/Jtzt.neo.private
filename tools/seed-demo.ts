@@ -825,9 +825,9 @@ async function seedCalculations(companyDb: Awaited<ReturnType<typeof createCompa
   const createdAt = new Date().toISOString();
   const chartConfig = { type: "bar", categoryColumn: null, valueColumn: null, seriesColumn: null, stacked: false };
 
-  await companyDb.orm.transaction(async (tx: any) => {
+  await companyDb.orm.transaction((tx: any) => {
     for (const calculation of buildCalculationSql(year)) {
-      await tx.insert(calculations).values({
+      tx.insert(calculations).values({
         name: calculation.name,
         description: calculation.description,
         sqlText: calculation.sqlText,
