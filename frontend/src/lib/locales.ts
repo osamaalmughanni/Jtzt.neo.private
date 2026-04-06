@@ -663,6 +663,7 @@ export const resources = {
         dayTimeRequired: "Every active contract day needs a start and end time",
         dayTimeOrder: "Contract day end time must be after the start time",
         currentContractRequired: "A current active contract is required",
+        deleteConfirmTitle: "Delete user",
         deleteConfirm: "Delete {{name}}?",
         passwordPlaceholderCreate: "At least 6 characters",
         passwordPlaceholderEdit: "Leave blank to keep current password"
@@ -1547,6 +1548,7 @@ export const resources = {
         dayTimeRequired: "Jeder aktive Vertragstag braucht Start- und Endzeit",
         dayTimeOrder: "Die Endzeit eines Vertragstags muss nach der Startzeit liegen",
         currentContractRequired: "Ein aktueller aktiver Vertrag ist erforderlich",
+        deleteConfirmTitle: "Benutzer löschen",
         deleteConfirm: "{{name}} löschen?",
         draft: "Entwurf",
         scheduled: "Geplant",
