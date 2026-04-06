@@ -12,7 +12,6 @@ interface RouteRevealProps {
 export function RouteReveal({ routeKey, className, children }: RouteRevealProps) {
   const [visible, setVisible] = useState(false);
   const nodeRef = useRef<HTMLDivElement | null>(null);
-  const timerRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -20,65 +19,21 @@ export function RouteReveal({ routeKey, className, children }: RouteRevealProps)
   }, [routeKey]);
 
   useLayoutEffect(() => {
-    const node = nodeRef.current;
-    if (!node) {
-      return;
+    if (rafRef.current !== null) {
+      window.cancelAnimationFrame(rafRef.current);
     }
 
-    let cancelled = false;
-
-    const clearTimer = () => {
-      if (timerRef.current !== null) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-
-    const revealAfterQuiet = () => {
-      clearTimer();
-      timerRef.current = window.setTimeout(() => {
-        if (!cancelled) {
-          setVisible(true);
-        }
-      }, 120);
-    };
-
-    const startReveal = () => {
-      if (rafRef.current !== null) {
-        window.cancelAnimationFrame(rafRef.current);
-      }
+    rafRef.current = window.requestAnimationFrame(() => {
       rafRef.current = window.requestAnimationFrame(() => {
-        rafRef.current = window.requestAnimationFrame(() => {
-          revealAfterQuiet();
-        });
+        setVisible(true);
       });
-    };
-
-    const resizeObserver = new ResizeObserver(() => {
-      revealAfterQuiet();
     });
-    resizeObserver.observe(node);
-
-    const mutationObserver = new MutationObserver(() => {
-      revealAfterQuiet();
-    });
-    mutationObserver.observe(node, {
-      subtree: true,
-      childList: true,
-      characterData: true,
-    });
-
-    startReveal();
 
     return () => {
-      cancelled = true;
-      clearTimer();
       if (rafRef.current !== null) {
         window.cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
-      resizeObserver.disconnect();
-      mutationObserver.disconnect();
     };
   }, [routeKey]);
 

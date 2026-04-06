@@ -95,6 +95,7 @@ const defaultSummary: DashboardSummary = {
   contractStats: {
     currentContract: null,
     totalBalanceMinutes: 0,
+    day: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     week: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     month: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     year: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
@@ -357,7 +358,7 @@ export function DashboardPage() {
   const [tabletPunchTaskId, setTabletPunchTaskId] = useState("");
   const [tabletPunchServerRequirements, setTabletPunchServerRequirements] = useState<StartTimerRequirement[]>([]);
   const [tabletPunchSubmitting, setTabletPunchSubmitting] = useState(false);
-  const [summaryPeriod, setSummaryPeriod] = useState<"week" | "month" | "year">("week");
+  const [summaryPeriod, setSummaryPeriod] = useState<"day" | "week" | "month" | "year">("day");
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [draftDate, setDraftDate] = useState(() => parseDayParam(searchParams.get("day")));
   const [now, setNow] = useState(() => new Date());
@@ -459,21 +460,29 @@ export function DashboardPage() {
     () => entries.reduce((sum, entry) => sum + entry.durationMinutes, 0),
     [entries],
   );
-  const summaryPeriodStats =
-    summaryPeriod === "week"
-      ? summary.contractStats.week
-      : summaryPeriod === "month"
-        ? summary.contractStats.month
-        : summary.contractStats.year;
-  const summaryPeriodLabel =
-    summaryPeriod === "week"
-      ? t("dashboard.periodWeek")
-      : summaryPeriod === "month"
-        ? t("dashboard.periodMonth")
-        : t("dashboard.periodYear");
+  const summaryPeriodOptions = useMemo(
+    () => [
+      { key: "day" as const, label: t("dashboard.periodDay"), stats: summary.contractStats.day },
+      { key: "week" as const, label: t("dashboard.periodWeek"), stats: summary.contractStats.week },
+      { key: "month" as const, label: t("dashboard.periodMonth"), stats: summary.contractStats.month },
+      { key: "year" as const, label: t("dashboard.periodYear"), stats: summary.contractStats.year },
+    ],
+    [summary.contractStats.day, summary.contractStats.month, summary.contractStats.week, summary.contractStats.year, t],
+  );
+  const summaryPeriodIndex = useMemo(
+    () => summaryPeriodOptions.findIndex((option) => option.key === summaryPeriod),
+    [summaryPeriod, summaryPeriodOptions],
+  );
+  const summaryPeriodEntry = summaryPeriodOptions[summaryPeriodIndex] ?? summaryPeriodOptions[0];
+  const summaryPeriodStats = summaryPeriodEntry.stats;
+  const summaryPeriodLabel = summaryPeriodEntry.label;
   const cycleSummaryPeriod = useCallback(() => {
-    setSummaryPeriod((current) => (current === "week" ? "month" : current === "month" ? "year" : "week"));
-  }, []);
+    setSummaryPeriod((current) => {
+      const currentIndex = summaryPeriodOptions.findIndex((option) => option.key === current);
+      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % summaryPeriodOptions.length : 0;
+      return summaryPeriodOptions[nextIndex]?.key ?? "day";
+    });
+  }, [summaryPeriodOptions]);
   const previousSelectedDayKeyRef = useRef(selectedDayKey);
   const companyTimeZone = companySettings?.timeZone ?? settings.timeZone;
   const todayDay = getLocalNowSnapshot(new Date(), companyTimeZone).localDay;

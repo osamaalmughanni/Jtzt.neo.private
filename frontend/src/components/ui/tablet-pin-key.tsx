@@ -1,15 +1,67 @@
-import type { ReactNode } from "react";
+import { useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 interface TabletPinKeyProps {
   children: ReactNode;
   muted?: boolean;
-  onClick: () => void;
+  onPress: () => void;
   className?: string;
   disabled?: boolean;
 }
 
-export function TabletPinKey({ children, muted = false, onClick, className, disabled = false }: TabletPinKeyProps) {
+function triggerHapticFeedback() {
+  const userActivation = navigator.userActivation;
+  const hasTouchSupport = navigator.maxTouchPoints > 0;
+
+  if (navigator.vibrate && window.isSecureContext && hasTouchSupport && userActivation?.isActive) {
+    navigator.vibrate(10);
+  }
+}
+
+export function TabletPinKey({ children, muted = false, onPress, className, disabled = false }: TabletPinKeyProps) {
+  const [pressed, setPressed] = useState(false);
+
+  function releasePressState() {
+    setPressed(false);
+  }
+
+  function handlePointerDown(event: PointerEvent<HTMLButtonElement>) {
+    if (disabled) {
+      return;
+    }
+
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    setPressed(true);
+    triggerHapticFeedback();
+    onPress();
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (disabled || event.repeat) {
+      return;
+    }
+
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    setPressed(true);
+    triggerHapticFeedback();
+    onPress();
+  }
+
+  function handleKeyUp(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      setPressed(false);
+    }
+  }
+
   return (
     <div className={cn("relative aspect-square w-full", className)}>
       <div
@@ -22,17 +74,17 @@ export function TabletPinKey({ children, muted = false, onClick, className, disa
       <button
         type="button"
         disabled={disabled}
-        onPointerDown={() => {
-          if (disabled) {
-            return;
-          }
-          if (navigator.vibrate && window.isSecureContext && navigator.userActivation?.isActive) {
-            navigator.vibrate(10);
-          }
-        }}
-        onClick={onClick}
+        onPointerDown={handlePointerDown}
+        onPointerUp={releasePressState}
+        onPointerCancel={releasePressState}
+        onPointerLeave={releasePressState}
+        onBlur={releasePressState}
+        onKeyDown={handleKeyDown}
+        onKeyUp={handleKeyUp}
+        onClick={(event) => event.preventDefault()}
         className={cn(
-          "absolute inset-0 flex items-center justify-center rounded-full bg-transparent transition-transform active:scale-95 disabled:pointer-events-none disabled:cursor-default disabled:opacity-70",
+          "absolute inset-0 flex touch-none select-none items-center justify-center rounded-full bg-transparent transition-transform duration-75 ease-out disabled:pointer-events-none disabled:cursor-default disabled:opacity-70",
+          pressed ? "scale-[0.94]" : "scale-100",
           muted ? "text-muted-foreground" : "text-foreground"
         )}
       >

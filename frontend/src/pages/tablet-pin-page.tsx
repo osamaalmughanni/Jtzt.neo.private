@@ -327,7 +327,7 @@ export function TabletPinPage() {
                 {keypadRows.flat().map((key) => {
                   if (key === "back") {
                     return (
-                      <TabletPinKey key={key} onClick={() => handleKeyPress("back")} disabled={isCheckingAccess}>
+                      <TabletPinKey key={key} onPress={() => handleKeyPress("back")} disabled={isCheckingAccess}>
                         <Backspace size={30} weight="bold" />
                       </TabletPinKey>
                     );
@@ -335,14 +335,14 @@ export function TabletPinPage() {
 
                   if (key === "clear") {
                     return (
-                      <TabletPinKey key={key} muted onClick={() => handleKeyPress("clear")} disabled={isCheckingAccess}>
+                      <TabletPinKey key={key} muted onPress={() => handleKeyPress("clear")} disabled={isCheckingAccess}>
                         <X size={28} weight="bold" />
                       </TabletPinKey>
                     );
                   }
 
                   return (
-                    <TabletPinKey key={key} onClick={() => handleKeyPress(key)} disabled={isCheckingAccess}>
+                    <TabletPinKey key={key} onPress={() => handleKeyPress(key)} disabled={isCheckingAccess}>
                       {key}
                     </TabletPinKey>
                   );

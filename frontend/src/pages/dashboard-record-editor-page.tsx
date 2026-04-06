@@ -80,6 +80,7 @@ const defaultSummary: DashboardSummary = {
   contractStats: {
     currentContract: null,
     totalBalanceMinutes: 0,
+    day: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     week: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     month: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },
     year: { expectedMinutes: 0, recordedMinutes: 0, balanceMinutes: 0 },

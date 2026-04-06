@@ -11,7 +11,6 @@ import { PageLabel } from "@/components/page-label";
 import { PageLoadBoundary, PageLoadingState } from "@/components/page-load-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FilePicker } from "@/components/ui/file-picker";
 import { Input } from "@/components/ui/input";
@@ -106,34 +105,69 @@ function CompactCard({
   manageLabel: string;
 }) {
   return (
-    <Card className="border bg-card shadow-none">
-      <CardContent className="flex flex-col gap-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-foreground">{title}</p>
-            {description ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{description}</p> : null}
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {onCopy ? (
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={onCopy} aria-label={copyLabel}>
-                <Copy className="h-4 w-4" />
-              </Button>
-            ) : null}
-            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={onManage} aria-label={manageLabel}>
-              <MoreHorizontal className="h-4 w-4" />
+    <div className="flex flex-col gap-3 px-4 py-4 sm:px-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{title}</p>
+          {description ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{description}</p> : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {onCopy ? (
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={onCopy} aria-label={copyLabel}>
+              <Copy className="h-4 w-4" />
             </Button>
-          </div>
+          ) : null}
+          <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={onManage} aria-label={manageLabel}>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {badges.map((badge) => (
-            <Badge key={`${title}-${badge.label}`} variant="outline" className={badge.className}>
-              {badge.label}
-            </Badge>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {badges.map((badge) => (
+          <Badge key={`${title}-${badge.label}`} variant="outline" className={badge.className}>
+            {badge.label}
+          </Badge>
+        ))}
+      </div>
+    </div>
   );
+}
+
+function AdminSectionCard({
+  title,
+  description,
+  children,
+  footer,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="flex flex-col gap-1.5 pb-4">
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      <div className="flex flex-col gap-3">
+        {children}
+      </div>
+      {footer ? <div className="pt-3">{footer}</div> : null}
+    </div>
+  );
+}
+
+function AdminEmptyState({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+function AdminList({ children }: { children: React.ReactNode }) {
+  return <div className="overflow-hidden rounded-2xl border border-border bg-background divide-y divide-border">{children}</div>;
 }
 
 export function AdminCompaniesPage() {
@@ -460,7 +494,7 @@ export function AdminCompaniesPage() {
   }
 
   return (
-    <FormPage className="h-full min-h-0">
+    <FormPage>
       <PageLoadBoundary
         intro={
           <PageIntro>
@@ -486,21 +520,17 @@ export function AdminCompaniesPage() {
         }
         loading={adminResource.isLoading}
         refreshing={adminResource.isRefreshing}
-        className="min-h-0 flex-1"
         skeleton={<PageLoadingState label={t("common.loading")} minHeightClassName="min-h-[28rem]" />}
       >
-        <FormSection className="space-y-6">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">{t("adminCompanies.companiesTitle")}</p>
-              <p className="text-sm text-muted-foreground">{t("adminCompanies.companiesDescription")}</p>
-            </div>
+        <FormSection>
+          <AdminSectionCard
+            title={t("adminCompanies.companiesTitle")}
+            description={t("adminCompanies.companiesDescription")}
+          >
             {companies.length === 0 ? (
-              <div className="border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
-                {t("adminCompanies.noCompanies")}
-              </div>
+              <AdminEmptyState>{t("adminCompanies.noCompanies")}</AdminEmptyState>
             ) : (
-              <div className="flex flex-col gap-3">
+              <AdminList>
                 {companies.map((company) => (
                   <CompactCard
                     key={company.id}
@@ -515,21 +545,21 @@ export function AdminCompaniesPage() {
                     }}
                   />
                 ))}
-              </div>
+              </AdminList>
             )}
-          </div>
+          </AdminSectionCard>
+        </FormSection>
 
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <p className="text-lg font-semibold tracking-[-0.03em] text-foreground">{t("adminCompanies.invitationsTitle")}</p>
-              <p className="text-sm text-muted-foreground">{t("adminCompanies.invitationsDescription")}</p>
-            </div>
+        <FormSection>
+          <AdminSectionCard
+            title={t("adminCompanies.invitationsTitle")}
+            description={t("adminCompanies.invitationsDescription")}
+            footer={<p className="text-xs text-muted-foreground">{t("adminCompanies.activeInvitationCodes", { value: activeInvitationCodes.length })}</p>}
+          >
             {invitationCodes.length === 0 ? (
-              <div className="border border-dashed border-border bg-muted/20 px-4 py-8 text-sm text-muted-foreground">
-                {t("adminCompanies.noInvitations")}
-              </div>
+              <AdminEmptyState>{t("adminCompanies.noInvitations")}</AdminEmptyState>
             ) : (
-              <div className="flex flex-col gap-3">
+              <AdminList>
                 {invitationCodes.map((code) => {
                   const badge = getInvitationBadge(code);
                   return (
@@ -551,13 +581,13 @@ export function AdminCompaniesPage() {
                     />
                   );
                 })}
-              </div>
+              </AdminList>
             )}
-            <p className="text-xs text-muted-foreground">{t("adminCompanies.activeInvitationCodes", { value: activeInvitationCodes.length })}</p>
-          </div>
+          </AdminSectionCard>
         </FormSection>
+      </PageLoadBoundary>
 
-        <Sheet open={createCompanySheetOpen} onOpenChange={setCreateCompanySheetOpen}>
+      <Sheet open={createCompanySheetOpen} onOpenChange={setCreateCompanySheetOpen}>
           <SheetContent side="right" className="w-[min(96vw,42rem)] max-w-none p-0">
             <div className="flex h-full min-h-0 flex-col">
               <div className="border-b border-border px-6 py-5 pr-14">
@@ -594,9 +624,9 @@ export function AdminCompaniesPage() {
               </div>
             </div>
           </SheetContent>
-        </Sheet>
+      </Sheet>
 
-        <Sheet open={inviteSheetOpen} onOpenChange={setInviteSheetOpen}>
+      <Sheet open={inviteSheetOpen} onOpenChange={setInviteSheetOpen}>
           <SheetContent side="right" className="w-[min(96vw,40rem)] max-w-none p-0">
             <div className="flex h-full min-h-0 flex-col">
               <div className="border-b border-border px-6 py-5 pr-14">
@@ -627,9 +657,9 @@ export function AdminCompaniesPage() {
               </div>
             </div>
           </SheetContent>
-        </Sheet>
+      </Sheet>
 
-        <Sheet
+      <Sheet
           open={companySheetOpen}
           onOpenChange={(open) => {
             setCompanySheetOpen(open);
@@ -769,9 +799,9 @@ export function AdminCompaniesPage() {
               </div>
             </div>
           </SheetContent>
-        </Sheet>
+      </Sheet>
 
-        <Sheet
+      <Sheet
           open={invitationManageOpen}
           onOpenChange={(open) => {
             setInvitationManageOpen(open);
@@ -823,147 +853,146 @@ export function AdminCompaniesPage() {
               </div>
             </div>
           </SheetContent>
-        </Sheet>
+      </Sheet>
 
-        <AppConfirmDialog
-          open={pendingDeleteCompany !== null}
-          onOpenChange={(open) => {
-            if (!open) {
-              setPendingDeleteCompany(null);
-            }
-          }}
-          title={pendingDeleteCompany ? t("adminCompanies.deleteCompanyConfirmTitle", { name: pendingDeleteCompany.name }) : t("adminCompanies.deleteCompanyConfirmFallbackTitle")}
-          description={t("adminCompanies.deleteCompanyConfirmDescription")}
-          confirmLabel={t("adminCompanies.deleteCompany")}
-          destructive
-          confirming={deleteSubmitting}
-          onConfirm={() => {
-            if (pendingDeleteCompany) {
-              void handleDeleteCompany(pendingDeleteCompany.id);
-            }
-          }}
-        />
+      <AppConfirmDialog
+        open={pendingDeleteCompany !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDeleteCompany(null);
+          }
+        }}
+        title={pendingDeleteCompany ? t("adminCompanies.deleteCompanyConfirmTitle", { name: pendingDeleteCompany.name }) : t("adminCompanies.deleteCompanyConfirmFallbackTitle")}
+        description={t("adminCompanies.deleteCompanyConfirmDescription")}
+        confirmLabel={t("adminCompanies.deleteCompany")}
+        destructive
+        confirming={deleteSubmitting}
+        onConfirm={() => {
+          if (pendingDeleteCompany) {
+            void handleDeleteCompany(pendingDeleteCompany.id);
+          }
+        }}
+      />
 
-        <Dialog
-          open={migrationSchemaDialogOpen}
-          onOpenChange={(open) => {
-            setMigrationSchemaDialogOpen(open);
-            if (!open) {
-              setMigrationSchemaJson("");
-            }
-          }}
-        >
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>{t("adminCompanies.migrationSchemaTitle")}</DialogTitle>
-              <DialogDescription>{t("adminCompanies.migrationSchemaDescription")}</DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col gap-3">
-              <Textarea
-                readOnly
-                value={migrationSchemaSubmitting ? t("adminCompanies.loadingMigrationSchema") : migrationSchemaJson}
-                className="min-h-[24rem] font-mono text-xs leading-5"
-              />
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" className="gap-2" onClick={() => void handleCopyMigrationSchema()} disabled={!migrationSchemaJson}>
-                <Copy className="h-4 w-4" />
-                {t("adminCompanies.copyJson")}
-              </Button>
-              <Button type="button" className="gap-2" onClick={handleDownloadMigrationSchemaJson} disabled={!migrationSchemaJson}>
-                <Download className="h-4 w-4" />
-                {t("adminCompanies.downloadJson")}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+      <Dialog
+        open={migrationSchemaDialogOpen}
+        onOpenChange={(open) => {
+          setMigrationSchemaDialogOpen(open);
+          if (!open) {
+            setMigrationSchemaJson("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{t("adminCompanies.migrationSchemaTitle")}</DialogTitle>
+            <DialogDescription>{t("adminCompanies.migrationSchemaDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <Textarea
+              readOnly
+              value={migrationSchemaSubmitting ? t("adminCompanies.loadingMigrationSchema") : migrationSchemaJson}
+              className="min-h-[24rem] font-mono text-xs leading-5"
+            />
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" className="gap-2" onClick={() => void handleCopyMigrationSchema()} disabled={!migrationSchemaJson}>
+              <Copy className="h-4 w-4" />
+              {t("adminCompanies.copyJson")}
+            </Button>
+            <Button type="button" className="gap-2" onClick={handleDownloadMigrationSchemaJson} disabled={!migrationSchemaJson}>
+              <Download className="h-4 w-4" />
+              {t("adminCompanies.downloadJson")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-        <Dialog
-          open={importReportOpen}
-          onOpenChange={(open) => {
-            setImportReportOpen(open);
-            if (!open) {
-              setImportReport(null);
-              setImportReportJson("");
-            }
-          }}
-        >
-          <DialogContent className="w-[min(96vw,56rem)] max-w-none">
-            <DialogHeader>
-              <DialogTitle>
-                {importReport?.success
-                  ? t("adminCompanies.companySqliteImported", { companyName: importReport.companyName || "company" })
-                  : t("adminCompanies.companySqliteImportFailed")}
-              </DialogTitle>
-              <DialogDescription>
-                {importReport?.success
-                  ? "Import completed. The full validation result is shown as JSON below."
-                  : "Import failed. The full report is shown as JSON below."}
-              </DialogDescription>
-            </DialogHeader>
+      <Dialog
+        open={importReportOpen}
+        onOpenChange={(open) => {
+          setImportReportOpen(open);
+          if (!open) {
+            setImportReport(null);
+            setImportReportJson("");
+          }
+        }}
+      >
+        <DialogContent className="w-[min(96vw,56rem)] max-w-none">
+          <DialogHeader>
+            <DialogTitle>
+              {importReport?.success
+                ? t("adminCompanies.companySqliteImported", { companyName: importReport.companyName || "company" })
+                : t("adminCompanies.companySqliteImportFailed")}
+            </DialogTitle>
+            <DialogDescription>
+              {importReport?.success
+                ? "Import completed. The full validation result is shown as JSON below."
+                : "Import failed. The full report is shown as JSON below."}
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap gap-2">
-                <Badge variant={importReport?.success ? "outline" : "destructive"}>{importReport?.success ? "success" : "failed"}</Badge>
-                <Badge variant="outline">{`tables: ${importReport?.tableCount ?? 0}`}</Badge>
-                <Badge variant="outline">{`rows: ${importReport?.rowCount ?? 0}`}</Badge>
-                <Badge variant="outline">{`warnings: ${importReport?.warnings.length ?? 0}`}</Badge>
-                <Badge variant="outline">{`errors: ${importReport?.errors.length ?? 0}`}</Badge>
-              </div>
-
-              <Textarea
-                readOnly
-                value={importReportJson || (importReport ? JSON.stringify(importReport, null, 2) : "")}
-                className="min-h-[30rem] font-mono text-xs leading-5"
-              />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant={importReport?.success ? "outline" : "destructive"}>{importReport?.success ? "success" : "failed"}</Badge>
+              <Badge variant="outline">{`tables: ${importReport?.tableCount ?? 0}`}</Badge>
+              <Badge variant="outline">{`rows: ${importReport?.rowCount ?? 0}`}</Badge>
+              <Badge variant="outline">{`warnings: ${importReport?.warnings.length ?? 0}`}</Badge>
+              <Badge variant="outline">{`errors: ${importReport?.errors.length ?? 0}`}</Badge>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2"
-                onClick={async () => {
-                  try {
-                    if (!importReportJson) return;
-                    if (!navigator.clipboard?.writeText) {
-                      throw new Error(t("common.clipboardUnavailable"));
-                    }
-                    await navigator.clipboard.writeText(importReportJson);
-                    toast({ title: t("adminCompanies.migrationSchemaCopied") });
-                  } catch {
-                    toast({ title: t("common.clipboardUnavailableMessage") });
-                  }
-                }}
-                disabled={!importReportJson}
-              >
-                <Copy className="h-4 w-4" />
-                {t("adminCompanies.copyJson")}
-              </Button>
-              <Button
-                type="button"
-                className="gap-2"
-                onClick={() => {
+            <Textarea
+              readOnly
+              value={importReportJson || (importReport ? JSON.stringify(importReport, null, 2) : "")}
+              className="min-h-[30rem] font-mono text-xs leading-5"
+            />
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2"
+              onClick={async () => {
+                try {
                   if (!importReportJson) return;
-                  const blob = new Blob([importReportJson], { type: "application/json" });
-                  const url = window.URL.createObjectURL(blob);
-                  const anchor = document.createElement("a");
-                  anchor.href = url;
-                  anchor.download = "company-migration-import-report.json";
-                  document.body.appendChild(anchor);
-                  anchor.click();
-                  document.body.removeChild(anchor);
-                  window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
-                }}
-                disabled={!importReportJson}
-              >
-                <Download className="h-4 w-4" />
-                {t("adminCompanies.downloadJson")}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </PageLoadBoundary>
+                  if (!navigator.clipboard?.writeText) {
+                    throw new Error(t("common.clipboardUnavailable"));
+                  }
+                  await navigator.clipboard.writeText(importReportJson);
+                  toast({ title: t("adminCompanies.migrationSchemaCopied") });
+                } catch {
+                  toast({ title: t("common.clipboardUnavailableMessage") });
+                }
+              }}
+              disabled={!importReportJson}
+            >
+              <Copy className="h-4 w-4" />
+              {t("adminCompanies.copyJson")}
+            </Button>
+            <Button
+              type="button"
+              className="gap-2"
+              onClick={() => {
+                if (!importReportJson) return;
+                const blob = new Blob([importReportJson], { type: "application/json" });
+                const url = window.URL.createObjectURL(blob);
+                const anchor = document.createElement("a");
+                anchor.href = url;
+                anchor.download = "company-migration-import-report.json";
+                document.body.appendChild(anchor);
+                anchor.click();
+                document.body.removeChild(anchor);
+                window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+              }}
+              disabled={!importReportJson}
+            >
+              <Download className="h-4 w-4" />
+              {t("adminCompanies.downloadJson")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </FormPage>
   );
 }

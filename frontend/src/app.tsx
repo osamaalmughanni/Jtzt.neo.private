@@ -36,7 +36,7 @@ function PublicEntryRoute() {
   if (loading) return <AppRouteLoadingState />;
   if (adminSession) return <Navigate to="/admin" replace />;
   if (companySession) {
-    return <Navigate to={companySession.accessMode === "tablet" ? "/dashboard" : "/menu"} replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   if (tabletAccess) {
     return <Navigate to="/tablet/pin" replace />;

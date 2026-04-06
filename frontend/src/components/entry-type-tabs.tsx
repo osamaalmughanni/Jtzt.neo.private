@@ -25,6 +25,8 @@ function getEntryTypeIcon(entryType: TimeEntryType) {
 export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProps) {
   const { t } = useTranslation();
   const entryStateUi = getEntryStateUi(t);
+  const triggerBaseClassName =
+    "inline-flex min-w-0 items-center justify-center rounded-md border min-h-10 text-sm font-medium leading-5 outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
   return (
     <div role="tablist" aria-label={t("recordEditor.entryType")} className="flex w-full min-w-0 flex-wrap gap-1">
@@ -42,7 +44,7 @@ export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProp
             title={item.label}
             onClick={() => onValueChange(item.value)}
             className={cn(
-              "inline-flex min-w-0 items-center justify-center rounded-md border text-sm font-semibold leading-none outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:py-2.5 sm:text-base",
+              triggerBaseClassName,
               isActive
                 ? "flex-1 gap-1.5 px-3 py-2"
                 : "w-10 shrink-0 gap-0 px-0 py-2 sm:w-11",
@@ -57,7 +59,7 @@ export function EntryTypeTabs({ value, onValueChange, items }: EntryTypeTabsProp
             <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center">
               <Icon size={16} weight="duotone" className="shrink-0 opacity-90 sm:h-[18px] sm:w-[18px]" />
             </span>
-            {isActive ? <span className="min-w-0 truncate text-center">{item.label}</span> : null}
+            {isActive ? <span className="min-w-0 truncate text-center leading-5">{item.label}</span> : null}
           </button>
         );
       })}

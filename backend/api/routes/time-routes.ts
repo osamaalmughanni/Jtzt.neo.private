@@ -669,6 +669,7 @@ async function buildDashboardSummaryWithContext(
   const activeEntry = await timeService.getActiveEntry(db, companyId, userId);
   const contractsByUser = new Map([[userId, contracts]]);
   const todayRecordedMinutes = calculateRecordedMinutesForRange(todayEntries, focusDay, focusDay, settings, holidaySet, contracts);
+  const todayExpectedMinutes = calculateExpectedContractMinutesForRange(focusDay, focusDay, holidaySet, contracts);
   const weekRecordedMinutes = calculateRecordedMinutesForRange(weekEntries, weekRange.startDay, weekRange.endDay, settings, holidaySet, contracts);
   const monthRecordedMinutes = calculateRecordedMinutesForRange(monthEntries, monthRange.startDay, monthRange.endDay, settings, holidaySet, contracts);
   const yearRecordedMinutes = calculateRecordedMinutesForRange(yearEntries, yearRange.startDay, yearRange.endDay, settings, holidaySet, contracts);
@@ -685,17 +686,22 @@ async function buildDashboardSummaryWithContext(
     weekMinutes: weekRecordedMinutes,
     activeEntry: activeEntry ? await enrichEntryWithDayMetrics(db, companyId, activeEntry, contracts) : null,
     recentEntries: await enrichEntriesWithDayMetrics(db, companyId, allEntries.slice(0, 5), contractsByUser),
-    contractStats: {
-      currentContract: currentContract
-        ? {
-            hoursPerWeek: currentContract.hoursPerWeek,
-            paymentPerHour: currentContract.paymentPerHour,
-            startDate: currentContract.startDate,
-            endDate: currentContract.endDate,
-            schedule: currentContract.schedule
-          }
-        : null,
+      contractStats: {
+        currentContract: currentContract
+          ? {
+              hoursPerWeek: currentContract.hoursPerWeek,
+              paymentPerHour: currentContract.paymentPerHour,
+              startDate: currentContract.startDate,
+              endDate: currentContract.endDate,
+              schedule: currentContract.schedule
+            }
+          : null,
       totalBalanceMinutes: totalRecordedMinutes - totalExpectedMinutes,
+      day: {
+        expectedMinutes: todayExpectedMinutes,
+        recordedMinutes: todayRecordedMinutes,
+        balanceMinutes: todayRecordedMinutes - todayExpectedMinutes
+      },
       week: {
         expectedMinutes: weekExpectedMinutes,
         recordedMinutes: weekRecordedMinutes,

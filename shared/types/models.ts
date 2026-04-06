@@ -192,6 +192,11 @@ export interface DashboardSummary {
       recordedMinutes: number;
       balanceMinutes: number;
     };
+    day: {
+      expectedMinutes: number;
+      recordedMinutes: number;
+      balanceMinutes: number;
+    };
     month: {
       expectedMinutes: number;
       recordedMinutes: number;
