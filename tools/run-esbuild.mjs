@@ -33,7 +33,7 @@ async function main() {
   if (command === "backend") {
     await esbuild.build({
       ...shared,
-      entryPoints: ["backend/server.ts", "backend/db/schema.ts"],
+      entryPoints: ["./backend/server.ts", "./backend/db/schema.ts"],
       outdir: "dist/backend",
     });
     return;
@@ -42,7 +42,7 @@ async function main() {
   if (command === "backend-watch") {
     const watchConfig = {
       ...shared,
-      entryPoints: ["backend/server.ts", "backend/db/schema.ts"],
+      entryPoints: ["./backend/server.ts", "./backend/db/schema.ts"],
       outdir: "dist/backend",
     };
 
@@ -71,7 +71,7 @@ async function main() {
 
   await esbuild.build({
     ...shared,
-    entryPoints: ["tools/seed-demo.ts"],
+    entryPoints: ["./tools/seed-demo.ts"],
     outfile: "dist/tools/seed-demo.js",
   });
 }
