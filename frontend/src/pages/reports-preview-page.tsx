@@ -592,10 +592,10 @@ export function ReportsPreviewPage() {
         gap="lg"
         skeleton={<PageLoadingState label={t("reports.creating")} minHeightClassName="min-h-[28rem]" />}
       >
-        <AppFullBleed className="flex min-h-0 flex-1 min-w-0 xl:px-12 2xl:px-16">
+        <AppFullBleed className="flex min-h-0 flex-1 min-w-0">
           <div className="flex min-h-0 w-full min-w-0 flex-col gap-5">
-            {report ? (
-              <>
+              {report ? (
+                <>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div className="rounded-2xl border border-border bg-background p-4">
                     <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{t("reports.period")}</p>

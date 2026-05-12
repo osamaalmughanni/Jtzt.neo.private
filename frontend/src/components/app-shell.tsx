@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Icon } from "phosphor-react";
 import { AppHeader } from "@/components/app-header";
@@ -42,19 +42,6 @@ export function AppShell({ mode }: AppShellProps) {
   const transitionToTabletPin = useCallback(() => {
     navigate("/tablet/pin", { replace: true, state: { lockTablet: true } });
   }, [navigate]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    const body = document.body;
-
-    root.dataset.appShell = "true";
-    body.dataset.appShell = "true";
-
-    return () => {
-      delete root.dataset.appShell;
-      delete body.dataset.appShell;
-    };
-  }, []);
 
   const headerActions =
     mode === "admin"
@@ -178,25 +165,17 @@ function ShellContent({
   scope: "company" | "admin" | "tablet";
 }) {
   const { bottomBar, bottomBarKey, startLoading, stopLoading } = useAppHeaderState();
-  const [isRouteChromePending, setIsRouteChromePending] = useState(true);
+  const fullBleedContent = locationKey === "/reports/preview" || /^\/calculations\/[^/]+\/preview$/.test(locationKey);
 
   useEffect(() => {
-    setIsRouteChromePending(true);
-
     if (firstRouteRef.current) {
       firstRouteRef.current = false;
-      const timeout = window.setTimeout(() => {
-        setIsRouteChromePending(false);
-      }, 360);
-      return () => {
-        window.clearTimeout(timeout);
-      };
+      return;
     }
 
     startLoading();
     const timeout = window.setTimeout(() => {
       stopLoading();
-      setIsRouteChromePending(false);
     }, 320);
 
     return () => {
@@ -212,7 +191,7 @@ function ShellContent({
         routeKey={locationKey}
         header={<AppHeader menuTo={menuTo} scope={scope} actions={headerActions} />}
         footerActions={footerActions}
-        forceBottomFade={isRouteChromePending}
+        fullBleedContent={fullBleedContent}
         bottomSlot={
           <AnimatePresence initial={false} mode="wait">
             {bottomBar ? (

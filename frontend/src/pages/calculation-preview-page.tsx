@@ -185,10 +185,10 @@ export function CalculationPreviewPage() {
         refreshing={resource.isRefreshing || validating}
         skeleton={<PageLoadingState label={t("common.loading")} />}
       >
-        <AppFullBleed className="flex min-h-0 min-w-0 xl:px-12 2xl:px-16">
+        <AppFullBleed className="flex min-h-0 flex-1 min-w-0">
           <div className="flex min-h-0 w-full min-w-0 flex-col gap-5">
-            {validation.issues.length > 0 ? (
-              <div className="flex flex-col gap-2 rounded-2xl border border-border bg-muted/20 p-4">
+              {validation.issues.length > 0 ? (
+                <div className="flex flex-col gap-2 rounded-2xl border border-border bg-muted/20 p-4">
                 {validation.issues.map((issue, index) => (
                   <p key={`${issue.level}-${index}`} className={issue.level === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
                     {issue.message}
@@ -198,12 +198,12 @@ export function CalculationPreviewPage() {
             ) : null}
 
             <CalculationPreviewTable
-              title={t("calculations.previewTitle")}
-              columns={validation.columns}
-              rows={validation.rows}
-              emptyLabel={t("calculations.noPreviewRows")}
-              searchPlaceholder={t("calculations.previewSearchPlaceholder")}
-            />
+                title={t("calculations.previewTitle")}
+                columns={validation.columns}
+                rows={validation.rows}
+                emptyLabel={t("calculations.noPreviewRows")}
+                searchPlaceholder={t("calculations.previewSearchPlaceholder")}
+              />
           </div>
         </AppFullBleed>
       </PageLoadBoundary>
